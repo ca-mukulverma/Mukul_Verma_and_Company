@@ -14,13 +14,13 @@ async function main() {
 
   if (!adminExists) {
     // Create default admin account
-    const hashedPassword = await hash('Sahil@2002', 12) // Strong temporary password
+    const hashedPassword = await hash('12345678', 12) // Strong temporary password
     
     await prisma.user.create({
       data: {
         id: uuidv4(), // Use uuid package instead of crypto
-        name: 'Sahil Vishwakarma',
-        email: 'sahilvishwa2108@gmail.com',
+        name: 'Mukul Verma',
+        email: 'camukulverma.bhopal@gmail.com',
         password: hashedPassword,
         role: 'ADMIN'
       }
