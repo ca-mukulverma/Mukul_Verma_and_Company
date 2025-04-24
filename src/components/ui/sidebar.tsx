@@ -159,7 +159,7 @@ export function Sidebar({
             <path d="M9 17h.01" />
           </svg>
           {!collapsed && (
-            <span className="font-semibold">Office Pilot</span>
+            <span className="font-semibold">WorkMate</span>
           )}
         </Link>
       </div>
