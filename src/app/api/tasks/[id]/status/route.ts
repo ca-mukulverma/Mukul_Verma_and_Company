@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TaskStatus, BillingStatus } from "@prisma/client";
 import { z } from "zod";
+import { sendTaskStatusUpdateNotification, sendTaskUpdatedNotificationToAdmins } from "@/lib/notifications";
 
 // Validation schema
 const statusUpdateSchema = z.object({
@@ -93,6 +94,22 @@ export async function PATCH(
         // Create history record...
       }
 
+      // Add notification calls before returning the response
+      await sendTaskStatusUpdateNotification(
+        taskId,
+        task.title,
+        currentUser.id,
+        task.assignedById,
+        task.status,
+        status
+      );
+
+      await sendTaskUpdatedNotificationToAdmins(
+        taskId,
+        task.title,
+        currentUser.id
+      );
+
       return NextResponse.json({
         message: `Task status updated to ${status}`,
         status: updatedTask.status,
@@ -119,6 +136,22 @@ export async function PATCH(
         billingStatus: updatedTask.billingStatus,
         lastStatusUpdatedBy: currentUser.id
       });
+
+      // Add notification calls before returning the response
+      await sendTaskStatusUpdateNotification(
+        taskId,
+        task.title, 
+        currentUser.id,
+        task.assignedById,
+        task.status,
+        status
+      );
+
+      await sendTaskUpdatedNotificationToAdmins(
+        taskId,
+        task.title,
+        currentUser.id
+      );
 
       return NextResponse.json(updatedTask);
     }
