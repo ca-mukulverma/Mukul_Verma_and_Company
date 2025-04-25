@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { sendTaskStatusUpdateNotification, sendTaskAssignedNotification } from "@/lib/notifications";
+import { sendTaskStatusUpdateNotification, sendTaskAssignedNotification, sendTaskUpdatedNotificationToAdmins } from "@/lib/notifications";
 import { v2 as cloudinary } from "cloudinary";
 import { z } from "zod";
 import { syncTaskAssignments } from "@/lib/task-assignment";
@@ -240,6 +240,12 @@ export async function PATCH(
         userId: currentUser.id,
       },
     });
+
+    await sendTaskUpdatedNotificationToAdmins(
+      task.id,
+      task.title,
+      currentUser.id
+    );
 
     // Send notification if status changed
     if (body.status && body.status !== originalTask.status) {

@@ -119,10 +119,23 @@ export function RecentNotificationsCard({
       notification.title.endsWith("profile")
     ) {
       router.push("/dashboard/settings/profile");
+    } else if (notification.title === "Billing Approved") {
+      // Try to extract clientId from content if available
+      const clientIdMatch = notification.content.match(/\[clientId:\s*([a-f0-9-]+)\]/);
+      const clientId = clientIdMatch && clientIdMatch[1];
+    
+      if (clientId) {
+        router.push(`/dashboard/clients/${clientId}`);
+      } else {
+        // If no specific client, redirect to clients list
+        router.push('/dashboard/clients');
+      }
     } else if (
       notification.title === "New Task Assigned" ||
       notification.title === "Task Status Updated" ||
-      notification.title === "New Comment on Task" // Add this condition
+      notification.title === "New Comment on Task" ||
+      notification.title === "New Task Created" ||
+      notification.title === "Task Updated"
     ) {
       console.log("Processing task notification");
 
@@ -177,12 +190,13 @@ export function RecentNotificationsCard({
 
   // Add this function before your return statement
   const stripTaskIdFromContent = (content: string): string => {
-    // Replace all taskId patterns with empty string
+    // Replace all taskId and clientId patterns with empty string
     return content
       .replace(/\[taskId:\s*[a-f0-9-]+\]/g, "")
       .replace(/taskId:\s*[a-f0-9-]+/g, "")
       .replace(/\(taskId:\s*[a-f0-9-]+\)/g, "")
       .replace(/Task ID:\s*[a-f0-9-]+/gi, "")
+      .replace(/\[clientId:\s*[a-f0-9-]+\]/g, "")
       .trim();
   };
 
@@ -270,7 +284,7 @@ export function RecentNotificationsCard({
           <>
             <ScrollArea className="flex-1 max-h-[calc(100%-36px)]">
               <div className="space-y-2 px-4 py-1">
-                {visibleNotifications.slice(0, 5).map((notification) => (
+                {visibleNotifications.slice(0, 20).map((notification) => (
                   <div
                     key={notification.id}
                     className={`p-2 border rounded-md cursor-pointer hover:bg-muted/50 transition-colors ${
@@ -300,12 +314,15 @@ export function RecentNotificationsCard({
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-2">
-                          {notification.title === "New Task Assigned" ||
-                          notification.title === "Task Status Updated" ||
-                          notification.title === "New Comment on Task" // Add this condition
-                            ? stripTaskIdFromContent(notification.content)
-                            : notification.content}
-                        </p>
+  {notification.title === "New Task Assigned" ||
+   notification.title === "Task Status Updated" ||
+   notification.title === "New Comment on Task" ||
+   notification.title === "New Task Created" ||
+   notification.title === "Task Updated" ||
+   notification.title === "Billing Approved"  // Add this new condition
+     ? stripTaskIdFromContent(notification.content)
+     : notification.content}
+</p>
                         <p className="text-xs text-muted-foreground">
                           {formatDistanceToNow(
                             new Date(notification.createdAt),

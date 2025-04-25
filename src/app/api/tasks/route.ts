@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { sendTaskAssignedNotification } from "@/lib/notifications";
 import { syncTaskAssignments } from "@/lib/task-assignment";
+import { sendTaskCreatedNotificationToAdmins } from "@/lib/notifications";
 
 // Schema for task creation
 const taskCreateSchema = z.object({
@@ -240,6 +241,12 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    await sendTaskCreatedNotificationToAdmins(
+      result.id,
+      validatedData.title,
+      currentUser.id
+    );
 
     // Send notifications to all assignees
     if (validatedData.assignedToIds && validatedData.assignedToIds.length > 0) {

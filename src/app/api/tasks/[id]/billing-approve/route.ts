@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity-logger";
+import { sendBillingApprovedNotificationToAdmins } from "@/lib/notifications";
 
 export async function POST(
   req: NextRequest,
@@ -121,6 +122,14 @@ export async function POST(
         where: { id: taskId }
       });
     });
+
+    await sendBillingApprovedNotificationToAdmins(
+      taskId,
+      task.title,
+      task.clientId,
+      task.client ? (task.client.companyName || task.client.contactPerson) : null,
+      session.user.id
+    );
 
     // Return more detailed success response
     return NextResponse.json({

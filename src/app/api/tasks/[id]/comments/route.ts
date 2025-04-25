@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { sendTaskCommentNotificationToAdmins } from "@/lib/notifications";
 
 // Schema for comment creation
 const attachmentSchema = z.object({
@@ -149,6 +150,13 @@ export async function POST(
         });
       }
     }
+
+    await sendTaskCommentNotificationToAdmins(
+      task.id,
+      task.title,
+      currentUser.id,
+      task.assignedById
+    );
 
     return NextResponse.json(comment, { status: 201 });
   } catch (error) {
