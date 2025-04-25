@@ -285,7 +285,7 @@ export default function PartnerUserDetailsPage({
                 }}
               >
                 <Link 
-                  href={`/dashboard/partner/tasks/${assignment.task.id}`}
+                  href={`/dashboard/tasks/${assignment.task.id}`}
                   className="block h-full"
                 >
                   <Card className="h-full border transition-all duration-300 hover:shadow-md hover:border-primary/20 cursor-pointer">
