@@ -233,16 +233,6 @@ export function RecentNotificationsCard({
       <CardHeader className="flex flex-row items-center justify-between pt-4 pb-0 px-4 flex-shrink-0">
         <CardTitle className="text-md">Recent Notifications</CardTitle>
         <div className="flex items-center space-x-2">
-          <Link href="/dashboard/settings/notifications">
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-7 text-xs flex items-center bg-blue-50 hover:bg-blue-100 text-blue-600"
-            >
-              <span>View all</span>
-              <ExternalLink className="ml-1 h-3 w-3" />
-            </Button>
-          </Link>
           <Button
             variant="outline"
             size="icon"
