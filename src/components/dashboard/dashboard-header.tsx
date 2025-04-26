@@ -181,14 +181,7 @@ export function DashboardHeader() {
           
           {/* Theme Toggle with improved styling */}
           <div className="overflow-hidden rounded-full">
-            <Button
-              variant="ghost"
-              size="icon" 
-              className="h-8 w-8 rounded-full transition-all hover:bg-muted hover:scale-110"
-              title="Change Theme"
-            >
-              <ThemeToggle />
-            </Button>
+            <ThemeToggle />
           </div>
         </div>
         
