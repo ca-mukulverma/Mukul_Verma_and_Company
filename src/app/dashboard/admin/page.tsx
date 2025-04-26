@@ -102,10 +102,17 @@ interface DashboardData {
 
 // Helper function to check if a date is within the next N days
 function isWithinNextDays(date: Date, days: number): boolean {
+  // Clone the date and reset time components 
   const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  
+  const taskDate = new Date(date);
+  taskDate.setHours(0, 0, 0, 0);
+  
   const futureDate = new Date(now);
   futureDate.setDate(now.getDate() + days);
-  return date >= now && date <= futureDate;
+  
+  return taskDate >= now && taskDate <= futureDate;
 }
 
 // Helper function to calculate days remaining
