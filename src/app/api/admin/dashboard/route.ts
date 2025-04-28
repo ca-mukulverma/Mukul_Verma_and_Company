@@ -143,8 +143,9 @@ export async function GET(request: NextRequest) {
     const staffWithoutTasks = await prisma.user.findMany({
       where: {
         isActive: true,
-        role: { not: "ADMIN" },
-        // Use taskAssignments instead of assignedTasks
+        id: { not: session.user.id }, // Exclude the current user
+        // Remove the "role: { not: "ADMIN" }" filter to include admin users
+        // This allows admins to be assigned tasks by other admins
         taskAssignments: {
           none: {}
         },

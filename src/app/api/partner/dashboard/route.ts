@@ -28,11 +28,12 @@ export async function GET() {
 
     console.log("Total staff count:", totalStaff);
 
-    // Get staff details
+    // Get staff details excluding current user
     const staffMembers = await prisma.user.findMany({
       where: {
+        id: { not: session.user.id }, // Exclude the current user
         role: {
-          in: ["BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"]
+          in: ["BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT", "PARTNER"]
         },
         isActive: true
       },
@@ -42,7 +43,6 @@ export async function GET() {
         email: true,
         role: true,
         avatar: true,
-        // Other fields you need
       }
     });
 

@@ -88,7 +88,7 @@ export function AssignTaskButton({
       // Step 1: Fetch the current task to get existing assignees
       const taskResponse = await axios.get(`/api/tasks/${taskId}`);
       const task = taskResponse.data;
-      
+
       // Step 2: Extract current assignee IDs
       const currentAssigneeIds = task.assignees ? 
         task.assignees.map((a: { userId: string }) => a.userId) : 

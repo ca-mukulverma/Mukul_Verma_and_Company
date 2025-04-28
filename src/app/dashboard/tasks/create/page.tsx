@@ -48,6 +48,7 @@ import { SearchableMultiSelect } from "@/components/tasks/searchable-multi-selec
 import { SearchableSelect } from "@/components/tasks/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DayPicker } from "react-day-picker";
+import { getSession } from "next-auth/react";
 
 // Update the task form schema
 const taskFormSchema = z.object({
@@ -126,11 +127,30 @@ export default function CreateTaskPage() {
     const fetchData = async () => {
       setIsDataLoading(true);
       try {
-        // Fetch users (only staff who can be assigned tasks)
+        // Get the current user session
+        const session = await getSession();
+        const currentUserRole = session?.user?.role;
+        
+        // Fetch users with role-based filtering
         const usersResponse = await axios.get('/api/users');
-        setUsers(usersResponse.data.users.filter((user: User) => 
-          ['BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT', 'PARTNER'].includes(user.role)
-        ));
+        
+        // MODIFY THIS FILTERING LOGIC
+        if (currentUserRole === 'ADMIN') {
+          // Admins can assign to anyone (including other admins)
+          setUsers(usersResponse.data.users.filter((user) => 
+            ['ADMIN', 'PARTNER', 'BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT'].includes(user.role)
+          ));
+        } else if (currentUserRole === 'PARTNER') {
+          // Partners can assign to other partners and junior staff
+          setUsers(usersResponse.data.users.filter((user) => 
+            ['PARTNER', 'BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT'].includes(user.role)
+          ));
+        } else {
+          // Default case (keep original filtering)
+          setUsers(usersResponse.data.users.filter((user) => 
+            ['BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT', 'PARTNER'].includes(user.role)
+          ));
+        }
         
         // Fetch clients
         await fetchClients();

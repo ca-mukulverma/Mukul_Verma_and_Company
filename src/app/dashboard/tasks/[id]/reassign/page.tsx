@@ -21,6 +21,7 @@ import { SearchableMultiSelect } from "@/components/tasks/searchable-multi-selec
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { getSession } from "next-auth/react";
 
 interface User {
   id: string;
@@ -46,7 +47,7 @@ interface Task {
 export default function ReassignTaskPage() {
   const router = useRouter();
   const params = useParams();
-  const taskId = params.id as string;
+  const taskId = params?.id as string || "";
   
   const [task, setTask] = useState<Task | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -95,9 +96,28 @@ export default function ReassignTaskPage() {
         
         // Fetch users (only staff who can be assigned tasks)
         const usersResponse = await axios.get('/api/users');
-        setUsers(usersResponse.data.users.filter((user) => 
-          ['BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT', 'PARTNER'].includes(user.role)
-        ));
+        
+        // Get the current user session
+        const session = await getSession();
+        const currentUserRole = session?.user?.role;
+        
+        // MODIFY THIS FILTERING LOGIC
+        if (currentUserRole === 'ADMIN') {
+          // Admins can assign to anyone (including other admins)
+          setUsers(usersResponse.data.users.filter((user) => 
+            ['ADMIN', 'PARTNER', 'BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT'].includes(user.role)
+          ));
+        } else if (currentUserRole === 'PARTNER') {
+          // Partners can assign to other partners and junior staff
+          setUsers(usersResponse.data.users.filter((user) => 
+            ['PARTNER', 'BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT'].includes(user.role)
+          ));
+        } else {
+          // Default case (keep original filtering)
+          setUsers(usersResponse.data.users.filter((user) => 
+            ['BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT', 'PARTNER'].includes(user.role)
+          ));
+        }
         
       } catch (error) {
         console.error('Error fetching data:', error);

@@ -353,10 +353,10 @@ export default function AdminDashboard() {
                       Available staff for task assignment
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="flex-1 pt-4 overflow-hidden flex flex-col">
+                  <CardContent className="pt-4 pb-2 h-[calc(350px-65px)]">
                     {!loading && !error && dashboardData?.staffWithoutTasks ? (
-                      <div className="space-y-2 flex-1 flex flex-col">
-                        <div className="flex items-center justify-between">
+                      <div className="flex flex-col h-full">
+                        <div className="flex items-center justify-between mb-2">
                           <h3 className="text-sm font-medium">Available Staff</h3>
                           {dashboardData.staffWithoutTasks.length > 0 && (
                             <Badge variant="outline">
@@ -364,70 +364,67 @@ export default function AdminDashboard() {
                             </Badge>
                           )}
                         </div>
-                        <div className="flex-1 overflow-hidden">
-                          {/* Scrollable container */}
-                          <div className="h-full max-h-[230px] overflow-y-auto pr-1 space-y-2 custom-scrollbar">
-                            {dashboardData.staffWithoutTasks.length > 0 ? (
-                              dashboardData.staffWithoutTasks.map((user) => (
-                                <div
-                                  key={user.id}
-                                  className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-all group"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <Avatar className="h-8 w-8">
-                                      <AvatarImage
-                                        src={
-                                          user.avatar ||
-                                          `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`
-                                        }
-                                      />
-                                      <AvatarFallback>
-                                        {user.name.substring(0, 2).toUpperCase()}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                      <span className="text-sm font-medium">
-                                        {user.name}
-                                      </span>
-                                      <p className="text-xs text-muted-foreground">
-                                        {user.role.charAt(0).toUpperCase() +
-                                          user.role.slice(1).toLowerCase().replace(/_/g, " ")}
-                                      </p>
+                        
+                        {/* Simplified scrollable container */}
+                        <div className="overflow-y-auto pr-1 space-y-4 custom-scrollbar h-[210px]">
+                          {['ADMIN', 'PARTNER', 'BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT'].map(roleGroup => {
+                            // Filter users by current role group
+                            const usersInRole = dashboardData.staffWithoutTasks.filter(user => user.role === roleGroup);
+                            
+                            // Only show role groups that have users
+                            if (usersInRole.length === 0) return null;
+                            
+                            return (
+                              <div key={roleGroup} className="mb-3">
+                                <h4 className="text-xs uppercase font-medium text-muted-foreground mb-2 px-2">
+                                  {roleGroup.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+                                </h4>
+                                
+                                {usersInRole.map((user) => (
+                                  <div
+                                    key={user.id}
+                                    className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-all group"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Avatar className="h-8 w-8">
+                                        <AvatarImage
+                                          src={
+                                            user.avatar ||
+                                            `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`
+                                          }
+                                        />
+                                        <AvatarFallback>
+                                          {user.name.substring(0, 2).toUpperCase()}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div>
+                                        <span className="text-sm font-medium">{user.name}</span>
+                                      </div>
                                     </div>
+                                    
+                                    <AssignTaskButton
+                                      userId={user.id}
+                                      userName={user.name}
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 opacity-70 group-hover:opacity-100"
+                                      onAssigned={() => {
+                                        fetchDashboardData();
+                                      }}
+                                    />
                                   </div>
-                                  
-                                  {/* Replace this button with AssignTaskButton */}
-                                  <AssignTaskButton
-                                    userId={user.id}
-                                    userName={user.name}
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 opacity-70 group-hover:opacity-100"
-                                    onAssigned={() => {
-                                      // Refresh dashboard data
-                                      fetchDashboardData();
-                                    }}
-                                  />
-                                </div>
-                              ))
-                            ) : (
-                              <div className="flex flex-col items-center justify-center py-8 px-4 text-center h-full">
-                                <Users className="h-10 w-10 text-muted-foreground mb-2 opacity-50" />
-                                <p className="text-sm font-medium">
-                                  All staff members are assigned
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Everyone on the team currently has active tasks
-                                </p>
+                                ))}
                               </div>
-                            )}
-                          </div>
+                            );
+                          })}
+                          {/* Add bottom padding for scrolling */}
+                          <div className="h-2"></div>
                         </div>
                       </div>
                     ) : (
                       <div className="space-y-3 flex-1">
                         <Skeleton className="h-5 w-full" />
-                        <Skeleton className="h-[230px] w-full" />
+                        <Skeleton className="h-[210px] w-full" />
                       </div>
                     )}
                   </CardContent>

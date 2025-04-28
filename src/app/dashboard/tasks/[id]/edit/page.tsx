@@ -47,6 +47,7 @@ import { CalendarIcon, Loader2, AlertCircle } from "lucide-react";
 import { SearchableMultiSelect } from "@/components/tasks/searchable-multi-select";
 import { SearchableSelect } from "@/components/tasks/searchable-select";
 import { DayPicker } from "react-day-picker";
+import { getSession } from "next-auth/react";
 
 // Update the task form schema to include assignedToIds
 const taskFormSchema = z.object({
@@ -81,7 +82,12 @@ interface Client {
 export default function EditTaskPage() {
   const router = useRouter();
   const params = useParams();
-  const taskId = params.id as string;
+  const taskId = params?.id as string;
+  
+  if (!taskId) {
+    router.push('/dashboard/tasks');
+    return null;
+  }
 
   const [users, setUsers] = useState<User[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -135,11 +141,30 @@ export default function EditTaskPage() {
         const taskResponse = await axios.get(`/api/tasks/${taskId}`);
         const taskData = taskResponse.data;
 
-        // Fetch users (only staff who can be assigned tasks)
+        // Get the current user session
+        const session = await getSession();
+        const currentUserRole = session?.user?.role;
+        
+        // Fetch users with role-based filtering
         const usersResponse = await axios.get('/api/users');
-        setUsers(usersResponse.data.users.filter((user: User) =>
-          ['BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT', 'PARTNER'].includes(user.role)
-        ));
+        
+        // MODIFY THIS FILTERING LOGIC
+        if (currentUserRole === 'ADMIN') {
+          // Admins can assign to anyone (including other admins)
+          setUsers(usersResponse.data.users.filter((user) => 
+            ['ADMIN', 'PARTNER', 'BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT'].includes(user.role)
+          ));
+        } else if (currentUserRole === 'PARTNER') {
+          // Partners can assign to other partners and junior staff
+          setUsers(usersResponse.data.users.filter((user) => 
+            ['PARTNER', 'BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT'].includes(user.role)
+          ));
+        } else {
+          // Default case (keep original filtering)
+          setUsers(usersResponse.data.users.filter((user) => 
+            ['BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT', 'PARTNER'].includes(user.role)
+          ));
+        }
 
         // Fetch clients
         await fetchClients();
@@ -290,7 +315,7 @@ export default function EditTaskPage() {
                           <SelectItem value="high" className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-red-500"></span>
                             <span>High</span>
-</SelectItem>
+                          </SelectItem>
                           </SelectContent>
                       </Select>
                       <FormMessage />
@@ -330,7 +355,7 @@ export default function EditTaskPage() {
                           <SelectItem value="cancelled" className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-red-500"></span>
                             <span>Cancelled</span>
-</SelectItem>
+                          </SelectItem>
                           </SelectContent>
                       </Select>
                       <FormMessage />

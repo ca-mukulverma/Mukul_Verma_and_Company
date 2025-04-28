@@ -553,61 +553,60 @@ function PartnerDashboardContent() {
                         </div>
                         <div className="flex-1 overflow-hidden">
                           {/* Scrollable container */}
-                          <div className="h-full max-h-[230px] overflow-y-auto pr-1 space-y-2 custom-scrollbar">
-                            {dashboardData.staff.filter(s => s.activeTasks === 0).length > 0 ? (
-                              dashboardData.staff.filter(s => s.activeTasks === 0).map((user) => (
-                                <div
-                                  key={user.id}
-                                  className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-all group"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <Avatar className="h-8 w-8">
-                                      <AvatarImage
-                                        src={
-                                          user.avatar ||
-                                          `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`
-                                        }
-                                      />
-                                      <AvatarFallback>
-                                        {user.name.substring(0, 2).toUpperCase()}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                      <span className="text-sm font-medium">
-                                        {user.name}
-                                      </span>
-                                      <p className="text-xs text-muted-foreground">
-                                        {user.role.charAt(0).toUpperCase() +
-                                          user.role.slice(1).toLowerCase().replace(/_/g, " ")}
-                                      </p>
-                                    </div>
-                                  </div>
+                          <div className="h-full max-h-[230px] overflow-y-auto pr-1 space-y-4 custom-scrollbar">
+                            {/* Group by role for better organization */}
+                            {['ADMIN', 'PARTNER', 'BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT'].map(roleGroup => {
+                              // Filter users by current role group
+                              const usersInRole = dashboardData.staff.filter(user => user.role === roleGroup);
+                              
+                              // Only show role groups that have users
+                              if (usersInRole.length === 0) return null;
+                              
+                              return (
+                                <div key={roleGroup} className="mb-3">
+                                  <h4 className="text-xs uppercase font-medium text-muted-foreground mb-2 px-2">
+                                    {roleGroup.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+                                  </h4>
                                   
-                                  {/* Replace this button with AssignTaskButton */}
-                                  <AssignTaskButton
-                                    userId={user.id}
-                                    userName={user.name}
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 opacity-70 group-hover:opacity-100"
-                                    onAssigned={() => {
-                                      // Refresh dashboard data
-                                      fetchDashboardData();
-                                    }}
-                                  />
+                                  {usersInRole.map((user) => (
+                                    <div
+                                      key={user.id}
+                                      className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 transition-all group"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <Avatar className="h-8 w-8">
+                                          <AvatarImage
+                                            src={
+                                              user.avatar ||
+                                              `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`
+                                            }
+                                          />
+                                          <AvatarFallback>
+                                            {user.name.substring(0, 2).toUpperCase()}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div>
+                                          <span className="text-sm font-medium">
+                                            {user.name}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      
+                                      <AssignTaskButton
+                                        userId={user.id}
+                                        userName={user.name}
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 opacity-70 group-hover:opacity-100"
+                                        onAssigned={() => {
+                                          fetchDashboardData();
+                                        }}
+                                      />
+                                    </div>
+                                  ))}
                                 </div>
-                              ))
-                            ) : (
-                              <div className="flex flex-col items-center justify-center py-8 px-4 text-center h-full">
-                                <Users className="h-10 w-10 text-muted-foreground mb-2 opacity-50" />
-                                <p className="text-sm font-medium">
-                                  All staff members are assigned
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Everyone on the team currently has active tasks
-                                </p>
-                              </div>
-                            )}
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
