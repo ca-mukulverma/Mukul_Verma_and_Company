@@ -414,7 +414,8 @@ export async function sendTaskCommentNotificationToAdmins(
   taskId: string,
   taskTitle: string,
   commenterId: string,
-  taskCreatorId: string
+  taskCreatorId: string,
+  comment: { content: string }
 ) {
   try {
     // Get commenter details
@@ -444,7 +445,7 @@ export async function sendTaskCommentNotificationToAdmins(
     for (const admin of adminUsers) {
       await createNotification({
         title: "New Comment on Task",
-        content: `${commenter.name} commented on task: ${taskTitle} [taskId: ${taskId}]`,
+        content: `${commenter.name} commented on task: ${taskTitle} - "${comment.content}"  [taskId: ${taskId}]`,
         sentById: commenterId,
         sentToId: admin.id,
         taskId,
@@ -455,6 +456,7 @@ export async function sendTaskCommentNotificationToAdmins(
             <h2>New Comment on Task</h2>
             <p><strong>Task:</strong> ${taskTitle}</p>
             <p><strong>Comment by:</strong> ${commenter.name}</p>
+            <p><strong>Comment:</strong> ${comment.content}</p>
             <p>Log in to the system to view the comment and task details.</p>
             <p>Thank you,<br>Office Management Team</p>
           </div>

@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       try {
         await createNotification({
           title: "New Team Chat Message",
-          content: `${name} sends a new message in team-chat`,
+          content: `${name} sends a new message: ${message}`,
           sentById: sender.id, // Use the message sender's ID
           sentToId: user.id,
           sendEmail: false,
