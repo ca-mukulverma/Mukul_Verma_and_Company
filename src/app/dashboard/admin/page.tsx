@@ -353,7 +353,7 @@ export default function AdminDashboard() {
                       Available staff for task assignment
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="pt-4 pb-2 h-[calc(350px-65px)]">
+                  <CardContent className="pt-4 pb-2 flex-1 overflow-hidden">
                     {!loading && !error && dashboardData?.staffWithoutTasks ? (
                       <div className="flex flex-col h-full">
                         <div className="flex items-center justify-between mb-2">
@@ -365,8 +365,8 @@ export default function AdminDashboard() {
                           )}
                         </div>
                         
-                        {/* Simplified scrollable container */}
-                        <div className="overflow-y-auto pr-1 space-y-4 custom-scrollbar h-[210px]">
+                        {/* Fix the scrollable container */}
+                        <div className="overflow-y-auto pr-1 space-y-4 custom-scrollbar h-[calc(100%-2rem)] rounded-sm">
                           {['ADMIN', 'PARTNER', 'BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT'].map(roleGroup => {
                             // Filter users by current role group
                             const usersInRole = dashboardData.staffWithoutTasks.filter(user => user.role === roleGroup);

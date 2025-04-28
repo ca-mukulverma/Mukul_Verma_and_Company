@@ -73,6 +73,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const getInitials = (name: string): string => {
   return name
@@ -386,6 +388,8 @@ export default function TasksPage() {
     pageSize: 20,
     pageCount: 0
   });
+  // Add this with your other state variables
+  const [showMyTasksOnly, setShowMyTasksOnly] = useState(false);
 
   // Use debounced search with longer delay for smoother experience
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
@@ -407,6 +411,12 @@ export default function TasksPage() {
         if (searchParam) {
           setSearchTerm(searchParam);
           setSearchInputValue(searchParam);
+        }
+        
+        // Get "my tasks" filter from URL
+        const myTasksParam = url.searchParams.get('mytasks');
+        if (myTasksParam === 'true') {
+          setShowMyTasksOnly(true);
         }
         
         // Get view mode from URL or localStorage
@@ -451,6 +461,13 @@ export default function TasksPage() {
           url.searchParams.delete('search');
         }
         
+        // Update "my tasks" filter in URL
+        if (showMyTasksOnly) {
+          url.searchParams.set('mytasks', 'true');
+        } else {
+          url.searchParams.delete('mytasks');
+        }
+        
         // Update view mode in URL
         url.searchParams.set('view', viewMode);
         
@@ -467,7 +484,7 @@ export default function TasksPage() {
         console.error("Error updating URL:", error);
       }
     }
-  }, [statusFilter, debouncedSearchTerm, viewMode, isInitialLoad]);
+  }, [statusFilter, debouncedSearchTerm, viewMode, showMyTasksOnly, isInitialLoad]);
 
   // Fetch all tasks - but only when necessary
   const fetchTasks = useCallback(async (isRefresh = false) => {
@@ -486,6 +503,11 @@ export default function TasksPage() {
       // Add status filter parameter if it's not "all"
       if (statusFilter !== "all") {
         url.searchParams.append("status", statusFilter);
+      }
+
+      // Add "assigned to me" filter parameter
+      if (showMyTasksOnly && session?.user?.id) {
+        url.searchParams.append("assignedToMe", "true");
       }
 
       // Add search term if using server-side search
@@ -521,14 +543,14 @@ export default function TasksPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [statusFilter, debouncedSearchTerm, searchMode, currentPage, pagination.pageSize]);
+  }, [statusFilter, debouncedSearchTerm, searchMode, currentPage, pagination.pageSize, showMyTasksOnly, session?.user?.id]);
 
   // Only fetch when status filter changes or on refresh - not on search term changes
   useEffect(() => {
     if (!isInitialLoad) {
       fetchTasks();
     }
-  }, [fetchTasks, statusFilter, isInitialLoad]);
+  }, [fetchTasks, statusFilter, showMyTasksOnly, isInitialLoad]);
 
   // Smooth client-side search handling
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -556,23 +578,40 @@ export default function TasksPage() {
     return canDeleteTask(session, task);
   }, [session]);
 
-  // Filter tasks based on search and status - client-side filtering for search
+  // Filter tasks based on search and status - client-side filtering
   const filteredTasks = useMemo(() => {
     if (!allTasks || !Array.isArray(allTasks)) return [];
     
-    // If using server-side search, return all tasks as they're already filtered
-    if (searchMode === "server") return allTasks;
+    // Start with all tasks
+    let tasks = allTasks;
     
-    // Client-side search filtering
-    if (!debouncedSearchTerm) return allTasks;
+    // Apply "Assigned to Me" filter if enabled
+    if (showMyTasksOnly && session?.user?.id) {
+      tasks = tasks.filter(task => {
+        // Check in the assignees array first (new assignment method)
+        if (task.assignees && task.assignees.length > 0) {
+          return task.assignees.some(assignee => assignee.userId === session.user.id);
+        }
+        // Fall back to legacy assignedTo field
+        return task.assignedTo?.id === session.user.id;
+      });
+    }
     
-    const searchLower = debouncedSearchTerm.toLowerCase();
-    return allTasks.filter(task => 
-      task.title.toLowerCase().includes(searchLower) || 
-      (task.client?.contactPerson && task.client.contactPerson.toLowerCase().includes(searchLower)) ||
-      (task.assignedTo?.name && task.assignedTo.name.toLowerCase().includes(searchLower))
-    );
-  }, [allTasks, debouncedSearchTerm, searchMode]);
+    // If using server-side search, return filtered tasks as is
+    if (searchMode === "server" && !debouncedSearchTerm) return tasks;
+    
+    // Apply client-side search filtering
+    if (debouncedSearchTerm) {
+      const searchLower = debouncedSearchTerm.toLowerCase();
+      return tasks.filter(task => 
+        task.title.toLowerCase().includes(searchLower) || 
+        (task.client?.contactPerson && task.client.contactPerson.toLowerCase().includes(searchLower)) ||
+        (task.assignedTo?.name && task.assignedTo.name.toLowerCase().includes(searchLower))
+      );
+    }
+    
+    return tasks;
+  }, [allTasks, debouncedSearchTerm, searchMode, showMyTasksOnly, session?.user?.id]);
 
   // Update URL when page changes
   const handlePageChange = useCallback((page: number) => {
@@ -714,48 +753,60 @@ export default function TasksPage() {
         <CardContent>
           <div className="space-y-4">
             <div className="flex flex-col gap-3">
-              {/* Task status filter */}
+              {/* Task status filter and My Tasks toggle */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="w-full sm:w-48">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between">
-                        <span>
-                          {statusFilter === "all" ? "All Tasks" : 
-                          statusFilter === "pending" ? "Pending" :
-                          statusFilter === "in_progress" ? "In Progress" :
-                          statusFilter === "review" ? "In Review" :
-                          statusFilter === "completed" ? "Completed" :
-                          statusFilter === "cancelled" ? "Cancelled" : "All Tasks"}
-                        </span>
-                        <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-48">
-                      <DropdownMenuItem onClick={() => setStatusFilter("all")}>
-                        All Tasks
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter("pending")}>
-                        Pending
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter("in_progress")}>
-                        In Progress
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter("review")}>
-                        In Review
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter("completed")}>
-                        Completed
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter("cancelled")}>
-                        Cancelled
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                <div className="w-full sm:w-auto flex flex-wrap gap-3 items-center">
+                  <div className="w-full sm:w-48">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="w-full justify-between">
+                          <span>
+                            {statusFilter === "all" ? "All Tasks" : 
+                            statusFilter === "pending" ? "Pending" :
+                            statusFilter === "in_progress" ? "In Progress" :
+                            statusFilter === "review" ? "In Review" :
+                            statusFilter === "completed" ? "Completed" :
+                            statusFilter === "cancelled" ? "Cancelled" : "All Tasks"}
+                          </span>
+                          <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-48">
+                        <DropdownMenuItem onClick={() => setStatusFilter("all")}>
+                          All Tasks
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setStatusFilter("pending")}>
+                          Pending
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setStatusFilter("in_progress")}>
+                          In Progress
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setStatusFilter("review")}>
+                          In Review
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setStatusFilter("completed")}>
+                          Completed
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setStatusFilter("cancelled")}>
+                          Cancelled
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  
+                  {/* Add My Tasks Toggle */}
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="assigned-to-me"
+                      checked={showMyTasksOnly}
+                      onCheckedChange={setShowMyTasksOnly}
+                    />
+                    <Label htmlFor="assigned-to-me" className="cursor-pointer">Assigned to me</Label>
+                  </div>
                 </div>
                 
-                {/* Search box remains here */}
-                <div className="relative w-full">
+                {/* Search box */}
+                <div className="relative w-full sm:w-auto sm:flex-1 sm:max-w-md">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search tasks..."

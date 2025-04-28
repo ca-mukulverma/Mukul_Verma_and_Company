@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const billingStatus = searchParams.get("billingStatus");
     const searchTerm = searchParams.get("search");
+    const assignedToMe = searchParams.get("assignedToMe") === "true";
     
     // Get pagination parameters
     const page = parseInt(searchParams.get("page") || "1");
@@ -61,24 +62,35 @@ export async function GET(request: NextRequest) {
       where.billingStatus = billingStatus;
     }
 
-    // Apply role-based filtering and log it
-    if (currentUser.role === "ADMIN") {
-      // Admin can see all tasks, no additional filtering needed
-    } else if (currentUser.role === "PARTNER") {
-      where.OR = [
-        { assignedById: currentUser.id },
-        { assignees: { some: { userId: currentUser.id } } }
-      ];
-    } else if (currentUser.role === "BUSINESS_EXECUTIVE" || currentUser.role === "BUSINESS_CONSULTANT") {
+    // Apply "assigned to me" filter if requested
+    if (assignedToMe) {
       where.assignees = {
         some: {
           userId: currentUser.id
         }
       };
-    } else {
-      where.OR = [
-        { assignees: { some: { userId: currentUser.id } } }
-      ];
+    } 
+    // Otherwise apply regular role-based filtering
+    else {
+      // Apply role-based filtering and log it
+      if (currentUser.role === "ADMIN") {
+        // Admin can see all tasks, no additional filtering needed
+      } else if (currentUser.role === "PARTNER") {
+        where.OR = [
+          { assignedById: currentUser.id },
+          { assignees: { some: { userId: currentUser.id } } }
+        ];
+      } else if (currentUser.role === "BUSINESS_EXECUTIVE" || currentUser.role === "BUSINESS_CONSULTANT") {
+        where.assignees = {
+          some: {
+            userId: currentUser.id
+          }
+        };
+      } else {
+        where.OR = [
+          { assignees: { some: { userId: currentUser.id } } }
+        ];
+      }
     }
 
     // Add search filter if provided
