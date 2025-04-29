@@ -65,7 +65,6 @@ export async function GET(
             avatar: true,
           },
         },
-        // Add this to include the last status updater
         lastStatusUpdatedBy: {
           select: {
             id: true,
@@ -104,22 +103,20 @@ export async function GET(
 
     // Check if user has permission to view this task
     const canViewTask =
-      currentUser.role === "ADMIN" ||
-      task.assignedById === currentUser.id ||
-      task.assignees.some(a => a.userId === currentUser.id);
+      currentUser.role === "ADMIN" || // Admin can view any task
+      task.assignedById === currentUser.id || // Creator can view their tasks
+      task.lastStatusUpdatedById === currentUser.id || // Last updater can view
+      task.assignees.some(a => a.userId === currentUser.id); // Assignee can view
 
     if (!canViewTask) {
-      return NextResponse.json(
-        { error: "You don't have permission to view this task" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     return NextResponse.json(task);
   } catch (error) {
     console.error("Error fetching task:", error);
     return NextResponse.json(
-      { error: "Failed to fetch task details" },
+      { error: "Failed to fetch task" },
       { status: 500 }
     );
   }

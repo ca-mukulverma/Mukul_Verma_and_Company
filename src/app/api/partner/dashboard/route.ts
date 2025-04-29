@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma"; // Fixed import
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
@@ -20,18 +20,16 @@ export async function GET() {
     const totalStaff = await prisma.user.count({
       where: {
         role: {
-          in: ["BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT", "PARTNER"] // Added PARTNER role
+          in: ["BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT", "PARTNER"]
         },
         isActive: true
       }
     });
 
-    console.log("Total staff count:", totalStaff);
-
     // Get staff details excluding current user
     const staffMembers = await prisma.user.findMany({
       where: {
-        id: { not: session.user.id }, // Exclude the current user
+        id: { not: session.user.id },
         role: {
           in: ["BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT", "PARTNER"]
         },
@@ -46,12 +44,17 @@ export async function GET() {
       }
     });
 
-    // Fetch tasks assigned to staff managed by this partner
+    // IMPROVED: Fetch only tasks where the partner is involved
+    // This ensures RBAC is properly implemented
     const tasks = await prisma.task.findMany({
       where: {
         OR: [
+          // Tasks created by this partner
           { assignedById: session.user.id },
-          { assignees: { some: { userId: { in: staffMembers.map(s => s.id) } } } }
+          // Tasks assigned to this partner
+          { assignees: { some: { userId: session.user.id } } },
+          // Tasks where this partner updated the status
+          { lastStatusUpdatedById: session.user.id }
         ]
       },
       include: {
@@ -69,7 +72,7 @@ export async function GET() {
       }
     });
 
-    // Calculate stats
+    // Calculate stats - now properly limited to tasks where partner is involved
     const activeTasks = tasks.filter(t =>
       t.status !== "completed" && t.status !== "cancelled"
     ).length;
@@ -136,9 +139,11 @@ export async function GET() {
         } : undefined,
         // Include all assignees for more flexibility
         assignees: task.assignees.map(a => ({
-          id: a.user.id,
-          name: a.user.name,
-          image: a.user.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${a.user.name}`
+          user: {  // Match expected structure for PriorityTasksCard
+            id: a.user.id,
+            name: a.user.name,
+            avatar: a.user.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${a.user.name}`
+          }
         })),
         progress: calculateTaskProgress(task.status)
       };

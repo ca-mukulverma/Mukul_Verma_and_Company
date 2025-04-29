@@ -198,16 +198,23 @@ export default function TaskDetailPage({
       const response = await axios.get<Task>(`/api/tasks/${taskId}`);
       setTask(response.data);
       setNewStatus(response.data.status);
-      setCurrentBillingStatus(response.data.billingStatus); // Update billing status
-      return response.data;
+      setCurrentBillingStatus(response.data.billingStatus);
+      return response.data; 
     } catch (error) {
       console.error("Error fetching task:", error);
-      toast.error("Failed to load task details");
-      return null;
+      
+      // Handle permission error specifically
+      if (axios.isAxiosError(error) && error.response?.status === 403) {
+        toast.error("You don't have permission to view this task");
+        // Redirect to tasks list after a short delay
+        setTimeout(() => router.push('/dashboard/tasks'), 1500);
+      } else {
+        toast.error("Failed to load task details");
+      }
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  }, [taskId, router]);
 
   const fetchComments = useCallback(async () => {
     try {
@@ -218,9 +225,12 @@ export default function TaskDetailPage({
       setComments(response.data);
     } catch (error) {
       console.error("Error fetching comments:", error);
-      // Set comments to empty array to prevent mapping errors
-      setComments([]);
-      toast.error("Failed to load comments");
+      
+      // Only show error toast for non-permission errors 
+      // (since fetchTask will already handle the redirect)
+      if (!(axios.isAxiosError(error) && error.response?.status === 403)) {
+        toast.error("Failed to load comments");
+      }
     } finally {
       setCommentsLoading(false);
     }

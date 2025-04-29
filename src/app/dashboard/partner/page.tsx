@@ -42,6 +42,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PendingBillingTasks } from "@/components/admin/pending-billing-tasks";
 import { RecentNotificationsCard } from "@/components/dashboard/recent-notifications-card";
 import { AssignTaskButton } from "@/components/tasks/assign-task-button";
+import { PriorityTasksCard } from "@/components/dashboard/priority-tasks-card";
 
 // Helper function to check if a date is within the next N days
 function isWithinNextDays(date: Date, days: number): boolean {
@@ -304,95 +305,12 @@ function PartnerDashboardContent() {
 
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {/* First Column - Priority Tasks */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Priority Tasks</CardTitle>
-                    <CardDescription>
-                      Tasks requiring immediate attention
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {loading ? (
-                      <div className="space-y-3">
-                        {[...Array(3)].map((_, i) => (
-                          <div key={i} className="animate-pulse">
-                            <div className="h-12 bg-muted rounded-md"></div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : error ? (
-                      <div className="flex flex-col items-center justify-center p-6 text-center">
-                        <AlertTriangle className="h-10 w-10 text-muted-foreground mb-2 opacity-20" />
-                        <p className="text-sm text-muted-foreground">{error}</p>
-                      </div>
-                    ) : dashboardData?.tasks?.filter(
-                        (t) => t.priority === "high"
-                      ).length === 0 ? (
-                      <div className="flex flex-col items-center justify-center p-6 text-center">
-                        <CheckCircle className="h-10 w-10 text-green-500 mb-2 opacity-50" />
-                        <p className="text-sm text-muted-foreground">
-                          No high priority tasks
-                        </p>
-                      </div>
-                    ) : (
-                      dashboardData?.tasks
-                        ?.filter((task) => task.priority === "high")
-                        .slice(0, 3)
-                        .map((task) => (
-                          <Link
-                            key={task.id}
-                            href={`/dashboard/tasks/${task.id}`}
-                          >
-                            <div className="border rounded-md p-3 hover:bg-muted/50 transition-colors">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <p className="font-medium truncate">
-                                    {task.title}
-                                  </p>
-                                  <p className="text-sm text-muted-foreground truncate">
-                                    {task.assignees && task.assignees.length > 0 
-                                      ? (task.assignees[0].user?.name || 
-                                         (typeof task.assignees[0] === 'object' && 'name' in task.assignees[0] 
-                                          ? String((task.assignees[0] as any).name)
-                                          : "Unknown"))
-                                      : "Unassigned"}
-                                  </p>
-                                </div>
-                                <div
-                                  className={`px-2 py-1 rounded-full text-xs ${
-                                    task.status === "completed"
-                                      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                                      : task.status === "in_progress"
-                                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                                      : task.status === "review"
-                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
-                                      : "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
-                                  }`}
-                                >
-                                  {task.status}
-                                </div>
-                              </div>
-                              {task.dueDate && (
-                                <div className="text-xs text-muted-foreground mt-2">
-                                  Due{" "}
-                                  {new Date(task.dueDate).toLocaleDateString()}
-                                </div>
-                              )}
-                            </div>
-                          </Link>
-                        ))
-                    )}
-                    <Link href="/dashboard/tasks?priority=high">
-                      <Button
-                        variant="outline"
-                        className="w-full justify-between"
-                      >
-                        View All High Priority Tasks
-                        <ArrowRight className="h-4 w-4 ml-2" />
-                      </Button>
-                    </Link>
-                  </CardContent>
-                </Card>
+                <PriorityTasksCard
+                  tasks={dashboardData?.tasks || []}
+                  loading={loading}
+                  error={error}
+                />
+
                 {/* Upcoming Deadlines */}
                 <Card className="h-[350px] flex flex-col overflow-hidden">
                   <CardHeader className="pb-2 border-b border-slate-100 dark:border-slate-800/50">

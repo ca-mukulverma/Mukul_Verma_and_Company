@@ -39,6 +39,7 @@ import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { AssignTaskButton } from "@/components/tasks/assign-task-button";
+import { PriorityTasksCard } from "@/components/dashboard/priority-tasks-card";
 
 interface Task {
   id: string;
@@ -341,7 +342,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {/* Staff Utilization */}
                 <Card className="h-[350px] flex flex-col">
                   <CardHeader className="pb-2">
@@ -429,6 +430,14 @@ export default function AdminDashboard() {
                     )}
                   </CardContent>
                 </Card>
+
+                {/* Priority Tasks - moved from Analytics tab and styled consistently */}
+                <PriorityTasksCard
+                  tasks={dashboardData?.tasks || []}
+                  loading={loading}
+                  error={error}
+                />
+
                 {/* Upcoming Deadlines */}
                 <Card className="h-[350px] flex flex-col overflow-hidden">
                   <CardHeader className="pb-2 border-b border-slate-100 dark:border-slate-800/50">
@@ -445,12 +454,12 @@ export default function AdminDashboard() {
                       <div className="h-full max-h-[260px] overflow-y-auto pr-1 space-y-3 custom-scrollbar">
                         {dashboardData.tasks.filter(task =>
                           task.dueDate && isWithinNextDays(new Date(task.dueDate), 7) &&
-                          task.status !== 'COMPLETED'
+                          task.status.toLowerCase() !== 'completed'
                         ).length > 0 ? (
                           dashboardData.tasks
                             .filter(task =>
                               task.dueDate && isWithinNextDays(new Date(task.dueDate), 7) &&
-                              task.status !== 'COMPLETED'
+                              task.status.toLowerCase() !== 'completed'
                             )
                             .sort((a, b) => new Date(a.dueDate || '').getTime() - new Date(b.dueDate || '').getTime())
                             .map((task) => {
@@ -732,77 +741,6 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
               </div>
-              {/* Priority Tasks */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Priority Tasks</CardTitle>
-                  <CardDescription>
-                    Tasks requiring immediate attention
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {loading ? (
-                    <div className="space-y-3">
-                      {[...Array(3)].map((_, i) => (
-                        <div key={i} className="animate-pulse">
-                          <div className="h-12 bg-muted rounded-md"></div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : error ? (
-                    <div className="flex flex-col items-center justify-center p-6 text-center">
-                      <AlertTriangle className="h-10 w-10 text-muted-foreground mb-2 opacity-20" />
-                      <p className="text-sm text-muted-foreground">{error}</p>
-                    </div>
-                  ) : !dashboardData?.tasks?.some(
-                    (t) => t.priority === "high"
-                  ) ? (
-                    <div className="flex flex-col items-center justify-center p-6 text-center">
-                      <CheckCircle className="h-10 w-10 text-green-500 mb-2 opacity-50" />
-                      <p className="text-sm text-muted-foreground">
-                        No high priority tasks
-                      </p>
-                    </div>
-                  ) : (
-                    dashboardData.tasks
-                      .filter((t) => t.priority === "high")
-                      .slice(0, 3)
-                      .map((task) => (
-                        <Link
-                          key={task.id}
-                          href={`/dashboard/tasks/${task.id}`}
-                          className="block"
-                        >
-                          <div className="border rounded-md p-3 hover:bg-muted/50 transition-colors">
-                            <div className="flex justify-between items-center">
-                              <p className="font-medium truncate">
-                                {task.title}
-                              </p>
-                              <Badge className="bg-red-500 text-white">
-                                High
-                              </Badge>
-                            </div>
-                            {task.dueDate && (
-                              <div className="text-xs text-muted-foreground mt-2">
-                                Due{" "}
-                                {new Date(task.dueDate).toLocaleDateString()}
-                              </div>
-                            )}
-                          </div>
-                        </Link>
-                      ))
-                  )}
-                  <Link href="/dashboard/tasks?priority=high">
-                    <Button
-                      variant="outline"
-                      className="w-full justify-between"
-                    >
-                      View All Priority Tasks
-                      <ArrowRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
             </>
           )}
         </TabsContent>

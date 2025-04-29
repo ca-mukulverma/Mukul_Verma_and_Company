@@ -33,14 +33,17 @@ export async function GET() {
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Get all tasks assigned to the current user
+    // IMPROVED: Get all tasks where the junior staff is involved
+    // This ensures RBAC is properly implemented
     const tasks = await prisma.task.findMany({
       where: {
-        assignees: {
-          some: {
-            userId: currentUser.id
-          }
-        }
+        OR: [
+          // Tasks assigned to this junior staff
+          { assignees: { some: { userId: currentUser.id } } },
+          // Tasks where this junior staff updated the status
+          { lastStatusUpdatedById: currentUser.id }
+          // Junior staff cannot create tasks, so no need to check assignedById
+        ]
       },
       include: {
         assignedBy: {
@@ -201,7 +204,6 @@ export async function GET() {
       ).length,
       highPriorityTasks: highPriorityTasks.length,
       tasksDueToday: tasksDueToday.length,
-      // Add more metrics as needed
     };
 
     return NextResponse.json({
