@@ -189,7 +189,7 @@ const ClientCard = ({
           {canDelete && (
             <div className="flex gap-1">
               <Button variant="ghost" size="sm" className="hover:bg-blue-50 hover:text-blue-600" asChild>
-                <Link href={`/dashboard/clients/${client.id}/edit`}>
+                <Link href={`/dashboard/clients`}>
                   <Edit className="h-3.5 w-3.5 mr-1" />
                   Edit
                 </Link>

@@ -221,7 +221,12 @@ export async function DELETE(
       );
     }
 
-    // Delete the client (cascading deletion will happen if defined in schema)
+    // Delete related records in ClientHistory first
+    await prisma.clientHistory.deleteMany({
+      where: { clientId: id }, // Fix: Use clientId to delete related records
+    });
+
+    // Delete the client
     await prisma.client.delete({
       where: { id },
     });
@@ -240,7 +245,7 @@ export async function DELETE(
   } catch (error) {
     console.error("Error deleting client:", error);
     return NextResponse.json(
-      { error: "Failed to delete client" },
+      { error: "Failed to delete client", details: (error as any).message },
       { status: 500 }
     );
   }
