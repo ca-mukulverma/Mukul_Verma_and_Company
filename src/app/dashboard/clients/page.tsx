@@ -246,8 +246,6 @@ const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
 // Add this function to fetch clients
 const fetchClients = useCallback(async () => {
-  // Change to just set a local loading state
-  const localLoading = true;
   setIsLoading(true);
   try {
     const response = await axios.get('/api/clients', {
@@ -258,7 +256,11 @@ const fetchClients = useCallback(async () => {
         search: debouncedSearchTerm || undefined
       }
     });
+    
+    // Fix: Properly extract pagination data
     setClientsResponse(response.data);
+    setTotalPages(response.data.pagination?.pages || 1);
+    setTotalClients(response.data.pagination?.total || 0);
     setError(null);
   } catch (err) {
     setError(err as Error);

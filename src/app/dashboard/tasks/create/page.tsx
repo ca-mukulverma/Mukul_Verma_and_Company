@@ -168,7 +168,12 @@ export default function CreateTaskPage() {
   // Fetch clients with proper error handling
   const fetchClients = async () => {
     try {
-      const response = await axios.get<{ clients?: Client[] }>("/api/clients");
+      // Specify a high limit to get all clients at once
+      const response = await axios.get<{ clients?: Client[], pagination?: any }>("/api/clients", {
+        params: {
+          limit: 1000 // Request a high number to get all clients
+        }
+      });
       
       // More robust handling of the response data
       if (response.data && response.data.clients && Array.isArray(response.data.clients)) {

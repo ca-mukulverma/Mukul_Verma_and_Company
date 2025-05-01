@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
+import axios from "axios";
+import { useDebounce } from "@/hooks/use-debounce";
 
 interface Option {
   value: string;
@@ -43,7 +45,36 @@ export function SearchableSelect({
   className,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
-  
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebounce(searchInput, 300);
+  const [filteredOptions, setFilteredOptions] = useState<Option[]>(options);
+
+  useEffect(() => {
+    if (debouncedSearch && debouncedSearch.length >= 2) {
+      const searchClients = async () => {
+        try {
+          const response = await axios.get("/api/clients", {
+            params: {
+              search: debouncedSearch,
+              limit: 20
+            }
+          });
+          
+          if (response.data && response.data.clients) {
+            setFilteredOptions(response.data.clients.map(client => ({
+              value: client.id,
+              label: client.companyName ? `${client.companyName} (${client.contactPerson})` : client.contactPerson
+            })));
+          }
+        } catch (error) {
+          console.error("Error searching clients:", error);
+        }
+      };
+      
+      searchClients();
+    }
+  }, [debouncedSearch]);
+
   // Find the selected option
   const selectedOption = options.find(option => option.value === selected);
   
@@ -84,7 +115,12 @@ export function SearchableSelect({
       </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search..." autoFocus />
+          <CommandInput 
+            placeholder="Search..." 
+            autoFocus 
+            value={searchInput}
+            onValueChange={setSearchInput}
+          />
           <CommandList>
             <CommandEmpty>No matches found</CommandEmpty>
             <CommandGroup>
@@ -99,7 +135,7 @@ export function SearchableSelect({
                 <span className="text-muted-foreground">No Client</span>
                 {selected === "null" && <Check className="ml-auto h-4 w-4" />}
               </CommandItem>
-              {options.map(option => (
+              {filteredOptions.map(option => (
                 <CommandItem
                   key={option.value}
                   value={option.label}
