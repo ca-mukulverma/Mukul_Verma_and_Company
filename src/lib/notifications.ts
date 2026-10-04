@@ -5,6 +5,7 @@ import { getTaskAssignmentTemplate, getTaskReassignedTemplate } from "../../emai
 // import { sendWhatsAppMessage } from './email';
 import { sendWhatsAppNotification } from "./whatsapp";
 import { sendActivityNotificationEmail } from "./email";
+import { sendPushForNotification } from "./web-push";
 
 
 interface NotificationOptions {
@@ -79,6 +80,9 @@ export async function createNotification({
 
     // Clean up old notifications to keep only the most recent 20
     await cleanupOldNotifications(sentToId, 20);
+
+    // Push to the user's phone / installed app
+    await sendPushForNotification(notification);
 
     // Send email if requested
     if (sendEmail && notification.sentTo.email) {

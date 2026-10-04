@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendPushForNotification } from "@/lib/web-push";
 import { z } from "zod";
 import { sendTaskCommentNotificationToAdmins } from "@/lib/notifications";
 
@@ -154,7 +155,7 @@ export async function POST(
 
     // Create notification for task owner if different from commenter
     if (task.assignedById !== currentUser.id) {
-      await prisma.notification.create({
+      const notification = await prisma.notification.create({
         data: {
           title: "New Comment on Task",
           content: `${currentUser.name} commented on task: ${task.title} - "${comment.content}" [taskId: ${task.id}]`,
@@ -162,12 +163,13 @@ export async function POST(
           sentToId: task.assignedById,
         },
       });
+      await sendPushForNotification(notification);
     }
 
     // Create notifications for all assignees if different from commenter
     for (const assignee of task.assignees) {
       if (assignee.userId !== currentUser.id) {
-        await prisma.notification.create({
+        const notification = await prisma.notification.create({
           data: {
             title: "New Comment on Task",
             content: `${currentUser.name} commented on task: ${task.title}  - "${comment.content}" [taskId: ${task.id}]`,
@@ -175,6 +177,7 @@ export async function POST(
             sentToId: assignee.userId,
           },
         });
+        await sendPushForNotification(notification);
       }
     }
 
