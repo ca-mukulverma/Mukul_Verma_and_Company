@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Bell, Info } from "lucide-react";
+import { PushSettingsCard } from "@/components/push/enable-push";
 
 interface Notification {
   id: string;
@@ -64,6 +65,9 @@ function NotificationsContent() {
 
   return (
     <div className="grid gap-6">
+      {/* Phone / browser push notifications */}
+      <PushSettingsCard />
+
       {/* Recent Notifications */}
       <Card className="lg:col-span-3">
         <CardHeader className="flex flex-row items-center justify-between">

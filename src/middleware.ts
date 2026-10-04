@@ -44,6 +44,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Add improved caching for static assets
+  if (pathname === "/sw.js") {
+    const swResponse = NextResponse.next();
+    swResponse.headers.set("Cache-Control", "no-cache");
+    swResponse.headers.set("Service-Worker-Allowed", "/");
+    return swResponse;
+  }
+
   if (
     pathname.startsWith('/_next/static') ||
     pathname.includes('/images/') ||
@@ -88,6 +95,8 @@ export async function middleware(request: NextRequest) {
     pathname === "/forgot-password" ||
     pathname === "/reset-password" ||
     pathname === "/set-password" ||
+    pathname === "/manifest.webmanifest" || // installable app manifest (must be public)
+    pathname === "/sw.js" ||                // push notification service worker (must be public)
     pathname.includes("favicon")
   ) {
     return NextResponse.next();

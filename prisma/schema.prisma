@@ -271,3 +271,17 @@ model Credential {
 
   @@index([clientId])
 }
+
+// Devices that turned on phone/browser notifications (Web Push).
+// The table is also created automatically by src/lib/push.ts (CREATE TABLE IF NOT EXISTS).
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String   @db.Char(36)
+  endpoint  String   @unique
+  p256dh    String   @db.VarChar(255)
+  auth      String   @db.VarChar(100)
+  userAgent String?  @db.VarChar(255)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

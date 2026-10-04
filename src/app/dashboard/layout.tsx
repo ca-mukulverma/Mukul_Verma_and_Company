@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { PushBanner } from "@/components/push/enable-push";
 
 // Lazy load non-critical components
 const NotificationProvider = lazy(() =>
@@ -474,7 +475,7 @@ export default function DashboardLayout({
               </Suspense>
 
               {/* Main content */}
-              <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-x-hidden">{children}</main>
+              <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-x-hidden"><PushBanner />{children}</main>
             </div>
 
             {/* Mobile navigation overlay */}
