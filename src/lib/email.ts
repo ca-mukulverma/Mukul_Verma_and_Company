@@ -6,26 +6,30 @@ import {
   getTaskReassignedTemplate
 } from '../../emails/templates';
 
-// Create reusable transporter object using SMTP transport
+// Create reusable transporter object using SMTP transport.
+// Credentials come only from the environment (EMAIL_USER + a Gmail App Password).
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER || 'sahilvishwa2108@gmail.com',
-    pass: process.env.EMAIL_PASSWORD || 'zjfx obfh thac dabr', // App password, not regular password
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
   },
-  tls: {
-    rejectUnauthorized: false // Helps with self-signed certificates
-  }
 });
 
-// Verify connection configuration (optional but recommended)
-transporter.verify((error: Error | null) => {
-  if (error) {
-    console.error('SMTP connection error:', error);
-  } else {
-    console.log('Server is ready to send emails');
-  }
-});
+// Verify the login at runtime only (not during `next build`) and only when configured
+if (
+  process.env.EMAIL_USER &&
+  process.env.EMAIL_PASSWORD &&
+  process.env.NEXT_PHASE !== 'phase-production-build'
+) {
+  transporter.verify((error: Error | null) => {
+    if (error) {
+      console.error('SMTP connection error (check EMAIL_USER / EMAIL_PASSWORD):', error);
+    } else {
+      console.log('Server is ready to send emails');
+    }
+  });
+}
 
 export async function sendEmail({
   to,
