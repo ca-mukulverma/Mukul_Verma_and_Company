@@ -72,6 +72,7 @@ model User {
   taskComments            TaskComment[]
   clientHistories         ClientHistory[] @relation("CreatedBy")
   canApproveBilling       Boolean        @default(false) // Whether this user can approve billing
+  pushSubscriptions       PushSubscription[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -181,6 +182,20 @@ model Message {
   createdAt  DateTime @default(now())
 
   @@index([senderId])
+}
+
+// Web Push subscription for one browser/device (e.g. the iPhone home-screen app)
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Char(36)
+  endpoint  String   @unique @db.Text
+  p256dh    String   @db.VarChar(200)
+  auth      String   @db.VarChar(100)
+  userAgent String?  @db.VarChar(255)
+  userId    String   @db.Char(36)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Notification {

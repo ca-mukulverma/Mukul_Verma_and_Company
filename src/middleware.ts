@@ -43,6 +43,12 @@ const routePermissions = {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // PWA files must be public and must not be cached long-term
+  // (the service worker has to update, and iOS fetches the manifest without a session)
+  if (pathname === "/sw.js" || pathname === "/manifest.webmanifest") {
+    return NextResponse.next();
+  }
+
   // Add improved caching for static assets
   if (
     pathname.startsWith('/_next/static') ||

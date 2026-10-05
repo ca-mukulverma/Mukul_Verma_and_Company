@@ -350,6 +350,9 @@ MV Company implements a sophisticated role-based access control system:
 3. **Set up environment variables**
    Create a `.env` file with the used variables:
 
+   For iPhone/Android push notifications, also set `NEXT_PUBLIC_VAPID_PUBLIC_KEY`,
+   `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` – see [docs/IPHONE_APP.md](docs/IPHONE_APP.md).
+
 4. **Initialize the database**
    ```bash
    npx prisma migrate dev --name init

@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendPushForNotification } from "@/lib/web-push";
 import { dashboardCache } from "@/lib/cache";
 
 export async function GET(request: NextRequest) {
@@ -317,7 +318,7 @@ export async function POST(request: NextRequest) {
 
       // Send notification if canApproveBilling is marked true
       if (update.canApproveBilling) {
-        await prisma.notification.create({
+        const notification = await prisma.notification.create({
           data: {
             title: "Permission Granted",
             content: "You have been granted permission to approve billing requests. You can now approve billing on dashboard and task pages.",
@@ -325,6 +326,7 @@ export async function POST(request: NextRequest) {
             sentToId: updatedUser.id, // Partner receiving the notification
           },
         });
+        await sendPushForNotification(notification);
       }
     });
     await Promise.all(updatePromises);

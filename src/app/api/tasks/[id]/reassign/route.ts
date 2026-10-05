@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendPushForNotification } from "@/lib/web-push";
 import { z } from "zod";
 import { sendEmail } from "@/lib/email";
 import { syncTaskAssignments } from "@/lib/task-assignment";
@@ -120,7 +121,7 @@ export async function PATCH(
     for (const assigneeId of validatedData.assignedToIds) {
       // Skip notification to self and existing assignees
       if (assigneeId !== currentUser.id) {
-        await prisma.notification.create({
+        const notification = await prisma.notification.create({
           data: {
             title: "New Task Assigned",
             content: `${currentUser.name} assigned you a task: ${task.title}${
@@ -131,13 +132,14 @@ export async function PATCH(
             sentToId: assigneeId,
           },
         });
+        await sendPushForNotification(notification);
       }
     }
 
     // Notify previous assignees if they are no longer assigned
     for (const previousAssigneeId of previousAssigneeIds) {
       if (!validatedData.assignedToIds.includes(previousAssigneeId)) {
-        await prisma.notification.create({
+        const notification = await prisma.notification.create({
           data: {
             title: "Task Reassigned",
             content: `Your task "${task.title}" has been reassigned to another user`,
@@ -145,6 +147,7 @@ export async function PATCH(
             sentToId: previousAssigneeId,
           },
         });
+        await sendPushForNotification(notification);
       }
     }
 
