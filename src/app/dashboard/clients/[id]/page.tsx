@@ -39,7 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UnifiedHistoryTab } from "@/components/clients/unified-history-tab";
-import { canModifyClient } from "@/lib/permissions";
+import { canCreateTask, canModifyClient } from "@/lib/permissions";
 import { CredentialsTab } from "@/components/clients/credentials-tab";
 
 interface Client {
@@ -87,6 +87,10 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
   // Check if user has write access
   const hasWriteAccess = useMemo(() => {
     return canModifyClient(session);
+  }, [session]);
+
+  const canAddTask = useMemo(() => {
+    return canCreateTask(session);
   }, [session]);
 
   // Fetch client details
@@ -369,7 +373,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                   Tasks associated with this client
                 </CardDescription>
               </div>
-              {hasWriteAccess && (
+              {canAddTask && (
                 <Button asChild size="sm">
                   <Link href={`/dashboard/tasks/create?clientId=${client.id}`}>
                     Add New Task
@@ -441,7 +445,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                   <p className="text-muted-foreground mb-4">
                     Couldn&apos;t find any active tasks for this client.
                   </p>
-                  {hasWriteAccess && (
+                  {canAddTask && (
                     <Button asChild>
                       <Link href={`/dashboard/tasks/create?clientId=${client.id}`}>
                         Create First Task
