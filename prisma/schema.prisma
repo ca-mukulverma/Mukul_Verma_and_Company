@@ -143,6 +143,7 @@ model Task {
   @@index([assignedById])
   @@index([clientId])
   @@index([billingStatus])
+  @@index([createdAt])
 }
 
 // New join table for many-to-many task assignments
@@ -158,6 +159,8 @@ model TaskAssignee {
   
   // Unique constraint
   @@unique([taskId, userId])
+  // "Tasks assigned to me" lookups filter by userId alone
+  @@index([userId])
 }
 
 model Attachment {
@@ -216,7 +219,7 @@ model Notification {
   createdAt   DateTime @default(now())
 
   @@index([sentById])
-  @@index([sentToId])
+  @@index([sentToId, createdAt(sort: Desc)])
 }
 
 model Activity {

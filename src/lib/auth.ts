@@ -7,6 +7,10 @@ import { logActivity } from "@/lib/activity-logger";
 
 const isProduction = process.env.NODE_ENV === "production";
 
+// How often the JWT callback re-reads the user from the database.
+// Without this, every getServerSession()/useSession() call costs a DB round trip.
+const USER_REFRESH_INTERVAL_MS = 60 * 1000;
+
 // Get your actual domain from the URL
 const getVercelDomain = () => {
   if (!process.env.NEXTAUTH_URL) return undefined;
@@ -93,7 +97,17 @@ export const authOptions: NextAuthOptions = {
           avatar: user.avatar || null,
           canApproveBilling: user.canApproveBilling || false,
           roleVersion: user.roleVersion,
+          checkedAt: Date.now(),
         };
+      }
+
+      // Skip the DB lookup if the token was verified recently
+      if (
+        !token.blocked &&
+        typeof token.checkedAt === "number" &&
+        Date.now() - token.checkedAt < USER_REFRESH_INTERVAL_MS
+      ) {
+        return token;
       }
 
       try {
@@ -130,6 +144,7 @@ export const authOptions: NextAuthOptions = {
           canApproveBilling: user.canApproveBilling || false,
           role: user.role,
           roleVersion: user.roleVersion,
+          checkedAt: Date.now(),
         };
       } catch (error) {
         console.error("Database error in JWT callback:", error);
