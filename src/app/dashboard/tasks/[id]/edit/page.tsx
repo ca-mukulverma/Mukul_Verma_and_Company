@@ -144,6 +144,13 @@ export default function EditTaskPage() {
         // Get the current user session
         const session = await getSession();
         const currentUserRole = session?.user?.role;
+
+        // Partners can only edit tasks they created
+        if (currentUserRole !== 'ADMIN' && taskData.assignedById !== session?.user?.id) {
+          toast.error("You can only edit tasks you created");
+          router.push(`/dashboard/tasks/${taskId}`);
+          return;
+        }
         
         // Fetch users with role-based filtering
         const usersResponse = await axios.get('/api/users');

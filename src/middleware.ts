@@ -28,9 +28,9 @@ const routePermissions = {
   "/dashboard/clients/create": ["ADMIN"],
   "/dashboard/clients/guest/create": ["ADMIN"],
   "/dashboard/clients/[id]/edit": ["ADMIN"],
-  // Task management routes - admin only
+  // Task management routes (partners may only edit tasks they created; enforced by the API)
   "/dashboard/tasks/create": ["ADMIN", "PARTNER"],
-  "/dashboard/tasks/[id]/edit": ["ADMIN"],
+  "/dashboard/tasks/[id]/edit": ["ADMIN", "PARTNER"],
   // Task viewing - all staff
   "/dashboard/tasks": ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
   "/dashboard/tasks/[id]": ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
