@@ -26,5 +26,6 @@ declare module "next-auth/jwt" {
     role: UserRole
     avatar: string | null
     roleVersion: number
+    checkedAt?: number
   }
 }

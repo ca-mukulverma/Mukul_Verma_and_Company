@@ -50,9 +50,12 @@ export class Cache {
 
   async invalidate(pattern: string): Promise<void> {
     try {
-      const keys = await redis.keys(this.getKey(pattern));
-      if (keys.length > 0) {
-        await redis.del(...keys);
+      // SCAN instead of KEYS so large keyspaces don't block Redis
+      const stream = redis.scanStream({ match: this.getKey(pattern), count: 100 });
+      for await (const keys of stream) {
+        if (keys.length > 0) {
+          await redis.del(...keys);
+        }
       }
     } catch (error) {
       console.error('Cache invalidation error:', error);

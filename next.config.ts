@@ -30,26 +30,15 @@ const nextConfig: NextConfig = {
       '@radix-ui/react-dialog',
       '@radix-ui/react-dropdown-menu',
       '@radix-ui/react-tabs',
+      '@radix-ui/react-select',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-tooltip',
     ],
     // PPR removed as it requires canary version
   },
-  // Add custom webpack configuration for bundle optimization
-  webpack: (config, { dev, isServer }) => {
-    // Only run in production builds
-    if (!dev) {
-      // Optimize bundle size by removing console statements in production
-      config.optimization.minimizer.push(
-        new (require('terser-webpack-plugin'))({
-          terserOptions: {
-            compress: {
-              drop_console: true,
-            },
-          },
-        })
-      );
-    }
-    
-    return config;
+  // Strip console.log calls from production bundles (keeps console.error/warn)
+  compiler: {
+    removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
   },
 };
 
