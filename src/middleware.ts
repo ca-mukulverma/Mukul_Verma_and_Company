@@ -7,7 +7,7 @@ const routePermissions = {
   // Admin routes
   "/dashboard/admin": ["ADMIN"],
   "/dashboard/admin/users": ["ADMIN"],
-  "/dashboard/admin/clients": ["ADMIN"], // <-- Add this line to explicitly allow the route
+  "/dashboard/admin/clients": ["ADMIN"],
   "/dashboard/admin/users/create": ["ADMIN"],
   // Admin or Partner routes
   "/dashboard/manage-users": ["ADMIN", "PARTNER"],
@@ -28,17 +28,61 @@ const routePermissions = {
   "/dashboard/clients/create": ["ADMIN"],
   "/dashboard/clients/guest/create": ["ADMIN"],
   "/dashboard/clients/[id]/edit": ["ADMIN"],
-  // Task management routes - admin only
+  // Task management routes (partners may only edit tasks they created; enforced by the API)
   "/dashboard/tasks/create": ["ADMIN", "PARTNER"],
-  "/dashboard/tasks/[id]/edit": ["ADMIN"],
+  "/dashboard/tasks/[id]/edit": ["ADMIN", "PARTNER"],
   // Task viewing - all staff
   "/dashboard/tasks": ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
   "/dashboard/tasks/[id]": ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
-  // Task reassignment - partner only
+  // Task reassignment - admin and partner
   "/dashboard/tasks/[id]/reassign": ["ADMIN", "PARTNER"],
   // All authenticated users
   "/dashboard": ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
 };
+
+type PermissionRoute = keyof typeof routePermissions;
+
+const isDynamicSegment = (segment: string) => /^\[[^\]]+\]$/.test(segment);
+
+// A route covers the path itself and everything below it; "[id]"-style segments match any single segment
+const routeCoversPath = (route: string, pathSegments: string[]) => {
+  const routeSegments = route.split("/").filter(Boolean);
+  if (routeSegments.length > pathSegments.length) return false;
+  return routeSegments.every(
+    (segment, i) => isDynamicSegment(segment) || segment === pathSegments[i]
+  );
+};
+
+// Ranks a route so deeper routes win, and literal segments beat dynamic ones at the same position
+// (e.g. "/dashboard/clients/create" over "/dashboard/clients/[id]" over "/dashboard/clients")
+const routeSpecificity = (route: string) =>
+  route
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => (isDynamicSegment(segment) ? 1 : 2));
+
+const compareSpecificity = (a: number[], b: number[]) => {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] ?? 0) - (b[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+};
+
+// Returns the most specific route permission entry that covers the path
+function findRoutePermission(pathname: string): PermissionRoute | undefined {
+  const pathSegments = pathname.split("/").filter(Boolean);
+  let best: PermissionRoute | undefined;
+
+  for (const route of Object.keys(routePermissions) as PermissionRoute[]) {
+    if (!routeCoversPath(route, pathSegments)) continue;
+    if (!best || compareSpecificity(routeSpecificity(route), routeSpecificity(best)) > 0) {
+      best = route;
+    }
+  }
+
+  return best;
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -143,14 +187,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // Find matching route permission pattern
-  const matchedRoute = Object.keys(routePermissions).find(route => 
-    pathname === route || pathname.startsWith(`${route}/`)
-  );
+  const matchedRoute = findRoutePermission(pathname);
 
   // Check role-based access
   if (matchedRoute) {
     const userRole = token.role as string;
-    const allowedRoles = routePermissions[matchedRoute as keyof typeof routePermissions];
+    const allowedRoles = routePermissions[matchedRoute];
     
     if (!allowedRoles.includes(userRole)) {
       // Redirect to appropriate dashboard based on role
