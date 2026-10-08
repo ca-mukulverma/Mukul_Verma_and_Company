@@ -16,6 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 // Define notification types
 export interface Notification {
@@ -62,7 +63,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastFetched, setLastFetched] = useState<number>(0);
-  const router = useRouter();
+  const { status } = useSession();
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -84,18 +85,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       setNotifications(data.data || []);
     } catch (err) {
       console.error("Failed to load notifications:", err);
+      // Keep the notifications already shown. A failed poll is usually the phone
+      // waking the app from the background (e.g. after tapping a push notification)
+      // before its network is back, not an expired session, so don't send the user
+      // to the login page; real sign-outs are handled by the middleware and AuthProvider.
       setError("Failed to load notifications");
-
-      // Check if it's a network error (which happens when role changes)
-      if (axios.isAxiosError(err) && !err.response) {
-        // Network error occurred, redirect to login page
-        toast.error("Your session has expired. Please login again.");
-        router.push('/login');
-      }
     } finally {
       setLoading(false);
     }
-  }, [lastFetched, router]); // Only depends on lastFetched
+  }, [lastFetched]); // Only depends on lastFetched
 
   // Mark a notification as read - stabilized with useCallback
   const markAsRead = useCallback(async (id: string) => {
@@ -138,17 +136,33 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
-  // Initial fetch and polling setup
+  // Initial fetch and polling setup (only while signed in, e.g. not on the login page)
   useEffect(() => {
+    if (status !== "authenticated") {
+      setLoading(false);
+      return;
+    }
+
     // Initial fetch
     fetchNotifications();
     
-    // Set up polling every 30 seconds
-    const interval = setInterval(fetchNotifications, 30000);
+    // Poll every 30 seconds while the app is in the foreground
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchNotifications();
+    }, 30000);
+
+    // Refresh as soon as the app comes back to the foreground
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") fetchNotifications();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     
     // Cleanup
-    return () => clearInterval(interval);
-  }, [fetchNotifications]); // Safe to include the memoized function
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [fetchNotifications, status]); // Safe to include the memoized function
 
   // Create a stable context value
   const contextValue = {
