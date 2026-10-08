@@ -3,10 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Receipt, Loader2, Download } from "lucide-react"; // Add Download icon
+import { Receipt, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { generateAndDownloadTaskPdf } from "@/lib/task-pdf-generate"; // Import the PDF generator
-import axios from "axios"; // Import axios for fetching comments
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -23,41 +21,22 @@ interface BillingApprovalButtonProps {
   taskId: string;
   className?: string;
   onApproved?: () => void;
-  // Add task prop for PDF generation
-  task: any;
 }
 
 export function BillingApprovalButton({
   taskId,
   className,
   onApproved,
-  task, // Add task parameter
 }: BillingApprovalButtonProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const router = useRouter();
-  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
 
   const handleApprove = async () => {
     console.log(`🧾 Approving billing for task ${taskId}`);
     setIsSubmitting(true);
     
     try {
-      // First generate and download the PDF
-      setIsPdfGenerating(true);
-      const toastId = toast.loading("Preparing task PDF for records...");
-      
-      // Fetch the comments for the PDF
-      const response = await axios.get(`/api/tasks/${taskId}/comments`);
-      const commentData = response.data;
-      
-      // Generate PDF with fresh comments
-      await generateAndDownloadTaskPdf(task, commentData);
-      
-      toast.success("PDF generated and downloaded", { id: toastId });
-      setIsPdfGenerating(false);
-      
-      // Then proceed with billing approval
       const approvalResponse = await fetch(`/api/tasks/${taskId}/billing-approve`, {
         method: "POST",
         headers: {
@@ -115,13 +94,14 @@ export function BillingApprovalButton({
             <AlertDialogTitle>Approve Billing</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to approve this client's billing?
+              The task and its comments will be deleted. If you need a copy,
+              use &quot;Download PDF&quot; on the task page first.
             </AlertDialogDescription>
           </AlertDialogHeader>
           
           <div className="py-2">
             <div className="mb-2">This will:</div>
             <ul className="list-disc pl-5">
-              <li>Generate and download a PDF record of this task</li>
               <li>Mark the task as billed</li>
               <li>Add an entry to the client's billing history</li>
               <li>Delete the task immediately</li>
@@ -132,19 +112,16 @@ export function BillingApprovalButton({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleApprove}
-              disabled={isSubmitting || isPdfGenerating}
+              disabled={isSubmitting}
               className="bg-green-600 hover:bg-green-700"
             >
-              {isSubmitting || isPdfGenerating ? (
+              {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {isPdfGenerating ? "Generating PDF..." : "Processing..."}
+                  Processing...
                 </>
               ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Confirm & Download
-                </>
+                "Confirm"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

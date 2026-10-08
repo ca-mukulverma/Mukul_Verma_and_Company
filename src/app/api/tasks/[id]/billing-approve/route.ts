@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -123,12 +123,15 @@ export async function POST(
       });
     });
 
-    await sendBillingApprovedNotificationToAdmins(
-      taskId,
-      task.title,
-      task.clientId,
-      task.client ? (task.client.companyName || task.client.contactPerson) : null,
-      session.user.id
+    // Send notifications after the response so the user isn't kept waiting
+    after(() =>
+      sendBillingApprovedNotificationToAdmins(
+        taskId,
+        task.title,
+        task.clientId,
+        task.client ? (task.client.companyName || task.client.contactPerson) : null,
+        session.user.id
+      )
     );
 
     // Return more detailed success response

@@ -1,4 +1,4 @@
-import { NextAuthOptions } from "next-auth";
+import { NextAuthOptions, Session } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { compare } from "bcryptjs";
@@ -6,6 +6,22 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity-logger";
 
 const isProduction = process.env.NODE_ENV === "production";
+
+// The signed-in user from the session, so API routes don't have to look the
+// user up in the database again on every request. The JWT callback below
+// re-checks the user (active, role unchanged) at most once a minute.
+// Returns null for blocked users or a session without an id.
+export function getSessionUser(session: Session | null) {
+  if (!session?.user?.id || (session as { blocked?: boolean }).blocked) {
+    return null;
+  }
+  return {
+    id: session.user.id,
+    name: session.user.name ?? "",
+    email: session.user.email ?? "",
+    role: session.user.role,
+  };
+}
 
 // How often the JWT callback re-reads the user from the database.
 // Without this, every getServerSession()/useSession() call costs a DB round trip.

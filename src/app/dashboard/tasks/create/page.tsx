@@ -127,12 +127,13 @@ export default function CreateTaskPage() {
     const fetchData = async () => {
       setIsDataLoading(true);
       try {
-        // Get the current user session
-        const session = await getSession();
+        // Load the session, users and clients at the same time
+        const [session, usersResponse] = await Promise.all([
+          getSession(),
+          axios.get('/api/users'),
+          fetchClients(),
+        ]);
         const currentUserRole = session?.user?.role;
-        
-        // Fetch users with role-based filtering
-        const usersResponse = await axios.get('/api/users');
         
         // MODIFY THIS FILTERING LOGIC
         if (currentUserRole === 'ADMIN') {
@@ -151,9 +152,6 @@ export default function CreateTaskPage() {
             ['BUSINESS_EXECUTIVE', 'BUSINESS_CONSULTANT', 'PARTNER'].includes(user.role)
           ));
         }
-        
-        // Fetch clients
-        await fetchClients();
       } catch (error) {
         console.error('Error fetching data:', error);
         toast.error('Failed to load required data');

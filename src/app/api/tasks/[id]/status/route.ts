@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TaskStatus, BillingStatus } from "@prisma/client";
 import { z } from "zod";
@@ -32,9 +32,7 @@ export async function PATCH(
     console.log(`📝 New status: ${status}`);
 
     // Get current user
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       console.log("❌ User not found");
@@ -94,20 +92,19 @@ export async function PATCH(
         // Create history record...
       }
 
-      // Add notification calls before returning the response
-      await sendTaskStatusUpdateNotification(
-        taskId,
-        task.title,
-        currentUser.id,
-        task.assignedById,
-        task.status,
-        status
-      );
-
-      await sendTaskUpdatedNotificationToAdmins(
-        taskId,
-        task.title,
-        currentUser.id
+      // Send notifications after the response so the user isn't kept waiting
+      after(() =>
+        Promise.all([
+          sendTaskStatusUpdateNotification(
+            taskId,
+            task.title,
+            currentUser.id,
+            task.assignedById,
+            task.status,
+            status
+          ),
+          sendTaskUpdatedNotificationToAdmins(taskId, task.title, currentUser.id),
+        ])
       );
 
       return NextResponse.json({
@@ -137,20 +134,19 @@ export async function PATCH(
         lastStatusUpdatedBy: currentUser.id
       });
 
-      // Add notification calls before returning the response
-      await sendTaskStatusUpdateNotification(
-        taskId,
-        task.title, 
-        currentUser.id,
-        task.assignedById,
-        task.status,
-        status
-      );
-
-      await sendTaskUpdatedNotificationToAdmins(
-        taskId,
-        task.title,
-        currentUser.id
+      // Send notifications after the response so the user isn't kept waiting
+      after(() =>
+        Promise.all([
+          sendTaskStatusUpdateNotification(
+            taskId,
+            task.title,
+            currentUser.id,
+            task.assignedById,
+            task.status,
+            status
+          ),
+          sendTaskUpdatedNotificationToAdmins(taskId, task.title, currentUser.id),
+        ])
       );
 
       return NextResponse.json(updatedTask);

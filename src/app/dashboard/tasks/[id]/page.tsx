@@ -174,13 +174,21 @@ export default function TaskDetailPage({
 
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [currentUser, setCurrentUser] = useState<{
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-    canApproveBilling?: boolean;
-  } | null>(null);
+  // The signed-in user comes from the session (no separate /api/users/me request)
+  const currentUser = useMemo(() => {
+    const user = session?.user as
+      | (NonNullable<typeof session>["user"] & { canApproveBilling?: boolean })
+      | undefined;
+    if (!user?.id) return null;
+    return {
+      id: user.id,
+      name: user.name ?? "",
+      email: user.email ?? "",
+      role: user.role,
+      avatar: user.avatar ?? undefined,
+      canApproveBilling: user.canApproveBilling ?? false,
+    };
+  }, [session?.user]);
   const [loading, setLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -195,11 +203,16 @@ export default function TaskDetailPage({
   const fetchTask = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await axios.get<Task>(`/api/tasks/${taskId}`);
-      setTask(response.data);
-      setNewStatus(response.data.status);
-      setCurrentBillingStatus(response.data.billingStatus);
-      return response.data; 
+      // One request for the task and its comments
+      const response = await axios.get<Task & { comments?: Comment[] }>(
+        `/api/tasks/${taskId}?include=comments`
+      );
+      const { comments: taskComments, ...taskData } = response.data;
+      setTask(taskData);
+      setComments(taskComments ?? []);
+      setNewStatus(taskData.status);
+      setCurrentBillingStatus(taskData.billingStatus);
+      return taskData;
     } catch (error) {
       console.error("Error fetching task:", error);
       
@@ -213,49 +226,15 @@ export default function TaskDetailPage({
       }
     } finally {
       setLoading(false);
+      setCommentsLoading(false);
     }
   }, [taskId, router]);
 
-  const fetchComments = useCallback(async () => {
-    try {
-      setCommentsLoading(true);
-      const response = await axios.get<Comment[]>(
-        `/api/tasks/${taskId}/comments`
-      );
-      setComments(response.data);
-    } catch (error) {
-      console.error("Error fetching comments:", error);
-      
-      // Only show error toast for non-permission errors 
-      // (since fetchTask will already handle the redirect)
-      if (!(axios.isAxiosError(error) && error.response?.status === 403)) {
-        toast.error("Failed to load comments");
-      }
-    } finally {
-      setCommentsLoading(false);
-    }
-  }, [taskId]);
-
-  const fetchCurrentUser = useCallback(async () => {
-    try {
-      const response = await axios.get<{
-        id: string;
-        name: string;
-        email: string;
-        role: string;
-      }>("/api/users/me");
-      setCurrentUser(response.data);
-    } catch (error) {
-      console.error("Error fetching current user:", error);
-    }
-  }, []);
-
-  // Load all data in parallel for better performance
   useEffect(() => {
     if (taskId) {
-      Promise.all([fetchTask(), fetchComments(), fetchCurrentUser()]);
+      fetchTask();
     }
-  }, [fetchTask, fetchComments, fetchCurrentUser, taskId]);
+  }, [fetchTask, taskId]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -644,7 +623,6 @@ export default function TaskDetailPage({
                             </p>
                             <BillingApprovalButton
                               taskId={task.id}
-                              task={task}
                               onApproved={() => {
                                 setTask((prev) =>
                                   prev

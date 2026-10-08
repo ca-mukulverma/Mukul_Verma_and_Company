@@ -20,38 +20,56 @@ interface NotificationOptions {
   sendWhatsApp?: boolean;
 }
 
-// Add this helper function
-async function cleanupOldNotifications(userId: string, maxNotifications: number = 20) {
-  try {
-    // Get all notifications for the user, ordered by creation date
-    const allUserNotifications = await prisma.notification.findMany({
-      where: { sentToId: userId },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
-    });
+// Email and WhatsApp for task activity are switched off: users get the in-app
+// notification and a phone (push) notification only. Set
+// ENABLE_TASK_EMAIL_WHATSAPP=true to turn them back on. Password emails are
+// sent from lib/email.ts directly and are not affected by this switch.
+export const TASK_EMAIL_WHATSAPP_ENABLED =
+  process.env.ENABLE_TASK_EMAIL_WHATSAPP === "true";
 
-    // If we have more than the max, delete the oldest ones
-    if (allUserNotifications.length > maxNotifications) {
-      // Get IDs of notifications to delete (everything beyond the max)
-      const notificationsToDelete = allUserNotifications
-        .slice(maxNotifications)
-        .map(n => n.id);
+// How long notifications are kept before the nightly cleanup removes them
+export const NOTIFICATION_RETENTION_DAYS = 90;
 
-      // Delete the old notifications
-      if (notificationsToDelete.length > 0) {
-        await prisma.notification.deleteMany({
-          where: {
-            id: { in: notificationsToDelete }
-          }
-        });
-        
-        console.log(`Cleaned up ${notificationsToDelete.length} old notifications for user ${userId}`);
-      }
+// Called from the nightly cron job (not on every new notification, which
+// used to slow down every task action)
+export async function deleteOldNotifications(
+  olderThanDays: number = NOTIFICATION_RETENTION_DAYS
+) {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+  const { count } = await prisma.notification.deleteMany({
+    where: { createdAt: { lt: cutoff } },
+  });
+  return count;
+}
+
+// Run one notification job per recipient at the same time instead of one
+// after another; a failure for one recipient doesn't stop the others.
+async function notifyEach<T>(items: T[], send: (item: T) => Promise<unknown>) {
+  const results = await Promise.allSettled(items.map(send));
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.error("Failed to send notification:", result.reason);
     }
-  } catch (error) {
-    console.error("Error cleaning up old notifications:", error);
   }
 }
+
+// Save an in-app notification and push it to the user's phone.
+// Never throws, so one failure doesn't stop the other notifications.
+export async function sendInAppNotification(data: {
+  title: string;
+  content: string;
+  sentById: string;
+  sentToId: string;
+  taskId?: string;
+}) {
+  try {
+    const notification = await prisma.notification.create({ data });
+    await sendPushForNotification(notification);
+  } catch (error) {
+    console.error("Failed to send notification:", error);
+  }
+}
+
 
 export async function createNotification({
   title,
@@ -78,14 +96,11 @@ export async function createNotification({
       },
     });
 
-    // Clean up old notifications to keep only the most recent 20
-    await cleanupOldNotifications(sentToId, 20);
-
     // Push to the user's phone / installed app
     await sendPushForNotification(notification);
 
     // Send email if requested
-    if (sendEmail && notification.sentTo.email) {
+    if (TASK_EMAIL_WHATSAPP_ENABLED && sendEmail && notification.sentTo.email) {
       try {
         await sendActivityNotificationEmail(
           notification.sentTo.email,
@@ -99,7 +114,7 @@ export async function createNotification({
       }
     }
 
-    if (sendWhatsApp && notification.sentTo.phone) {
+    if (TASK_EMAIL_WHATSAPP_ENABLED && sendWhatsApp && notification.sentTo.phone) {
       try {
         // Fetch the assigner's name
         const assigner = await prisma.user.findUnique({
@@ -385,9 +400,9 @@ export async function sendTaskCreatedNotificationToAdmins(
       }
     });
 
-    // Create a notification for each admin user
-    for (const admin of adminUsers) {
-      await createNotification({
+    // Notify all admins at the same time
+    await notifyEach(adminUsers, (admin) =>
+      createNotification({
         title: "New Task Created",
         content: `${creator.name} created a new task: ${taskTitle} [taskId: ${taskId}]`,
         sentById: creatorUserId,
@@ -405,8 +420,8 @@ export async function sendTaskCreatedNotificationToAdmins(
           </div>
         `,
         sendWhatsApp: !!admin.phone,
-      });
-    }
+      })
+    );
   } catch (error) {
     console.error("Failed to send task creation notification to admins:", error);
   }
@@ -445,9 +460,9 @@ export async function sendTaskCommentNotificationToAdmins(
       }
     });
 
-    // Create a notification for each admin user
-    for (const admin of adminUsers) {
-      await createNotification({
+    // Notify all admins at the same time
+    await notifyEach(adminUsers, (admin) =>
+      createNotification({
         title: "New Comment on Task",
         content: `${commenter.name} commented on task: ${taskTitle} - "${comment.content}"  [taskId: ${taskId}]`,
         sentById: commenterId,
@@ -466,8 +481,8 @@ export async function sendTaskCommentNotificationToAdmins(
           </div>
         `,
         sendWhatsApp: !!admin.phone,
-      });
-    }
+      })
+    );
   } catch (error) {
     console.error("Failed to send comment notification to admins:", error);
   }
@@ -500,9 +515,9 @@ export async function sendTaskUpdatedNotificationToAdmins(
       }
     });
 
-    // Create a notification for each admin user
-    for (const admin of adminUsers) {
-      await createNotification({
+    // Notify all admins at the same time
+    await notifyEach(adminUsers, (admin) =>
+      createNotification({
         title: "Task Updated",
         content: `${updater.name} updated task: ${taskTitle} [taskId: ${taskId}]`,
         sentById: updaterUserId,
@@ -520,8 +535,8 @@ export async function sendTaskUpdatedNotificationToAdmins(
           </div>
         `,
         sendWhatsApp: !!admin.phone,
-      });
-    }
+      })
+    );
   } catch (error) {
     console.error("Failed to send task update notification to admins:", error);
   }
@@ -557,9 +572,9 @@ export async function sendBillingApprovedNotificationToAdmins(
       }
     });
 
-    // Create a notification for each admin user
-    for (const admin of adminUsers) {
-      await createNotification({
+    // Notify all admins at the same time
+    await notifyEach(adminUsers, (admin) =>
+      createNotification({
         title: "Billing Approved",
         content: `${approver.name} approved billing for task: ${taskTitle}${clientId ? ` [clientId: ${clientId}]` : ''}`,
         sentById: approverUserId,
@@ -578,8 +593,8 @@ export async function sendBillingApprovedNotificationToAdmins(
           </div>
         `,
         sendWhatsApp: !!admin.phone,
-      });
-    }
+      })
+    );
   } catch (error) {
     console.error("Failed to send billing approval notification to admins:", error);
   }

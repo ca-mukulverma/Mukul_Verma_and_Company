@@ -1,10 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { sendPushForNotification } from "@/lib/web-push";
 import { z } from "zod";
-import { sendTaskCommentNotificationToAdmins } from "@/lib/notifications";
+import { sendInAppNotification, sendTaskCommentNotificationToAdmins } from "@/lib/notifications";
 
 // Schema for comment creation
 const attachmentSchema = z.object({
@@ -74,9 +73,7 @@ export async function POST(
     }
 
     // Get current user
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -153,40 +150,31 @@ export async function POST(
       },
     });
 
-    // Create notification for task owner if different from commenter
-    if (task.assignedById !== currentUser.id) {
-      const notification = await prisma.notification.create({
-        data: {
-          title: "New Comment on Task",
-          content: `${currentUser.name} commented on task: ${task.title} - "${comment.content}" [taskId: ${task.id}]`,
-          sentById: currentUser.id,
-          sentToId: task.assignedById,
-        },
-      });
-      await sendPushForNotification(notification);
-    }
+    // Send notifications after the response so the comment posts straight away.
+    // The task owner and every assignee (except the commenter) get one each.
+    const recipientIds = Array.from(
+      new Set([task.assignedById, ...task.assignees.map((a) => a.userId)])
+    ).filter((id) => id !== currentUser.id);
 
-    // Create notifications for all assignees if different from commenter
-    for (const assignee of task.assignees) {
-      if (assignee.userId !== currentUser.id) {
-        const notification = await prisma.notification.create({
-          data: {
+    after(() =>
+      Promise.all([
+        ...recipientIds.map((sentToId) =>
+          sendInAppNotification({
             title: "New Comment on Task",
-            content: `${currentUser.name} commented on task: ${task.title}  - "${comment.content}" [taskId: ${task.id}]`,
+            content: `${currentUser.name} commented on task: ${task.title} - "${comment.content}" [taskId: ${task.id}]`,
             sentById: currentUser.id,
-            sentToId: assignee.userId,
-          },
-        });
-        await sendPushForNotification(notification);
-      }
-    }
-
-    await sendTaskCommentNotificationToAdmins(
-      task.id,
-      task.title,
-      currentUser.id,
-      task.assignedById,
-      { content: comment.content },
+            sentToId,
+            taskId: task.id,
+          })
+        ),
+        sendTaskCommentNotificationToAdmins(
+          task.id,
+          task.title,
+          currentUser.id,
+          task.assignedById,
+          { content: comment.content },
+        ),
+      ])
     );
 
     return NextResponse.json(comment, { status: 201 });
@@ -216,9 +204,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
