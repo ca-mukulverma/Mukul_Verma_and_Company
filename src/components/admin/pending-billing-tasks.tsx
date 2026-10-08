@@ -180,8 +180,11 @@ export function PendingBillingTasks() {
               <div className="flex gap-2">
                 <BillingApprovalButton
                   taskId={task.id}
+                  redirectAfterApprove={false}
                   onApproved={() => {
-                    refreshData();
+                    // Drop it locally instead of refetching, so the list
+                    // doesn't flash a loading state between approvals
+                    setTasks(prev => prev.filter(t => t.id !== task.id));
                     toast.success(`Billing approved for task "${task.title}"`);
                   }}
                 />
