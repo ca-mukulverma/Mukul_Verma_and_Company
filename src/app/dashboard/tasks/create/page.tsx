@@ -41,6 +41,7 @@ import { Textarea } from "@/components/ui/textarea";
 import "react-day-picker/style.css";
 import "@/styles/day-picker.css"; // Import after the default styles
 import { TaskPageLayout } from "@/components/layouts/task-page-layout";
+import { getTaskListUrl } from "@/lib/task-list-state";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { CalendarIcon, Loader2 } from "lucide-react";
@@ -225,7 +226,7 @@ const onSubmit = async (data: TaskFormValues) => {
   // Loading state
   if (isDataLoading) {
     return (
-      <TaskPageLayout title="Create New Task" backHref="/dashboard/tasks" maxWidth="max-w-3xl">
+      <TaskPageLayout title="Create New Task" backHref={getTaskListUrl()} maxWidth="max-w-3xl">
         <Card>
           <CardHeader>
             <CardTitle>Loading Task Form...</CardTitle>
@@ -254,7 +255,7 @@ const onSubmit = async (data: TaskFormValues) => {
     );
   }
   return (
-    <TaskPageLayout title="Create New Task" backHref="/dashboard/tasks" maxWidth="max-w-3xl">
+    <TaskPageLayout title="Create New Task" backHref={getTaskListUrl()} maxWidth="max-w-3xl">
       <Card className="shadow-md border-t-4 border-t-primary">
         <CardHeader className="bg-muted/30">
           <CardTitle className="flex items-center gap-2 text-primary">

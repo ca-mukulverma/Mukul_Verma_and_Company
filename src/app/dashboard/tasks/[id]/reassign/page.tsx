@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { TaskPageLayout } from "@/components/layouts/task-page-layout";
+import { getTaskListUrl } from "@/lib/task-list-state";
 import { User as UserIcon, Loader2, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SearchableMultiSelect } from "@/components/tasks/searchable-multi-select";
@@ -222,11 +223,11 @@ export default function ReassignTaskPage() {
   
   if (!task) {
     return (
-      <TaskPageLayout title="Task Not Found" backHref="/dashboard/tasks" maxWidth="max-w-xl">
+      <TaskPageLayout title="Task Not Found" backHref={getTaskListUrl()} maxWidth="max-w-xl">
         <Card>
           <CardContent className="pt-6 pb-6 text-center">
             <p>Task not found or you don&apos;t have permission to access it.</p>
-            <Button className="mt-4" onClick={() => router.push("/dashboard/tasks")}>
+            <Button className="mt-4" onClick={() => router.push(getTaskListUrl())}>
               Back to Tasks
             </Button>
           </CardContent>

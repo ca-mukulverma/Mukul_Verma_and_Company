@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Receipt, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getTaskListUrl } from "@/lib/task-list-state";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -62,7 +63,7 @@ export function BillingApprovalButton({
       setConfirmDialogOpen(false);
       
       // Redirect to the tasks page after successful billing approval
-      router.push('/dashboard/tasks');
+      router.push(getTaskListUrl());
       
     } catch (error) {
       console.error("Error in approval process:", error);

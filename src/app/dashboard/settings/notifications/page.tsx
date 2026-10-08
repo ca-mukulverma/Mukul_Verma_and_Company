@@ -7,8 +7,12 @@ import { useSession } from "next-auth/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Info } from "lucide-react";
+import { Bell, Info, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { PushNotificationSettings } from "@/components/notifications/push-notification-settings";
+
+// How many notifications to load at a time
+const PAGE_SIZE = 50;
 
 interface Notification {
   id: string;
@@ -23,23 +27,40 @@ function NotificationsContent() {
   useSession();
   const [recentNotifications, setRecentNotifications] = useState<Notification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  // Load recent notifications - limit to 20 in the API call
+  // Load one page of notifications (newest first); later pages are appended
+  const loadNotifications = async (pageToLoad: number) => {
+    try {
+      if (pageToLoad === 1) setNotificationsLoading(true);
+      else setLoadingMore(true);
+      const response = await axios.get(
+        `/api/notifications?limit=${PAGE_SIZE}&page=${pageToLoad}`
+      );
+      const { data, pagination } = response.data;
+      setRecentNotifications((prev) => {
+        if (pageToLoad === 1) return data;
+        // Skip any that are already shown (new notifications shift the pages)
+        const seen = new Set(prev.map((n) => n.id));
+        return [...prev, ...data.filter((n: Notification) => !seen.has(n.id))];
+      });
+      setPage(pageToLoad);
+      setPageCount(pagination?.pages ?? 1);
+      setTotal(pagination?.total ?? data.length);
+    } catch (error: unknown) {
+      console.error("Failed to load notifications:", error);
+      toast.error("Failed to load notifications");
+    } finally {
+      setNotificationsLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
-    const loadNotifications = async () => {
-      try {
-        setNotificationsLoading(true);
-        const response = await axios.get("/api/notifications?limit=20");
-        setRecentNotifications(response.data.data);
-      } catch (error: unknown) {
-        console.error("Failed to load notifications:", error);
-        toast.error("Failed to load notifications");
-      } finally {
-        setNotificationsLoading(false);
-      }
-    };
-
-    loadNotifications();
+    loadNotifications(1);
   }, []);
 
   const formatDate = (dateString: string) => {
@@ -71,9 +92,11 @@ function NotificationsContent() {
       <Card className="lg:col-span-3">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Recent Notifications</CardTitle>
+            <CardTitle>Notifications</CardTitle>
             <CardDescription>
-              Your most recent notifications (maximum 20)
+              {total > 0
+                ? `Showing ${recentNotifications.length} of ${total} (kept for 90 days)`
+                : "Notifications are kept for 90 days"}
             </CardDescription>
           </div>
         </CardHeader>
@@ -91,7 +114,7 @@ function NotificationsContent() {
               ))}
             </div>
           ) : recentNotifications.length > 0 ? (
-            <div className="space-y-4 overflow-y-auto max-h-[40vh] pr-2">
+            <div className="space-y-4 overflow-y-auto max-h-[60vh] pr-2">
               {recentNotifications.map((notification) => (
                 <div 
                   key={notification.id}
@@ -121,6 +144,18 @@ function NotificationsContent() {
                   </div>
                 </div>
               ))}
+              {page < pageCount && (
+                <div className="flex justify-center pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => loadNotifications(page + 1)}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Load more
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-8">

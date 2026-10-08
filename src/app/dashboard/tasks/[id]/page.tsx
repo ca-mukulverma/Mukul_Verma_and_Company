@@ -41,6 +41,7 @@ import { TaskDetailSkeleton } from "@/components/loading/task-skeleton";
 import { BillingApprovalButton } from "@/components/tasks/billing-approval-button"; // Add this import for BillingApprovalButton
 import { TaskAssignees } from "@/components/tasks/task-assignees";
 import { generateAndDownloadTaskPdf } from "@/lib/task-pdf-generate";
+import { getTaskListUrl } from "@/lib/task-list-state";
 import {
   Tooltip,
   TooltipContent,
@@ -220,7 +221,7 @@ export default function TaskDetailPage({
       if (axios.isAxiosError(error) && error.response?.status === 403) {
         toast.error("You don't have permission to view this task");
         // Redirect to tasks list after a short delay
-        setTimeout(() => router.push('/dashboard/tasks'), 1500);
+        setTimeout(() => router.push(getTaskListUrl()), 1500);
       } else {
         toast.error("Failed to load task details");
       }
@@ -332,7 +333,7 @@ export default function TaskDetailPage({
           variant="outline"
           size="sm"
           className="mb-4"
-          onClick={() => router.push("/dashboard/tasks")}
+          onClick={() => router.push(getTaskListUrl())}
         >
           <ArrowLeftIcon className="h-4 w-4 mr-2" /> Back to Tasks
         </Button>
