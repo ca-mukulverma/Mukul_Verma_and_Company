@@ -22,12 +22,16 @@ interface BillingApprovalButtonProps {
   taskId: string;
   className?: string;
   onApproved?: () => void;
+  // The task is deleted on approval, so the task page leaves it; lists that
+  // approve several tasks in a row stay put
+  redirectAfterApprove?: boolean;
 }
 
 export function BillingApprovalButton({
   taskId,
   className,
   onApproved,
+  redirectAfterApprove = true,
 }: BillingApprovalButtonProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -62,8 +66,9 @@ export function BillingApprovalButton({
       // Close the dialog
       setConfirmDialogOpen(false);
       
-      // Redirect to the tasks page after successful billing approval
-      router.push(getTaskListUrl());
+      if (redirectAfterApprove) {
+        router.push(getTaskListUrl());
+      }
       
     } catch (error) {
       console.error("Error in approval process:", error);
