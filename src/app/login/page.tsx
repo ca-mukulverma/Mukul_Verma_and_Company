@@ -53,13 +53,19 @@ export default function LoginPage() {
         const response = await fetch('/api/auth/session');
         const data = await response.json();
         console.log("Session data:", data);
+
+        // Already signed in (e.g. the app reopened on this page): go straight to the
+        // dashboard instead of asking for the password again. "/" redirects by role.
+        if (data?.user?.id && !data.blocked) {
+          router.replace("/");
+        }
       } catch (error) {
         console.error("Session check error:", error);
       }
     };
     
     checkSession();
-  }, []);
+  }, [router]);
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
