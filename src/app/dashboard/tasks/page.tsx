@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import axios from "axios";
@@ -75,6 +75,7 @@ import {
 } from "@/components/ui/pagination";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { getTaskListScroll, saveTaskListScroll, saveTaskListUrl } from "@/lib/task-list-state";
 
 const getInitials = (name: string): string => {
   return name
@@ -413,6 +414,12 @@ export default function TasksPage() {
           setSearchInputValue(searchParam);
         }
         
+        // Get the page number from URL
+        const pageParam = parseInt(url.searchParams.get('page') || '1', 10);
+        if (pageParam > 1) {
+          setCurrentPage(pageParam);
+        }
+
         // Get "my tasks" filter from URL
         const myTasksParam = url.searchParams.get('mytasks');
         if (myTasksParam === 'true') {
@@ -468,11 +475,21 @@ export default function TasksPage() {
           url.searchParams.delete('mytasks');
         }
         
+        // Update page number in URL
+        if (currentPage > 1) {
+          url.searchParams.set('page', currentPage.toString());
+        } else {
+          url.searchParams.delete('page');
+        }
+
         // Update view mode in URL
         url.searchParams.set('view', viewMode);
         
         // Update URL without page reload
-        window.history.replaceState({}, '', url.toString());
+        window.history.replaceState(window.history.state, '', url.toString());
+
+        // Remember this address so "back to tasks" returns here
+        saveTaskListUrl(url.pathname + url.search);
         
         // Also save view mode to localStorage
         try {
@@ -484,7 +501,32 @@ export default function TasksPage() {
         console.error("Error updating URL:", error);
       }
     }
-  }, [statusFilter, debouncedSearchTerm, viewMode, showMyTasksOnly, isInitialLoad]);
+  }, [statusFilter, debouncedSearchTerm, viewMode, showMyTasksOnly, currentPage, isInitialLoad]);
+
+  // Keep the scroll position so coming back from a task returns to the same spot
+  useEffect(() => {
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(saveTaskListScroll);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, []);
+
+  // Changing the status or "my tasks" filter starts again from the first page
+  const changeStatusFilter = useCallback((status: string) => {
+    setStatusFilter(status);
+    setCurrentPage(1);
+  }, []);
+
+  const changeShowMyTasksOnly = useCallback((checked: boolean) => {
+    setShowMyTasksOnly(checked);
+    setCurrentPage(1);
+  }, []);
 
   // Fetch all tasks - but only when necessary
   const fetchTasks = useCallback(async (isRefresh = false) => {
@@ -551,6 +593,17 @@ export default function TasksPage() {
       fetchTasks();
     }
   }, [fetchTasks, statusFilter, showMyTasksOnly, isInitialLoad]);
+
+  // After the first load, scroll back to where the user was on this list
+  const scrollRestoredRef = useRef(false);
+  useEffect(() => {
+    if (isInitialLoad || loading || scrollRestoredRef.current) return;
+    scrollRestoredRef.current = true;
+    const y = getTaskListScroll();
+    if (y) {
+      requestAnimationFrame(() => window.scrollTo(0, y));
+    }
+  }, [isInitialLoad, loading]);
 
   // Smooth client-side search handling
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -772,22 +825,22 @@ export default function TasksPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-48">
-                        <DropdownMenuItem onClick={() => setStatusFilter("all")}>
+                        <DropdownMenuItem onClick={() => changeStatusFilter("all")}>
                           All Tasks
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setStatusFilter("pending")}>
+                        <DropdownMenuItem onClick={() => changeStatusFilter("pending")}>
                           Pending
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setStatusFilter("in_progress")}>
+                        <DropdownMenuItem onClick={() => changeStatusFilter("in_progress")}>
                           In Progress
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setStatusFilter("review")}>
+                        <DropdownMenuItem onClick={() => changeStatusFilter("review")}>
                           In Review
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setStatusFilter("completed")}>
+                        <DropdownMenuItem onClick={() => changeStatusFilter("completed")}>
                           Completed
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setStatusFilter("cancelled")}>
+                        <DropdownMenuItem onClick={() => changeStatusFilter("cancelled")}>
                           Cancelled
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -799,7 +852,7 @@ export default function TasksPage() {
                     <Switch
                       id="assigned-to-me"
                       checked={showMyTasksOnly}
-                      onCheckedChange={setShowMyTasksOnly}
+                      onCheckedChange={changeShowMyTasksOnly}
                     />
                     <Label htmlFor="assigned-to-me" className="cursor-pointer">Assigned to me</Label>
                   </div>
