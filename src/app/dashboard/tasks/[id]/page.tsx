@@ -644,7 +644,6 @@ export default function TaskDetailPage({
                             </p>
                             <BillingApprovalButton
                               taskId={task.id}
-                              task={task}
                               onApproved={() => {
                                 setTask((prev) =>
                                   prev

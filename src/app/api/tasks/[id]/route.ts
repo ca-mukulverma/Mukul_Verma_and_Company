@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -238,71 +238,43 @@ export async function PATCH(
       },
     });
 
-    await sendTaskUpdatedNotificationToAdmins(
-      task.id,
-      task.title,
-      currentUser.id
+    // Work out who was newly assigned by comparing with the assignees loaded
+    // before the update (re-reading them now would already include the new ones)
+    const previousAssigneeIds = task.assignees.map((a) => a.userId);
+    const requestedAssigneeIds: string[] = Array.isArray(body.assignedToIds)
+      ? body.assignedToIds
+      : (body.assignedToId ? [body.assignedToId] : []);
+    const newAssigneeIds = requestedAssigneeIds.filter(
+      (id) => !previousAssigneeIds.includes(id) && id !== currentUser.id
     );
+    const statusChanged = body.status && body.status !== originalTask.status;
 
-    // Send notification if status changed
-    if (body.status && body.status !== originalTask.status) {
-      await sendTaskStatusUpdateNotification(
-        originalTask.id,
-        originalTask.title,
-        currentUser.id,
-        originalTask.assignedById,
-        originalTask.status,
-        body.status
-      );
-    }
-
-    // Send notifications when assignees change
-    if (body.assignedToIds && Array.isArray(body.assignedToIds)) {
-      // Get existing assignees to compare
-      const existingAssignees = await prisma.taskAssignee.findMany({
-        where: { taskId },
-        select: { userId: true }
-      });
-      const existingAssigneeIds = existingAssignees.map(a => a.userId);
-      
-      // Find new assignees (those in body.assignedToIds but not in existingAssigneeIds)
-      const newAssigneeIds = body.assignedToIds.filter(id => 
-        !existingAssigneeIds.includes(id) && id !== currentUser.id
-      );
-      
-      // Send notifications to each new assignee
-      for (const newAssigneeId of newAssigneeIds) {
-        await sendTaskAssignedNotification(
-          originalTask.id,
-          originalTask.title,
-          currentUser.id,
-          newAssigneeId,
-          body.note || undefined,
-          originalTask.dueDate || undefined
-        );
-      }
-    }
-    // Handle the legacy assignedToId field for backward compatibility
-    else if (body.assignedToId && body.assignedToId !== currentUser.id) {
-      // Get existing assignees to check if this is actually a new assignee
-      const existingAssignees = await prisma.taskAssignee.findMany({
-        where: { taskId },
-        select: { userId: true }
-      });
-      const existingAssigneeIds = existingAssignees.map(a => a.userId);
-      
-      // Only send notification if this is a new assignee
-      if (!existingAssigneeIds.includes(body.assignedToId)) {
-        await sendTaskAssignedNotification(
-          originalTask.id,
-          originalTask.title,
-          currentUser.id,
-          body.assignedToId,
-          body.note || undefined,
-          originalTask.dueDate || undefined
-        );
-      }
-    }
+    // Send notifications after the response so the user isn't kept waiting
+    after(() =>
+      Promise.all([
+        sendTaskUpdatedNotificationToAdmins(task.id, task.title, currentUser.id),
+        statusChanged
+          ? sendTaskStatusUpdateNotification(
+              originalTask.id,
+              originalTask.title,
+              currentUser.id,
+              originalTask.assignedById,
+              originalTask.status,
+              body.status
+            )
+          : Promise.resolve(),
+        ...newAssigneeIds.map((newAssigneeId) =>
+          sendTaskAssignedNotification(
+            originalTask.id,
+            originalTask.title,
+            currentUser.id,
+            newAssigneeId,
+            body.note || undefined,
+            originalTask.dueDate || undefined
+          )
+        ),
+      ])
+    );
 
     // Invalidate related caches
     await taskCache.delete(`task:${taskId}`);

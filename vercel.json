@@ -10,6 +10,10 @@
       "schedule": "0 0 * * *"
     },
     {
+      "path": "/api/cron/cleanup-notifications",
+      "schedule": "30 0 * * *"
+    },
+    {
       "path": "/api/cron/cache-warmup",
       "schedule": "0 7 * * 1-5"
     }

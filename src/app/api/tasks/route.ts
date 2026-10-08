@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -254,38 +254,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await sendTaskCreatedNotificationToAdmins(
-      result.id,
-      validatedData.title,
-      currentUser.id
-    );
+    // Send notifications after the response so the user isn't kept waiting
+    const taskId = result.id;
+    const dueDate = validatedData.dueDate ? new Date(validatedData.dueDate) : undefined;
+    const notifyIds = (validatedData.assignedToIds?.length
+      ? validatedData.assignedToIds
+      : (validatedData.assignedToId ? [validatedData.assignedToId] : [])
+    ).filter((id) => id !== currentUser.id);
 
-    // Send notifications to all assignees
-    if (validatedData.assignedToIds && validatedData.assignedToIds.length > 0) {
-      for (const assigneeId of validatedData.assignedToIds) {
-        if (assigneeId !== currentUser.id) {
-          await sendTaskAssignedNotification(
-            result.id,
+    after(() =>
+      Promise.all([
+        sendTaskCreatedNotificationToAdmins(taskId, validatedData.title, currentUser.id),
+        ...notifyIds.map((assigneeId) =>
+          sendTaskAssignedNotification(
+            taskId,
             validatedData.title,
             currentUser.id,
             assigneeId,
             undefined,
-            validatedData.dueDate ? new Date(validatedData.dueDate) : undefined
-          );
-        }
-      }
-    } 
-    // Handle legacy single assignment notification
-    else if (validatedData.assignedToId && validatedData.assignedToId !== currentUser.id) {
-      await sendTaskAssignedNotification(
-        result.id,
-        validatedData.title,
-        currentUser.id,
-        validatedData.assignedToId,
-        undefined,
-        validatedData.dueDate ? new Date(validatedData.dueDate) : undefined
-      );
-    }
+            dueDate
+          )
+        ),
+      ])
+    );
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

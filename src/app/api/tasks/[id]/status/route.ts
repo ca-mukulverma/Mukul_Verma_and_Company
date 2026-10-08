@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -94,20 +94,19 @@ export async function PATCH(
         // Create history record...
       }
 
-      // Add notification calls before returning the response
-      await sendTaskStatusUpdateNotification(
-        taskId,
-        task.title,
-        currentUser.id,
-        task.assignedById,
-        task.status,
-        status
-      );
-
-      await sendTaskUpdatedNotificationToAdmins(
-        taskId,
-        task.title,
-        currentUser.id
+      // Send notifications after the response so the user isn't kept waiting
+      after(() =>
+        Promise.all([
+          sendTaskStatusUpdateNotification(
+            taskId,
+            task.title,
+            currentUser.id,
+            task.assignedById,
+            task.status,
+            status
+          ),
+          sendTaskUpdatedNotificationToAdmins(taskId, task.title, currentUser.id),
+        ])
       );
 
       return NextResponse.json({
@@ -137,20 +136,19 @@ export async function PATCH(
         lastStatusUpdatedBy: currentUser.id
       });
 
-      // Add notification calls before returning the response
-      await sendTaskStatusUpdateNotification(
-        taskId,
-        task.title, 
-        currentUser.id,
-        task.assignedById,
-        task.status,
-        status
-      );
-
-      await sendTaskUpdatedNotificationToAdmins(
-        taskId,
-        task.title,
-        currentUser.id
+      // Send notifications after the response so the user isn't kept waiting
+      after(() =>
+        Promise.all([
+          sendTaskStatusUpdateNotification(
+            taskId,
+            task.title,
+            currentUser.id,
+            task.assignedById,
+            task.status,
+            status
+          ),
+          sendTaskUpdatedNotificationToAdmins(taskId, task.title, currentUser.id),
+        ])
       );
 
       return NextResponse.json(updatedTask);

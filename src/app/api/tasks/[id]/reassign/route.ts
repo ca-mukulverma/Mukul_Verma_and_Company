@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { sendPushForNotification } from "@/lib/web-push";
 import { z } from "zod";
 import { sendEmail } from "@/lib/email";
 import { syncTaskAssignments } from "@/lib/task-assignment";
+import { TASK_EMAIL_WHATSAPP_ENABLED, sendInAppNotification } from "@/lib/notifications";
 
 // Update the reassignment schema
 const reassignSchema = z.object({
@@ -117,65 +117,63 @@ export async function PATCH(
       },
     });
 
-    // Send notifications to new assignees
-    for (const assigneeId of validatedData.assignedToIds) {
-      // Skip notification to self and existing assignees
-      if (assigneeId !== currentUser.id) {
-        const notification = await prisma.notification.create({
-          data: {
-            title: "New Task Assigned",
-            content: `${currentUser.name} assigned you a task: ${task.title}${
-              validatedData.note ? ` - Note: ${validatedData.note}` : ""
-            } [taskId: ${task.id}]`,
-            taskId: task.id,
-            sentById: currentUser.id,
-            sentToId: assigneeId,
-          },
-        });
-        await sendPushForNotification(notification);
-      }
-    }
+    const removedAssigneeIds = previousAssigneeIds.filter(
+      (id) => !validatedData.assignedToIds.includes(id)
+    );
 
-    // Notify previous assignees if they are no longer assigned
-    for (const previousAssigneeId of previousAssigneeIds) {
-      if (!validatedData.assignedToIds.includes(previousAssigneeId)) {
-        const notification = await prisma.notification.create({
-          data: {
+    // Send notifications after the response so the user isn't kept waiting
+    after(() =>
+      Promise.all([
+        // Notify the assignees (skipping the person doing the reassigning)
+        ...validatedData.assignedToIds
+          .filter((assigneeId) => assigneeId !== currentUser.id)
+          .map((assigneeId) =>
+            sendInAppNotification({
+              title: "New Task Assigned",
+              content: `${currentUser.name} assigned you a task: ${task.title}${
+                validatedData.note ? ` - Note: ${validatedData.note}` : ""
+              } [taskId: ${task.id}]`,
+              taskId: task.id,
+              sentById: currentUser.id,
+              sentToId: assigneeId,
+            })
+          ),
+        // Notify previous assignees who are no longer assigned
+        ...removedAssigneeIds.map((previousAssigneeId) =>
+          sendInAppNotification({
             title: "Task Reassigned",
             content: `Your task "${task.title}" has been reassigned to another user`,
             sentById: currentUser.id,
             sentToId: previousAssigneeId,
-          },
-        });
-        await sendPushForNotification(notification);
-      }
-    }
-
-    // Send email notifications to new assignees
-    for (const assignee of assignees) {
-      if (assignee.email) {
-        try {
-          await sendEmail({
-            to: assignee.email,
-            subject: `Task Assigned: ${task.title}`,
-            html: `
-              <h2>You've been assigned a new task</h2>
-              <p><strong>Task:</strong> ${task.title}</p>
-              <p><strong>Assigned by:</strong> ${currentUser.name}</p>
-              ${validatedData.note ? `<p><strong>Note:</strong> ${validatedData.note}</p>` : ""}
-              <p><strong>Due date:</strong> ${
-                task.dueDate
-                  ? new Date(task.dueDate).toLocaleDateString()
-                  : "No due date"
-              }</p>
-              <p>Log in to the system to view task details.</p>
-            `,
-          });
-        } catch (error) {
-          console.error("Failed to send email notification:", error);
-        }
-      }
-    }
+          })
+        ),
+        // Email the new assignees (off unless ENABLE_TASK_EMAIL_WHATSAPP=true)
+        ...(TASK_EMAIL_WHATSAPP_ENABLED ? assignees : [])
+          .filter((assignee) => assignee.email)
+          .map(async (assignee) => {
+            try {
+              await sendEmail({
+                to: assignee.email,
+                subject: `Task Assigned: ${task.title}`,
+                html: `
+                  <h2>You've been assigned a new task</h2>
+                  <p><strong>Task:</strong> ${task.title}</p>
+                  <p><strong>Assigned by:</strong> ${currentUser.name}</p>
+                  ${validatedData.note ? `<p><strong>Note:</strong> ${validatedData.note}</p>` : ""}
+                  <p><strong>Due date:</strong> ${
+                    task.dueDate
+                      ? new Date(task.dueDate).toLocaleDateString()
+                      : "No due date"
+                  }</p>
+                  <p>Log in to the system to view task details.</p>
+                `,
+              });
+            } catch (error) {
+              console.error("Failed to send email notification:", error);
+            }
+          }),
+      ])
+    );
 
     return NextResponse.json(result);
   } catch (error) {
