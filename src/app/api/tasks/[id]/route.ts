@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendTaskStatusUpdateNotification, sendTaskAssignedNotification, sendTaskUpdatedNotificationToAdmins } from "@/lib/notifications";
 import { v2 as cloudinary } from "cloudinary";
@@ -31,7 +31,7 @@ const taskUpdateSchema = z.object({
 });
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
@@ -44,9 +44,7 @@ export async function GET(
     }
 
     // Get current user
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -112,6 +110,27 @@ export async function GET(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
+    // The task page asks for the comments in the same request (?include=comments)
+    // to save a second round trip; comments use the same permission check as above
+    if (request.nextUrl.searchParams.get("include") === "comments") {
+      const comments = await prisma.taskComment.findMany({
+        where: { taskId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              avatar: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      return NextResponse.json({ ...task, comments });
+    }
+
     return NextResponse.json(task);
   } catch (error) {
     console.error("Error fetching task:", error);
@@ -137,9 +156,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -312,9 +329,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });

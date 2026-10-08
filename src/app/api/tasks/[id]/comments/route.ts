@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { sendInAppNotification, sendTaskCommentNotificationToAdmins } from "@/lib/notifications";
@@ -73,9 +73,7 @@ export async function POST(
     }
 
     // Get current user
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -206,9 +204,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });

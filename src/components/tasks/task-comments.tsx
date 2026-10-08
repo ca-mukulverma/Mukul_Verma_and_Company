@@ -39,6 +39,9 @@ import { Dialog, DialogTitle, DialogContent } from "@/components/ui/dialog";
 import { Eye, Download, ZoomIn, ZoomOut, RotateCw, X } from "lucide-react";
 import Image from "next/image";
 
+// Id prefix for comments shown before the server has saved them
+const PENDING_PREFIX = "pending-";
+
 interface User {
   id: string;
   name: string;
@@ -87,7 +90,6 @@ export function TaskComments({
   const [comments, setComments] = useState<Comment[]>(initialComments);
   const [newComment, setNewComment] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -111,7 +113,11 @@ export function TaskComments({
       try {
         setRefreshing(true);
         const response = await axios.get(`/api/tasks/${taskId}/comments`);
-        setComments(response.data);
+        // Keep comments that are still being sent
+        setComments((prev) => [
+          ...response.data,
+          ...prev.filter((c) => c.id.startsWith(PENDING_PREFIX)),
+        ]);
         if (showToast) {
           toast.success("Comments refreshed");
         }
@@ -146,23 +152,39 @@ export function TaskComments({
   const handleAddComment = async () => {
     if (!newComment.trim() && attachments.length === 0) return;
 
+    const content = newComment;
+    const sentAttachments = attachments;
+
+    // Show the comment straight away; it's swapped for the saved one when the server replies
+    const tempId = `${PENDING_PREFIX}${Date.now()}`;
+    setComments((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        content,
+        createdAt: new Date().toISOString(),
+        attachments: sentAttachments,
+        user: currentUser,
+      },
+    ]);
+    setNewComment("");
+    setAttachments([]);
+
     try {
-      setIsSubmitting(true);
-
       const response = await axios.post(`/api/tasks/${taskId}/comments`, {
-        content: newComment,
-        attachments: attachments.length > 0 ? attachments : undefined,
+        content,
+        attachments: sentAttachments.length > 0 ? sentAttachments : undefined,
       });
-
-      setComments([...comments, response.data]);
-      setNewComment("");
-      setAttachments([]);
-      toast.success("Comment added");
+      setComments((prev) =>
+        prev.map((c) => (c.id === tempId ? response.data : c))
+      );
     } catch (error) {
       console.error("Error adding comment:", error);
+      // Take the comment back out and restore what was typed, so nothing is lost
+      setComments((prev) => prev.filter((c) => c.id !== tempId));
+      setNewComment((current) => current || content);
+      setAttachments((current) => (current.length ? current : sentAttachments));
       toast.error("Failed to add comment");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -253,7 +275,12 @@ export function TaskComments({
               </div>
             ) : (
               comments.map((comment) => (
-                <div key={comment.id} className="flex gap-4 mb-6">
+                <div
+                  key={comment.id}
+                  className={`flex gap-4 mb-6 ${
+                    comment.id.startsWith(PENDING_PREFIX) ? "opacity-60" : ""
+                  }`}
+                >
                   <Avatar className="h-10 w-10">
                     <AvatarImage
                       src={comment.user.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${comment.user.name}`}
@@ -271,6 +298,11 @@ export function TaskComments({
                           "MMM d, yyyy 'at' h:mm a"
                         )}
                       </span>
+                      {comment.id.startsWith(PENDING_PREFIX) && (
+                        <span className="text-xs text-muted-foreground">
+                          Sending…
+                        </span>
+                      )}
                     </div>
 
                     {comment.content && (
@@ -554,28 +586,15 @@ export function TaskComments({
               <CloudinaryUpload
                 taskId={taskId}
                 onUploadComplete={handleAttachmentComplete}
-                disabled={isSubmitting}
               />
 
               <Button
                 onClick={handleAddComment}
-                disabled={
-                  isSubmitting ||
-                  (!newComment.trim() && attachments.length === 0)
-                }
+                disabled={!newComment.trim() && attachments.length === 0}
                 className="flex items-center gap-2"
               >
-                {isSubmitting ? (
-                  <>
-                    <SpinnerIcon className="h-4 w-4 animate-spin" />
-                    Posting...
-                  </>
-                ) : (
-                  <>
-                    <SendIcon className="h-4 w-4" />
-                    Post Comment
-                  </>
-                )}
+                <SendIcon className="h-4 w-4" />
+                Post Comment
               </Button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function PATCH(
@@ -18,9 +18,7 @@ export async function PATCH(
     }
 
     // Get current user
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -78,9 +76,7 @@ export async function DELETE(
     }
 
     // Get current user
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email as string },
-    });
+    const currentUser = getSessionUser(session);
 
     if (!currentUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
