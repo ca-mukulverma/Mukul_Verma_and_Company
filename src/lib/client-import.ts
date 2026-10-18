@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 
-// Bulk client import from an Excel sheet (Admin). The template has a
+// Bulk client import from an Excel sheet (Admin, Partner). The template has a
 // "Clients" sheet to fill in and an "Instructions" sheet.
 
 export const MAX_IMPORT_ROWS = 1000;
@@ -175,8 +175,9 @@ export async function checkClientRows(rows: { row: number; data: ClientRowData }
   });
 }
 
-// Creates the rows that passed every check; returns how many were created
-export async function importClientRows(rows: ImportRow[], adminId: string) {
+// Creates the rows that passed every check, managed by the person importing;
+// returns how many were created
+export async function importClientRows(rows: ImportRow[], userId: string) {
   const ready = rows.filter((r) => r.errors.length === 0 && !r.duplicate);
   if (ready.length === 0) return 0;
   await prisma.$transaction([
@@ -191,7 +192,7 @@ export async function importClientRows(rows: ImportRow[], adminId: string) {
         tallyLedgerName: data.tallyLedgerName,
         notes: data.notes,
         isGuest: false,
-        managerId: adminId,
+        managerId: userId,
       })),
     }),
     prisma.activity.create({
@@ -199,7 +200,7 @@ export async function importClientRows(rows: ImportRow[], adminId: string) {
         type: "client",
         action: "created",
         target: `Imported ${ready.length} client${ready.length === 1 ? "" : "s"} from Excel`,
-        userId: adminId,
+        userId,
       },
     }),
   ]);

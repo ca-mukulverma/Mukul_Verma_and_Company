@@ -54,7 +54,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { canModifyClient } from "@/lib/permissions";
+import { canCreateClient, canModifyClient } from "@/lib/permissions";
 import { ClientImportDialog } from "@/components/clients/client-import-dialog";
 import { DataTable } from "@/components/ui/data-table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -280,6 +280,9 @@ const refresh = useCallback(() => {
   const clients = clientsResponse?.clients || [];
 
   // Check if user can modify clients
+  // Admins and partners can add clients
+  const canAddClients = canCreateClient(session);
+
   const hasWriteAccess = useMemo(() => {
     return canModifyClient(session);
   }, [session]);
@@ -607,8 +610,8 @@ const deleteClient = async () => {
           </p>
         </div>
 
-        {/* Only show create buttons for admin users */}
-        {hasWriteAccess && (
+        {/* Create buttons for admins and partners */}
+        {canAddClients && (
   <div className="flex flex-row gap-2">
     <Button asChild className="flex-1">
       <Link href="/dashboard/clients/create">
@@ -796,14 +799,16 @@ const deleteClient = async () => {
                     ? "No guest clients have been added yet"
                     : "No clients have been added yet"}
                 </p>
-                <div className="flex justify-center gap-3">
-                  <Button asChild>
-                    <Link href="/dashboard/clients/create">Add Permanent Client</Link>
-                  </Button>
-                  <Button variant="outline" asChild>
-                    <Link href="/dashboard/clients/guest/create">Add Guest Client</Link>
-                  </Button>
-                </div>
+                {canAddClients && (
+                  <div className="flex justify-center gap-3">
+                    <Button asChild>
+                      <Link href="/dashboard/clients/create">Add Permanent Client</Link>
+                    </Button>
+                    <Button variant="outline" asChild>
+                      <Link href="/dashboard/clients/guest/create">Add Guest Client</Link>
+                    </Button>
+                  </div>
+                )}
               </div>
             ) : viewMode === "table" ? (
               // TABLE VIEW

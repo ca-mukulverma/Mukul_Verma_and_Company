@@ -12,16 +12,17 @@ import {
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-async function requireAdmin() {
+// Admins and partners can add clients
+async function requireClientCreator() {
   const session = await getServerSession(authOptions);
   const user = getSessionUser(session);
-  return user?.role === "ADMIN" ? user : null;
+  return user?.role === "ADMIN" || user?.role === "PARTNER" ? user : null;
 }
 
-// GET /api/clients/import – the Excel template to fill in (Admin)
+// GET /api/clients/import – the Excel template to fill in (Admin, Partner)
 export async function GET() {
-  if (!(await requireAdmin())) {
-    return NextResponse.json({ error: "Only administrators can import clients" }, { status: 403 });
+  if (!(await requireClientCreator())) {
+    return NextResponse.json({ error: "Only administrators and partners can import clients" }, { status: 403 });
   }
   const file = await buildClientTemplate();
   return new NextResponse(new Uint8Array(file), {
@@ -37,9 +38,9 @@ export async function GET() {
 //   mode=preview: check every row and report, nothing is saved
 //   mode=import:  create the rows that pass every check
 export async function POST(request: NextRequest) {
-  const admin = await requireAdmin();
-  if (!admin) {
-    return NextResponse.json({ error: "Only administrators can import clients" }, { status: 403 });
+  const user = await requireClientCreator();
+  if (!user) {
+    return NextResponse.json({ error: "Only administrators and partners can import clients" }, { status: 403 });
   }
 
   const form = await request.formData();
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     if (mode === "preview") return NextResponse.json({ summary, rows });
 
-    const created = await importClientRows(rows, admin.id);
+    const created = await importClientRows(rows, user.id);
     await clientCache.invalidate("*");
     return NextResponse.json({ summary, created });
   } catch (error) {
