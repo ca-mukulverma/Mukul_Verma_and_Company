@@ -25,6 +25,7 @@ import {
   ArrowRight,
   Code,
   Heart,
+  Receipt,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import {
@@ -101,6 +102,13 @@ export default function DashboardLayout({
       href: "/dashboard/tasks", // Point to your implemented tasks page
       icon: <ClipboardList className="h-6 w-6" />,
       role: ["ADMIN", "PARTNER", "BUSINESS_CONSULTANT", "BUSINESS_EXECUTIVE"],
+      category: "management",
+    },
+    {
+      title: "Billing",
+      href: "/dashboard/billing",
+      icon: <Receipt className="h-6 w-6" />,
+      role: ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
       category: "management",
     },
     {

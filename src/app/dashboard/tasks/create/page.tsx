@@ -50,6 +50,7 @@ import { SearchableSelect } from "@/components/tasks/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DayPicker } from "react-day-picker";
 import { getSession } from "next-auth/react";
+import { CompanySelect } from "@/components/billing/company-select";
 
 // Update the task form schema
 const taskFormSchema = z.object({
@@ -61,6 +62,7 @@ const taskFormSchema = z.object({
   // Only use assignedToIds array
   assignedToIds: z.array(z.string()).optional().default([]),
   clientId: z.string().optional().nullable(),
+  company: z.enum(["MVC", "BEDGE"]),
 });
 
 type TaskFormValues = z.infer<typeof taskFormSchema>;
@@ -113,6 +115,7 @@ export default function CreateTaskPage() {
       dueDate: null,
       assignedToIds: [], // Properly initialized as array
       clientId: null,
+      company: "MVC",
     },
   });
 
@@ -288,6 +291,22 @@ const onSubmit = async (data: TaskFormValues) => {
                 )}
               />
   
+              <FormField
+                control={form.control}
+                name="company"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company</FormLabel>
+                    <FormControl>
+                      <div>
+                        <CompanySelect value={field.value} onChange={field.onChange} />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {/* Priority and Status with custom styled selects */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField

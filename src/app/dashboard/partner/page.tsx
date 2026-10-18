@@ -40,6 +40,7 @@ import {
 } from "@/components/loading/dashboard-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PendingBillingTasks } from "@/components/admin/pending-billing-tasks";
+import { BillingDashboardCard } from "@/components/billing/billing-dashboard-card";
 import { RecentNotificationsCard } from "@/components/dashboard/recent-notifications-card";
 import { AssignTaskButton } from "@/components/tasks/assign-task-button";
 import { PriorityTasksCard } from "@/components/dashboard/priority-tasks-card";
@@ -537,6 +538,8 @@ function PartnerDashboardContent() {
                   </CardContent>
                 </Card>
               </div>
+
+              <BillingDashboardCard />
 
               {canApproveBilling && (
                 <div className="grid gap-4 md:grid-cols-1">

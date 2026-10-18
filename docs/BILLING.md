@@ -39,8 +39,11 @@ they're filled in.
 
 ### Number series
 
-- The **GST** and **Non-GST** series restart on **1 April** each year. The
-  financial year is part of the number (`27-28/0001`, `2027-28/...`).
+- All three series restart at **1** on **1 April** each year, with no
+  leading zeros except the GST series, which keeps its four digits:
+  `27-28/0001`, `2027-28/1`, `BE/1`. B Edge numbers carry no year, so the
+  same B Edge number recurs in different financial years. The financial
+  year is stored with every bill to tell them apart.
 - On go-live day, Admin sets the **next number** for each series in Settings,
   so bills made by hand until launch are taken into account.
 - A bill gets its number only at **Admin final approval**. That keeps the
@@ -143,9 +146,17 @@ Notifications appear in the app and as push notifications.
 
 For B Edge bills, "billing manager" means the B Edge billing manager.
 
+## Permissions in the app
+
+- **MVC billing manager** is the existing "Can approve billing" switch for
+  partners. It now appears as "MVC Billing Manager" in Settings → Permissions.
+- **B Edge billing manager** is a new switch on the same page.
+- Admins are always billing managers for both companies.
+- Bills can be sent to any active Partner or Admin to enter the amount.
+
 ## Build stages
 
-1. Company (MVC/B Edge) on tasks, work entry form, bill records,
+1. **(Done)** Company (MVC/B Edge) on tasks, work entry form, bill records,
    permissions, the three number series, sending bills for an amount,
    notifications and dashboard sections.
 2. Billing manager and Admin approval, the Billing List, and
@@ -153,5 +164,7 @@ For B Edge bills, "billing manager" means the B Edge billing manager.
 3. PDF and Word bills, single or bulk.
 4. Tally XML export.
 
-The existing "pending billing" approval on tasks is replaced by this flow.
-Tasks already waiting for billing approval are carried over as draft bills.
+The existing "pending billing" approval on tasks is replaced by this flow in
+stage 2. Tasks already waiting for billing approval will be carried over as
+draft bills then. Until stage 2, both the old approval and the new bills run
+side by side.

@@ -48,6 +48,7 @@ import { SearchableMultiSelect } from "@/components/tasks/searchable-multi-selec
 import { SearchableSelect } from "@/components/tasks/searchable-select";
 import { DayPicker } from "react-day-picker";
 import { getSession } from "next-auth/react";
+import { CompanySelect } from "@/components/billing/company-select";
 
 // Update the task form schema to include assignedToIds
 const taskFormSchema = z.object({
@@ -61,6 +62,7 @@ const taskFormSchema = z.object({
   // Keep for backward compatibility
   assignedToId: z.string().optional().nullable(),
   clientId: z.string().optional().nullable(),
+  company: z.enum(["MVC", "BEDGE"]),
 });
 
 type TaskFormValues = z.infer<typeof taskFormSchema>;
@@ -107,6 +109,7 @@ export default function EditTaskPage() {
       assignedToIds: [], // Properly initialized as array
       assignedToId: null, // Legacy field
       clientId: null,
+      company: "MVC",
     },
   });
 
@@ -191,6 +194,7 @@ export default function EditTaskPage() {
           assignedToIds: assigneeIds,
           assignedToId: taskData.assignedToId,
           clientId: taskData.clientId,
+          company: taskData.company ?? "MVC",
         });
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -231,7 +235,9 @@ export default function EditTaskPage() {
       router.push(`/dashboard/tasks/${taskId}`);
     } catch (error) {
       console.error("Error updating task:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = axios.isAxiosError(error) && typeof error.response?.data?.error === "string"
+        ? error.response.data.error
+        : error instanceof Error ? error.message : "Unknown error";
       toast.error(`Failed to update task: ${errorMessage}`);
     } finally {
       setIsLoading(false);
@@ -291,6 +297,22 @@ export default function EditTaskPage() {
                     <FormLabel>Task Title*</FormLabel>
                     <FormControl>
                       <Input placeholder="Enter task title" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="company"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company</FormLabel>
+                    <FormControl>
+                      <div>
+                        <CompanySelect value={field.value} onChange={field.onChange} />
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

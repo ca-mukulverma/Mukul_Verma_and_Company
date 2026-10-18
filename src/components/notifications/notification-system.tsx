@@ -203,6 +203,8 @@ export function NotificationBell() {
     markAsRead(notification.id);
     if (notification.taskId) {
       router.push(`/dashboard/tasks/${notification.taskId}`);
+    } else if (notification.title.startsWith("Bill ")) {
+      router.push("/dashboard/billing");
     }
   };
 

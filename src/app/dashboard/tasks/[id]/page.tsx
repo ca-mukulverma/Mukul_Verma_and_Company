@@ -48,6 +48,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { CompanyBadge } from "@/components/billing/company-select";
 
 // Add the missing getInitials function
 // Add null safety to the getInitials function
@@ -92,6 +93,7 @@ interface Task {
   createdAt: string;
   updatedAt: string;
   billingStatus?: string; // Add billingStatus 
+  company?: "MVC" | "BEDGE";
   // Add these new fields
   lastStatusUpdatedAt?: string;
   lastStatusUpdatedBy?: {
@@ -349,6 +351,7 @@ export default function TaskDetailPage({
                   <CardTitle className="text-2xl">{task.title}</CardTitle>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     <Badge className={statusColor}>{task.status}</Badge>
+                    <CompanyBadge company={task.company} />
                     <Badge
                       variant="outline"
                       className={getPriorityColor(task.priority)}

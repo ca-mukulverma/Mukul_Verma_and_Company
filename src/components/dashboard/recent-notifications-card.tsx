@@ -119,6 +119,8 @@ export function RecentNotificationsCard({
       notification.title.endsWith("profile")
     ) {
       router.push("/dashboard/settings/profile");
+    } else if (notification.title.startsWith("Bill ")) {
+      router.push("/dashboard/billing");
     } else if (notification.title === "Billing Approved") {
       // Try to extract clientId from content if available
       const clientIdMatch = notification.content.match(/\[clientId:\s*([a-f0-9-]+)\]/);

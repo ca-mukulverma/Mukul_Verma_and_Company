@@ -18,6 +18,7 @@ export default function PermissionsPage() {
     name: string;
     avatar: string | null; // Avatar URL or fallback
     canApproveBilling: boolean;
+    canManageBedgeBilling: boolean;
   }
 
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -43,6 +44,7 @@ export default function PermissionsPage() {
           name: user.name,
           avatar: user.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name)}`, // Use DiceBear if no avatar
           canApproveBilling: user.canApproveBilling || false,
+          canManageBedgeBilling: user.canManageBedgeBilling || false,
         }))
       );
       setLoading(false);
@@ -53,12 +55,12 @@ export default function PermissionsPage() {
     }
   };
 
-  // Toggle the `canApproveBilling` status for a partner
-  const handleToggle = (id: string) => {
+  // Toggle a billing permission for a partner
+  const handleToggle = (id: string, permission: "canApproveBilling" | "canManageBedgeBilling") => {
     setPartners((prev) =>
       prev.map((partner) =>
         partner.id === id
-          ? { ...partner, canApproveBilling: !partner.canApproveBilling }
+          ? { ...partner, [permission]: !partner[permission] }
           : partner
       )
     );
@@ -68,9 +70,10 @@ export default function PermissionsPage() {
   const handleSave = async () => {
     try {
       setError(null);
-      const updates = partners.map(({ id, canApproveBilling }) => ({
+      const updates = partners.map(({ id, canApproveBilling, canManageBedgeBilling }) => ({
         id,
         canApproveBilling,
+        canManageBedgeBilling,
       }));
       await axios.post("/api/admin/dashboard", { updates });
       setDialogOpen(true); // Open the dialog after successful save
@@ -89,7 +92,11 @@ export default function PermissionsPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl font-bold">Bill Approval Permissions for Partners</CardTitle>
+          <CardTitle className="text-2xl font-bold">Billing Permissions for Partners</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            MVC billing managers handle MVC bills (GST and Non-GST); B Edge billing managers handle B Edge bills.
+            They see amounts, choose the bill type and send bills to partners for the amount. Admins can always do both.
+          </p>
         </CardHeader>
         <CardContent>
           {error && <p className="text-red-500 mb-4">{error}</p>}
@@ -104,7 +111,8 @@ export default function PermissionsPage() {
                       <TableRow>
                         <TableHead>Avatar</TableHead>
                         <TableHead>Name</TableHead>
-                        <TableHead className="text-center">Can Approve Billing</TableHead>
+                        <TableHead className="text-center">MVC Billing Manager</TableHead>
+                        <TableHead className="text-center">B Edge Billing Manager</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -120,7 +128,15 @@ export default function PermissionsPage() {
                           <TableCell className="text-center">
                             <Switch
                               checked={partner.canApproveBilling}
-                              onCheckedChange={() => handleToggle(partner.id)}
+                              onCheckedChange={() => handleToggle(partner.id, "canApproveBilling")}
+                              aria-label={`${partner.name}: MVC billing manager`}
+                            />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Switch
+                              checked={partner.canManageBedgeBilling}
+                              onCheckedChange={() => handleToggle(partner.id, "canManageBedgeBilling")}
+                              aria-label={`${partner.name}: B Edge billing manager`}
                             />
                           </TableCell>
                         </TableRow>

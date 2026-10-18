@@ -43,6 +43,29 @@ enum BillingStatus {
   paid
 }
 
+// Which company a task or piece of work belongs to
+enum Company {
+  MVC
+  BEDGE
+}
+
+// Each bill type has its own number series (see docs/BILLING.md)
+enum BillType {
+  GST      // MVC & Company
+  NON_GST  // CA Mukul Verma
+  BEDGE    // B Edge
+}
+
+enum BillStatus {
+  draft            // waiting for the billing manager
+  awaiting_amount  // sent to a partner/admin to enter the amount
+  amount_entered   // waiting for billing manager approval
+  manager_approved // waiting for admin final approval
+  approved         // numbered and in the Billing List
+  cancelled
+  not_billable
+}
+
 model User {
   id                      String         @id @default(uuid()) @db.Char(36)
   name                    String         @db.VarChar(50)  // 50 chars is enough for most names
@@ -71,8 +94,13 @@ model User {
   managedClients          Client[]       // Staff who manages clients
   taskComments            TaskComment[]
   clientHistories         ClientHistory[] @relation("CreatedBy")
-  canApproveBilling       Boolean        @default(false) // Whether this user can approve billing
+  canApproveBilling       Boolean        @default(false) // Whether this user can approve billing (also: MVC billing manager)
+  canManageBedgeBilling   Boolean        @default(false) // B Edge billing manager
   pushSubscriptions       PushSubscription[]
+  billsCreated            Bill[]         @relation("BillCreatedBy")
+  billsAmountRequested    Bill[]         @relation("BillAmountRequestedFrom")
+  billsAmountEntered      Bill[]         @relation("BillAmountEnteredBy")
+  billEvents              BillEvent[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -99,6 +127,7 @@ model Client {
   attachments    Attachment[] // Attachments related to this client
   history        ClientHistory[] // Client history entries
   credentials    Credential[] //Credentials associated with this client
+  bills          Bill[]
   
   @@index([managerId])
   @@index([contactPerson]) // Index for searching by contact person name
@@ -114,6 +143,8 @@ model Task {
   billingStatus  BillingStatus? @default(pending_billing) // Changed from String?
   billingDate    DateTime?
   scheduledDeletionDate DateTime? // Add this field
+  company        Company   @default(MVC)
+  bill           Bill?
 
   // Add these new fields
   lastStatusUpdatedById String?   @db.Char(36)
@@ -288,4 +319,69 @@ model Credential {
   updatedAt DateTime @updatedAt
 
   @@index([clientId])
+}
+
+// A bill for one task or one directly logged piece of work (docs/BILLING.md)
+model Bill {
+  id          String     @id @default(uuid()) @db.Char(36)
+  company     Company
+  type        BillType? // null until the billing manager picks GST or Non-GST
+  status      BillStatus @default(draft)
+  description String     @db.Text
+  workDate    DateTime
+  remark      String?    @db.Text
+
+  // Set when the bill comes from a task; null for directly logged work
+  taskId      String? @unique @db.Char(36)
+  task        Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  clientId    String? @db.Char(36)
+  client      Client? @relation(fields: [clientId], references: [id])
+  createdById String  @db.Char(36)
+  createdBy   User    @relation("BillCreatedBy", fields: [createdById], references: [id])
+
+  // Professional fee before GST
+  amount                Decimal?  @db.Decimal(12, 2)
+  amountRequestedFromId String?   @db.Char(36)
+  amountRequestedFrom   User?     @relation("BillAmountRequestedFrom", fields: [amountRequestedFromId], references: [id])
+  amountEnteredById     String?   @db.Char(36)
+  amountEnteredBy       User?     @relation("BillAmountEnteredBy", fields: [amountEnteredById], references: [id])
+  amountEnteredAt       DateTime?
+
+  // Given at admin final approval
+  financialYear String?   @db.VarChar(7) // e.g. "2026-27"
+  sequence      Int?
+  billNumber    String?   @db.VarChar(30)
+  billDate      DateTime?
+
+  events    BillEvent[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([type, financialYear, sequence])
+  @@index([company, status])
+  @@index([amountRequestedFromId, status])
+  @@index([createdById])
+  @@index([clientId])
+}
+
+// History of everything done to a bill
+model BillEvent {
+  id        String   @id @default(uuid()) @db.Char(36)
+  billId    String   @db.Char(36)
+  bill      Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+  action    String   @db.VarChar(40)
+  remark    String?  @db.Text
+  userId    String   @db.Char(36)
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([billId, createdAt])
+}
+
+// Next number for each bill series; restarts at 1 every 1 April
+model BillSeries {
+  type          BillType @id
+  financialYear String   @db.VarChar(7) // year that nextNumber belongs to
+  nextNumber    Int
+  updatedAt     DateTime @updatedAt
 }

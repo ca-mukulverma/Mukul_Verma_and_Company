@@ -6,6 +6,7 @@ import { z } from "zod";
 import { sendTaskAssignedNotification } from "@/lib/notifications";
 import { syncTaskAssignments } from "@/lib/task-assignment";
 import { sendTaskCreatedNotificationToAdmins } from "@/lib/notifications";
+import { ensureDraftBillForTask } from "@/lib/billing";
 
 // Schema for task creation
 const taskCreateSchema = z.object({
@@ -17,6 +18,7 @@ const taskCreateSchema = z.object({
   assignedToIds: z.array(z.string()).optional().default([]),
   assignedToId: z.string().optional().nullable(), // Legacy field
   clientId: z.string().optional().nullable(),
+  company: z.enum(["MVC", "BEDGE"]).optional().default("MVC"),
 });
 
 // GET all tasks with optional filtering
@@ -219,6 +221,7 @@ export async function POST(request: NextRequest) {
           dueDate: validatedData.dueDate ? new Date(validatedData.dueDate) : null,
           assignedById: currentUser.id,
           clientId: validatedData.clientId,
+          company: validatedData.company,
         },
       });
       
@@ -230,6 +233,11 @@ export async function POST(request: NextRequest) {
       // Use the helper function to handle assignments
       return syncTaskAssignments(tx, task.id, assigneeIds);
     });
+
+    // A task created as already completed is ready for billing straight away
+    if (result && validatedData.status === "completed") {
+      await ensureDraftBillForTask(result.id, currentUser.id);
+    }
 
     // Create activity log
     if (result) {
