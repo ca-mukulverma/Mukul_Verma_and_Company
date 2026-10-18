@@ -32,6 +32,7 @@ export async function GET() {
           description: true,
           workDate: true,
           client: { select: { id: true, contactPerson: true, companyName: true } },
+          billToName: true,
         },
       },
     },

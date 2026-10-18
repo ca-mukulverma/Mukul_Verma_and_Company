@@ -141,7 +141,16 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
     const entity = entities.find((e) => e.type === bill.type);
     const fee = bill.amount !== null ? Number(bill.amount) : 0;
     const isGst = bill.type === "GST";
-    const tax = isGst ? gstLines(fee, entity?.stateCode || null, bill.client?.gstin || null) : null;
+    // A saved client, or the name entered under "Other"
+    const party = bill.client
+      ? {
+          name: bill.client.companyName || bill.client.contactPerson,
+          contactPerson: bill.client.contactPerson,
+          address: bill.client.address || null,
+          gstin: bill.client.gstin || null,
+        }
+      : { name: bill.billToName || "", contactPerson: bill.billToName || "", address: bill.billToAddress, gstin: bill.billToGstin };
+    const tax = isGst ? gstLines(fee, entity?.stateCode || null, party.gstin) : null;
     const total = round2(fee + (tax?.lines.reduce((sum, line) => sum + line.amount, 0) ?? 0));
 
     return [
@@ -160,12 +169,7 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
         total,
         totalInWords: rupeesInWords(total),
         placeOfSupply: tax?.placeOfSupply ?? null,
-        client: {
-          name: bill.client?.companyName || bill.client?.contactPerson || "",
-          contactPerson: bill.client?.contactPerson || "",
-          address: bill.client?.address || null,
-          gstin: bill.client?.gstin || null,
-        },
+        client: party,
         entity: {
           name: entity?.name || "",
           address: entity?.address || null,

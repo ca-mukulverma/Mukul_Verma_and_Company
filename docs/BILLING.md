@@ -64,6 +64,21 @@ GST on a GST bill:
 | Direct work entry | "Log work done" form: company, client, description, date, remark | Anyone |
 | B Edge work entry | Same form with company = B Edge | Anyone |
 
+Work done without a task is recorded on **Billing → Log work** by anyone.
+The form asks for the company (MVC or B Edge), the client, what was done,
+the date and an optional remark. It becomes a draft bill for the billing
+manager, exactly like a completed task.
+
+**Not a saved client?** In the client search, choose **Other – enter the
+name** (the last entry). Type the name the bill is made out to, and
+optionally the address and GSTIN. The same option is in a bill's *Edit
+details*, so a billing manager or Admin can add the name later, for
+example on a bill from a task created without a client.
+- The bill, the PDF/Word file and the Tally voucher use the entered name,
+  address and GSTIN.
+- In Tally, the party ledger is that name, and it must exist in Tally.
+- The name is kept on the bill only; no client record is created.
+
 Each task or work entry becomes **one bill**. Bills are never combined.
 
 Bills never show expenses. They show the professional fee only, plus GST on

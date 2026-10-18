@@ -58,9 +58,16 @@ const tallyBillInclude = {
 
 type TallyBill = Prisma.BillGetPayload<{ include: typeof tallyBillInclude }>;
 
-export function partyLedgerName(client: TallyBill["client"]) {
-  if (!client) return "";
+// The party ledger in Tally: the client's (or its Tally name), or the name
+// entered under "Other"
+export function partyLedgerName(bill: Pick<TallyBill, "client" | "billToName">) {
+  const client = bill.client;
+  if (!client) return bill.billToName || "";
   return client.tallyLedgerName || client.companyName || client.contactPerson;
+}
+
+function partyGstin(bill: Pick<TallyBill, "client" | "billToGstin">) {
+  return bill.client ? bill.client.gstin : bill.billToGstin;
 }
 
 function escapeXml(value: string) {
@@ -100,7 +107,7 @@ export function voucherAction(bill: Pick<TallyBill, "status" | "tallyExportedAt"
 
 function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntity | null) {
   const action = voucherAction(bill);
-  const party = partyLedgerName(bill.client);
+  const party = partyLedgerName(bill);
   const fee = bill.amount !== null ? Number(bill.amount) : 0;
   const date = tallyDate(bill.billDate ?? bill.createdAt);
   const head = `<VOUCHER REMOTEID="${escapeXml(bill.id)}" VCHTYPE="${escapeXml(ledgers.voucherType)}" ACTION="${action}" OBJVIEW="Accounting Voucher View">`;
@@ -120,7 +127,8 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
   let total = fee;
   let gstTags: string[] = [];
   if (bill.type === "GST") {
-    const tax = gstLines(fee, entity?.stateCode || null, bill.client?.gstin || null);
+    const gstin = partyGstin(bill);
+    const tax = gstLines(fee, entity?.stateCode || null, gstin || null);
     for (const line of tax.lines) {
       const ledger = line.label.startsWith("CGST")
         ? ledgers.cgstLedger
@@ -132,10 +140,10 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
       entries.push(ledgerEntry(ledger, line.amount, false));
       total += line.amount;
     }
-    const clientState = bill.client?.gstin?.slice(0, 2);
+    const clientState = gstin?.slice(0, 2);
     const stateName = (clientState && GST_STATES[clientState]) || (entity?.stateCode && GST_STATES[entity.stateCode]) || null;
     gstTags = [
-      ...(bill.client?.gstin ? [tag("PARTYGSTIN", bill.client.gstin)] : []),
+      ...(gstin ? [tag("PARTYGSTIN", gstin)] : []),
       ...(stateName ? [tag("STATENAME", stateName), tag("PLACEOFSUPPLY", stateName)] : []),
     ];
   }

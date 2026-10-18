@@ -11,20 +11,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CompanyValue } from "@/lib/billing-constants";
-import { ClientOption, ClientPicker } from "./client-picker";
+import { BillTo, BillToPicker, billToPayload, billToValid } from "./client-picker";
 import { CompanySelect } from "./company-select";
 import { apiErrorMessage } from "./bill-types";
 
 // "Log work done" – replaces posting the work in the WhatsApp billing group
 export function WorkEntryForm({ onLogged }: { onLogged?: () => void }) {
   const [company, setCompany] = useState<CompanyValue>("MVC");
-  const [client, setClient] = useState<ClientOption | null>(null);
+  const [billTo, setBillTo] = useState<BillTo>({ client: null, other: null });
   const [description, setDescription] = useState("");
   const [workDate, setWorkDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [remark, setRemark] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const valid = client && description.trim().length >= 3 && workDate;
+  const valid = billToValid(billTo) && description.trim().length >= 3 && workDate;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,13 +33,13 @@ export function WorkEntryForm({ onLogged }: { onLogged?: () => void }) {
     try {
       await axios.post("/api/bills", {
         company,
-        clientId: client.id,
+        ...billToPayload(billTo),
         description: description.trim(),
         workDate: new Date(`${workDate}T12:00:00`).toISOString(),
         remark: remark.trim() || null,
       });
       toast.success("Work logged for billing");
-      setClient(null);
+      setBillTo({ client: null, other: null });
       setDescription("");
       setRemark("");
       onLogged?.();
@@ -66,7 +66,10 @@ export function WorkEntryForm({ onLogged }: { onLogged?: () => void }) {
           </div>
           <div className="space-y-2">
             <Label>Client*</Label>
-            <ClientPicker value={client} onChange={setClient} />
+            <BillToPicker value={billTo} onChange={setBillTo} />
+            <p className="text-xs text-muted-foreground">
+              Not a saved client? Choose <strong>Other</strong> at the end of the list and type the name to bill.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="work-description">Work done*</Label>

@@ -24,7 +24,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { BILL_TYPE_LABELS, BillTypeValue, CompanyValue, formatRupees, gstAmount } from "@/lib/billing-constants";
 import { HistoryDialog } from "./bill-dialogs";
 import { BillStatusBadge } from "./bill-list";
-import { apiErrorMessage, Bill, blobErrorMessage, CHANGE_KIND_LABELS, downloadBillFile } from "./bill-types";
+import { apiErrorMessage, Bill, billParty, blobErrorMessage, CHANGE_KIND_LABELS, downloadBillFile } from "./bill-types";
 import { ChangeKind, ChangeRequestDialog } from "./change-request-dialog";
 
 // Numbered bills (approved and cancelled) of the companies the user manages
@@ -238,7 +238,7 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                       {bill.billDate ? format(new Date(bill.billDate), "d MMM yyyy") : "—"}
                     </TableCell>
                     <TableCell className="min-w-40">
-                      {bill.client ? bill.client.companyName || bill.client.contactPerson : "—"}
+                      {billParty(bill) ?? "—"}
                     </TableCell>
                     <TableCell className="min-w-48 max-w-72">
                       <p className="line-clamp-2">{bill.description.split("\n")[0]}</p>

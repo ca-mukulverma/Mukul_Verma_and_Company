@@ -13,6 +13,9 @@ export interface Bill {
   remark: string | null;
   task: { id: string; title: string } | null;
   client: (ClientOption & { gstin?: string | null }) | null;
+  billToName: string | null;
+  billToAddress: string | null;
+  billToGstin: string | null;
   createdBy: { id: string; name: string };
   createdAt: string;
   amountRequestedFrom: { id: string; name: string } | null;
@@ -44,6 +47,14 @@ export interface PendingChange {
   changes: BillChanges | null;
   createdAt: string;
   requestedBy: { id: string; name: string };
+}
+
+// Who the bill is made out to: the saved client, or the name entered under "Other"
+export function billParty(bill: {
+  client?: { contactPerson: string; companyName?: string | null } | null;
+  billToName?: string | null;
+}) {
+  return bill.client ? bill.client.companyName || bill.client.contactPerson : bill.billToName || null;
 }
 
 export interface BillEvent {

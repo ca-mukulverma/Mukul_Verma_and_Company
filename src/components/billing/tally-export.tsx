@@ -24,7 +24,8 @@ interface Series {
   };
   ledgersSet: boolean;
   bills: { id: string; billNumber: string; action: "Create" | "Alter" | "Cancel"; client: string | null; amount: number | null }[];
-  parties: { clientId: string; clientName: string; ledgerName: string; custom: boolean }[];
+  // clientId is null for names entered under "Other"
+  parties: { clientId: string | null; clientName: string; ledgerName: string; custom: boolean }[];
   history: { id: string; createdAt: string; newCount: number; updateCount: number; createdBy: { name: string } }[];
 }
 
@@ -154,9 +155,16 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
               Each client&apos;s ledger must already exist in Tally under exactly this name. Change it here if the name in
               Tally is different.
             </p>
-            {series.parties.map((party) => (
-              <PartyLedger key={party.clientId} party={party} onSaved={onChanged} />
-            ))}
+            {series.parties.map((party) =>
+              party.clientId ? (
+                <PartyLedger key={party.clientId} party={party} onSaved={onChanged} />
+              ) : (
+                <div key={`other-${party.clientName}`} className="space-y-1">
+                  <p className="text-xs text-muted-foreground">{party.clientName} (Other – not a saved client)</p>
+                  <p className="rounded-md border px-3 py-2 text-sm">{party.ledgerName}</p>
+                </div>
+              )
+            )}
           </div>
         )}
 

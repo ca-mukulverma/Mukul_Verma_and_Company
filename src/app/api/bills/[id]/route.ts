@@ -7,8 +7,11 @@ import { prisma } from "@/lib/prisma";
 import {
   BillingAccess,
   billInclude,
+  billToData,
   canViewBill,
   describeBill,
+  hasBillTo,
+  otherPartySchema,
   getBillingAccess,
   getBillingManagerIds,
   managesCompany,
@@ -22,6 +25,7 @@ type Params = { params: Promise<{ id: string }> };
 
 const detailsSchema = z.object({
   clientId: z.string().min(1).optional(),
+  other: otherPartySchema.optional(),
   description: z.string().trim().min(3).max(2000).optional(),
   workDate: z.string().datetime().optional(),
   remark: z.string().trim().max(1000).optional().nullable(),
@@ -111,9 +115,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.errors[0]?.message || "Invalid data" }, { status: 400 });
   }
-  const { clientId, description, workDate, remark } = parsed.data;
+  const { clientId, other, description, workDate, remark } = parsed.data;
 
-  if (clientId) {
+  if (clientId && !other) {
     const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } });
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 400 });
   }
@@ -122,7 +126,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     bill.id,
     EDITABLE_BILL_STATUSES as BillStatus[],
     {
-      ...(clientId !== undefined && { clientId }),
+      ...((clientId !== undefined || other !== undefined) && billToData({ clientId, other })),
       ...(description !== undefined && { description }),
       ...(workDate !== undefined && { workDate: new Date(workDate) }),
       ...(remark !== undefined && { remark: remark || null }),
@@ -168,7 +172,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     case "request_amount": {
       if (!isManager) return forbidden();
       if (!bill.type) return NextResponse.json({ error: "Choose GST or Non-GST first" }, { status: 400 });
-      if (!bill.clientId) return NextResponse.json({ error: "Select the client first" }, { status: 400 });
+      if (!hasBillTo(bill)) return NextResponse.json({ error: "Select the client or enter the name to bill first" }, { status: 400 });
 
       const target = await prisma.user.findUnique({
         where: { id: input.userId },
@@ -206,7 +210,7 @@ export async function POST(request: NextRequest, { params }: Params) {
           : [];
       if (allowedStatuses.length === 0) return forbidden();
       if (!bill.type) return NextResponse.json({ error: "Choose GST or Non-GST first" }, { status: 400 });
-      if (!bill.clientId) return NextResponse.json({ error: "Select the client first" }, { status: 400 });
+      if (!hasBillTo(bill)) return NextResponse.json({ error: "Select the client or enter the name to bill first" }, { status: 400 });
 
       const amount = Math.round(input.amount * 100) / 100;
       const ok = await updateIfStatus(

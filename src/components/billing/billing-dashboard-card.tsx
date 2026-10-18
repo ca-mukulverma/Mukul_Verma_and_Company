@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { COMPANY_LABELS, CompanyValue } from "@/lib/billing-constants";
 import { CompanyBadge } from "./company-select";
+import { billParty } from "./bill-types";
 
 interface Summary {
   manages: CompanyValue[];
@@ -16,6 +17,7 @@ interface Summary {
     company: CompanyValue;
     description: string;
     client: { contactPerson: string; companyName: string | null } | null;
+    billToName: string | null;
   }[];
   awaitingMyAmountCount: number;
   counts: Record<string, Record<string, number>>;
@@ -97,7 +99,7 @@ export function BillingDashboardCard() {
                 <li key={bill.id} className="flex items-center gap-2 p-2 text-sm">
                   <CompanyBadge company={bill.company} />
                   <span className="font-medium shrink-0">
-                    {bill.client ? bill.client.companyName || bill.client.contactPerson : "No client"}
+                    {billParty(bill) ?? "No client"}
                   </span>
                   <span className="truncate text-muted-foreground">{bill.description.split("\n")[0]}</span>
                 </li>

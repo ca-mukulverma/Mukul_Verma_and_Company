@@ -23,6 +23,7 @@ export async function GET() {
         company: true,
         description: true,
         client: { select: { contactPerson: true, companyName: true } },
+        billToName: true,
       },
     }),
     access.manages.length > 0
