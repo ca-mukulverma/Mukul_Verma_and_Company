@@ -76,6 +76,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { getTaskListScroll, saveTaskListScroll, saveTaskListUrl } from "@/lib/task-list-state";
+import { CompanyBadge } from "@/components/billing/company-select";
 
 const getInitials = (name: string): string => {
   return name
@@ -92,6 +93,7 @@ interface Task {
   status: string;
   priority: string;
   dueDate: string | null;
+  company?: "MVC" | "BEDGE";
   assignedById: string;
   assignedTo: {
     id: string;
@@ -171,9 +173,12 @@ const TaskListItem = ({
         <Badge className={`${getStatusColor(task.status)} whitespace-nowrap`}>
           {task.status}
         </Badge>
-        <Badge variant="outline" className={`${getPriorityColor(task.priority)} whitespace-nowrap`}>
-          {task.priority} priority
-        </Badge>
+        <div className="flex items-center gap-2">
+          <CompanyBadge company={task.company} className="whitespace-nowrap" />
+          <Badge variant="outline" className={`${getPriorityColor(task.priority)} whitespace-nowrap`}>
+            {task.priority} priority
+          </Badge>
+        </div>
       </div>
       
       <h3 className="font-medium text-base sm:text-lg mb-2 line-clamp-2">{task.title}</h3>
@@ -286,8 +291,9 @@ const TaskTableRow = ({
       <TableCell>
         <div>
           <p className="font-medium">{task.title}</p>
-          <div className="mt-1">
+          <div className="mt-1 flex flex-wrap gap-1">
             {getPriorityBadge(task.priority)}
+            <CompanyBadge company={task.company} />
           </div>
         </div>
       </TableCell>

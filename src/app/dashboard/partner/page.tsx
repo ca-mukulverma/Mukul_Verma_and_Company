@@ -39,7 +39,7 @@ import {
   DashboardContentSkeleton,
 } from "@/components/loading/dashboard-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PendingBillingTasks } from "@/components/admin/pending-billing-tasks";
+import { BillingDashboardCard } from "@/components/billing/billing-dashboard-card";
 import { RecentNotificationsCard } from "@/components/dashboard/recent-notifications-card";
 import { AssignTaskButton } from "@/components/tasks/assign-task-button";
 import { PriorityTasksCard } from "@/components/dashboard/priority-tasks-card";
@@ -180,8 +180,6 @@ function PartnerDashboardContent() {
   }, [router]);
 
   // Check if the partner has billing approval permissions
-  const canApproveBilling = session?.user?.role === "PARTNER" && (session.user as any)?.canApproveBilling;
-  console.log("Can approve billing:", canApproveBilling);
 
   // Default empty data if still loading
   const stats = dashboardData?.stats || {
@@ -538,11 +536,7 @@ function PartnerDashboardContent() {
                 </Card>
               </div>
 
-              {canApproveBilling && (
-                <div className="grid gap-4 md:grid-cols-1">
-                  <PendingBillingTasks />
-                </div>
-              )}
+              <BillingDashboardCard />
             </>
           )}
         </TabsContent>

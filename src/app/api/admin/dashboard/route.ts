@@ -136,7 +136,8 @@ export async function GET(request: NextRequest) {
         id: true, 
         name: true, 
         avatar: true,
-        canApproveBilling: true 
+        canApproveBilling: true,
+        canManageBedgeBilling: true,
       },
     });
 
@@ -307,21 +308,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { updates } = await request.json(); // Array of { id, canApproveBilling }
+  // Array of { id, canApproveBilling, canManageBedgeBilling? }
+  const { updates } = await request.json() as {
+    updates: { id: string; canApproveBilling: boolean; canManageBedgeBilling?: boolean }[];
+  };
 
   try {
     const updatePromises = updates.map(async (update) => {
+      const before = await prisma.user.findUnique({
+        where: { id: update.id },
+        select: { canApproveBilling: true, canManageBedgeBilling: true },
+      });
       const updatedUser = await prisma.user.update({
         where: { id: update.id },
-        data: { canApproveBilling: update.canApproveBilling },
+        data: {
+          canApproveBilling: update.canApproveBilling,
+          ...(update.canManageBedgeBilling !== undefined && {
+            canManageBedgeBilling: update.canManageBedgeBilling,
+          }),
+        },
       });
 
-      // Send notification if canApproveBilling is marked true
-      if (update.canApproveBilling) {
+      // Notify only about permissions that were just granted
+      const granted: string[] = [];
+      if (update.canApproveBilling && !before?.canApproveBilling) {
+        granted.push("You have been made an MVC billing manager. You can now manage MVC bills from the Billing page and approve billing on dashboard and task pages.");
+      }
+      if (update.canManageBedgeBilling && !before?.canManageBedgeBilling) {
+        granted.push("You have been made a B Edge billing manager. You can now manage B Edge bills from the Billing page.");
+      }
+      for (const content of granted) {
         const notification = await prisma.notification.create({
           data: {
             title: "Permission Granted",
-            content: "You have been granted permission to approve billing requests. You can now approve billing on dashboard and task pages.",
+            content,
             sentById: session.user.id, // Admin who made the change
             sentToId: updatedUser.id, // Partner receiving the notification
           },

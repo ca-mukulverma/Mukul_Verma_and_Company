@@ -7,6 +7,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { z } from "zod";
 import { syncTaskAssignments } from "@/lib/task-assignment";
 import { dashboardCache, taskCache, clientCache } from "@/lib/cache";
+import { ensureDraftBillForTask, removeUntouchedDraftBillForTask, syncBillCompanyForTask } from "@/lib/billing";
 
 // Configure Cloudinary
 cloudinary.config({
@@ -27,6 +28,7 @@ const taskUpdateSchema = z.object({
   // Keep for backward compatibility
   assignedToId: z.string().optional().nullable(),
   clientId: z.string().optional().nullable(),
+  company: z.enum(["MVC", "BEDGE"]).optional(),
   note: z.string().optional(),
 });
 
@@ -214,6 +216,18 @@ export async function PATCH(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
+    // Moving a task between MVC and B Edge moves its bill too, unless the
+    // bill has already been approved
+    if (body.company && body.company !== originalTask.company) {
+      const synced = await syncBillCompanyForTask(taskId, body.company, currentUser.id);
+      if (!synced) {
+        return NextResponse.json(
+          { error: "The bill for this task is already approved, so the company can't be changed" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Use a transaction to update everything atomically
     const updatedTask = await prisma.$transaction(async (tx) => {
       // Extract assignedToIds from body and remove it
@@ -243,6 +257,15 @@ export async function PATCH(
       // If no assignment updates, just return the updated task
       return updated;
     });
+
+    // Start or withdraw the bill when the task is completed or reopened
+    if (body.status && body.status !== originalTask.status) {
+      if (body.status === "completed") {
+        await ensureDraftBillForTask(taskId, currentUser.id);
+      } else if (originalTask.status === "completed") {
+        await removeUntouchedDraftBillForTask(taskId);
+      }
+    }
 
     // Log the activity
     await prisma.activity.create({

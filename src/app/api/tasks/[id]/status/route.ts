@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { TaskStatus, BillingStatus } from "@prisma/client";
 import { z } from "zod";
 import { sendTaskStatusUpdateNotification, sendTaskUpdatedNotificationToAdmins } from "@/lib/notifications";
+import { ensureDraftBillForTask, removeUntouchedDraftBillForTask } from "@/lib/billing";
 
 // Validation schema
 const statusUpdateSchema = z.object({
@@ -86,6 +87,9 @@ export async function PATCH(
         lastStatusUpdatedBy: currentUser.id
       });
 
+      // Start the bill for this work (docs/BILLING.md)
+      await ensureDraftBillForTask(taskId, currentUser.id);
+
       // Create client history if needed
       if (task.client && !task.client.isGuest) {
         console.log(`📝 Creating client history for task ${taskId}`);
@@ -133,6 +137,11 @@ export async function PATCH(
         billingStatus: updatedTask.billingStatus,
         lastStatusUpdatedBy: currentUser.id
       });
+
+      // A reopened task no longer needs the bill started when it was completed
+      if (task.status === "completed") {
+        await removeUntouchedDraftBillForTask(taskId);
+      }
 
       // Send notifications after the response so the user isn't kept waiting
       after(() =>
