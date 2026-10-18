@@ -47,14 +47,26 @@ export async function GET() {
       ]);
 
       // Clients of the waiting bills and the party ledger each will be posted to
-      const parties = new Map<string, { clientId: string; clientName: string; ledgerName: string; custom: boolean }>();
+      // Names entered under "Other" have no saved client, so their ledger
+      // name can't be changed here (clientId null)
+      const parties = new Map<
+        string,
+        { clientId: string | null; clientName: string; ledgerName: string; custom: boolean }
+      >();
       for (const bill of pending) {
         if (bill.client && !parties.has(bill.client.id)) {
           parties.set(bill.client.id, {
             clientId: bill.client.id,
             clientName: bill.client.companyName || bill.client.contactPerson,
-            ledgerName: partyLedgerName(bill.client),
+            ledgerName: partyLedgerName(bill),
             custom: !!bill.client.tallyLedgerName,
+          });
+        } else if (!bill.client && bill.billToName && !parties.has(`other:${bill.billToName}`)) {
+          parties.set(`other:${bill.billToName}`, {
+            clientId: null,
+            clientName: bill.billToName,
+            ledgerName: bill.billToName,
+            custom: false,
           });
         }
       }
@@ -67,7 +79,7 @@ export async function GET() {
           id: bill.id,
           billNumber: bill.billNumber ?? formatBillNumber(type, bill.financialYear ?? "", bill.sequence ?? 0),
           action: voucherAction(bill),
-          client: bill.client ? bill.client.companyName || bill.client.contactPerson : null,
+          client: bill.client ? bill.client.companyName || bill.client.contactPerson : bill.billToName,
           amount: bill.amount !== null ? Number(bill.amount) : null,
         })),
         parties: [...parties.values()],

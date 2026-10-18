@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { BILL_TYPE_LABELS, BillTypeValue, CompanyValue, formatRupees } from "@/lib/billing-constants";
 import { CompanyBadge } from "./company-select";
-import { apiErrorMessage, BillChanges, CHANGE_KIND_LABELS } from "./bill-types";
+import { apiErrorMessage, BillChanges, billParty, CHANGE_KIND_LABELS } from "./bill-types";
 
 interface ChangeRequest {
   id: string;
@@ -30,6 +30,7 @@ interface ChangeRequest {
     description: string;
     workDate: string;
     client: { id: string; contactPerson: string; companyName: string | null } | null;
+    billToName: string | null;
   };
   newClient: { id: string; contactPerson: string; companyName: string | null } | null;
 }
@@ -122,7 +123,7 @@ function RequestCard({
     rows.push({ label: "Bill type", from: bill.type ? BILL_TYPE_LABELS[bill.type] : "—", to: BILL_TYPE_LABELS[changes.type] });
   }
   if (changes?.clientId !== undefined) {
-    rows.push({ label: "Client", from: bill.client ? bill.client.companyName || bill.client.contactPerson : "—", to: request.newClient ? request.newClient.companyName || request.newClient.contactPerson : "—" });
+    rows.push({ label: "Client", from: billParty(bill) ?? "—", to: request.newClient ? request.newClient.companyName || request.newClient.contactPerson : "—" });
   }
 
   return (
@@ -135,7 +136,7 @@ function RequestCard({
           {bill.billDate && <span className="text-sm text-muted-foreground">dated {format(new Date(bill.billDate), "d MMM yyyy")}</span>}
         </div>
         <div>
-          <p className="font-medium">{bill.client ? bill.client.companyName || bill.client.contactPerson : "No client"}</p>
+          <p className="font-medium">{billParty(bill) ?? "No client"}</p>
           <p className="text-sm">{bill.description.split("\n")[0]}</p>
           {bill.amount !== null && <p className="text-sm text-muted-foreground">Fee {formatRupees(bill.amount)}</p>}
         </div>

@@ -4,13 +4,15 @@ import { BillStatus, BillType, Company, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { billInclude, getBillingAccess, serializeBill } from "@/lib/billing";
+import { billInclude, billToData, getBillingAccess, otherPartySchema, serializeBill } from "@/lib/billing";
 
 const PAGE_SIZE = 50;
 
 const workEntrySchema = z.object({
   company: z.enum(["MVC", "BEDGE"]),
-  clientId: z.string().min(1, "Select a client"),
+  // A saved client, or "Other" with the name typed in
+  clientId: z.string().min(1).optional().nullable(),
+  other: otherPartySchema.optional().nullable(),
   description: z.string().trim().min(3, "Describe the work done").max(2000),
   workDate: z.string().datetime(),
   remark: z.string().trim().max(1000).optional().nullable(),
@@ -85,6 +87,7 @@ export async function GET(request: NextRequest) {
       { description: { contains: search, mode: "insensitive" } },
       { client: { contactPerson: { contains: search, mode: "insensitive" } } },
       { client: { companyName: { contains: search, mode: "insensitive" } } },
+      { billToName: { contains: search, mode: "insensitive" } },
     ];
   }
 
@@ -136,8 +139,13 @@ export async function POST(request: NextRequest) {
   }
   const data = parsed.data;
 
-  const client = await prisma.client.findUnique({ where: { id: data.clientId }, select: { id: true } });
-  if (!client) return NextResponse.json({ error: "Client not found" }, { status: 400 });
+  if (!data.clientId && !data.other) {
+    return NextResponse.json({ error: "Select a client or enter the name to bill" }, { status: 400 });
+  }
+  if (data.clientId && !data.other) {
+    const client = await prisma.client.findUnique({ where: { id: data.clientId }, select: { id: true } });
+    if (!client) return NextResponse.json({ error: "Client not found" }, { status: 400 });
+  }
 
   const bill = await prisma.bill.create({
     data: {
@@ -146,7 +154,7 @@ export async function POST(request: NextRequest) {
       description: data.description,
       workDate: new Date(data.workDate),
       remark: data.remark || null,
-      clientId: data.clientId,
+      ...billToData(data),
       createdById: user.id,
       events: { create: { action: "created", userId: user.id, remark: "Work logged directly" } },
     },

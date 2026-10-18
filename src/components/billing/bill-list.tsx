@@ -38,7 +38,7 @@ import {
   RemarkDialog,
   RequestAmountDialog,
 } from "./bill-dialogs";
-import { apiErrorMessage, Bill, runBillAction, runBulkApproval } from "./bill-types";
+import { apiErrorMessage, Bill, billParty, runBillAction, runBulkApproval } from "./bill-types";
 
 // manage  – billing manager's bills of one company
 // final   – Admin's final approval queue (all companies)
@@ -303,7 +303,7 @@ function BillCard({
   onToggle: () => void;
 }) {
   const [title, ...rest] = bill.description.split("\n");
-  const clientName = bill.client ? bill.client.companyName || bill.client.contactPerson : null;
+  const clientName = billParty(bill);
   const editable = (EDITABLE_BILL_STATUSES as string[]).includes(bill.status);
   const canManage = mode === "manage" && bill.canManage;
   const isAwaitingMe = mode === "amounts" && bill.status === "awaiting_amount";
@@ -326,6 +326,9 @@ function BillCard({
             </div>
             <p className="font-medium break-words">
               {clientName ?? <span className="text-destructive">No client selected</span>}
+              {!clientName && bill.billToName && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">(Other – not a saved client)</span>
+              )}
             </p>
             <p className="text-sm break-words">{title}</p>
             {rest.length > 0 && <p className="text-sm text-muted-foreground whitespace-pre-line line-clamp-2">{rest.join("\n")}</p>}
@@ -359,7 +362,8 @@ function BillCard({
         {canManage && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {bill.company === "MVC" && editable && (
-              <Select value={bill.type ?? undefined} onValueChange={(value) => onSetType(value as "GST" | "NON_GST")}>
+              // "" (not undefined) keeps the choice controlled: it only changes once it is saved
+              <Select value={bill.type ?? ""} onValueChange={(value) => onSetType(value as "GST" | "NON_GST")}>
                 <SelectTrigger className={cn("h-8 w-auto min-w-44", !bill.type && "border-amber-500")}>
                   <SelectValue placeholder="Choose GST / Non-GST" />
                 </SelectTrigger>
@@ -372,24 +376,24 @@ function BillCard({
             {bill.company === "MVC" && !editable && bill.type && (
               <Badge variant="outline">{bill.type === "GST" ? "GST – MVC & Company" : "Non-GST – CA Mukul Verma"}</Badge>
             )}
-            {editable && !bill.client && (
+            {editable && !clientName && (
               <Button size="sm" className="bg-amber-600 text-white hover:bg-amber-700" onClick={() => onOpen("details")}>
                 <UserPlus className="mr-1 h-3.5 w-3.5" />Choose client
               </Button>
             )}
             {editable && (
-              <Button size="sm" variant="outline" disabled={!bill.type || !bill.client} onClick={() => onOpen("amount")}>
+              <Button size="sm" variant="outline" disabled={!bill.type || !clientName} onClick={() => onOpen("amount")}>
                 <IndianRupee className="mr-1 h-3.5 w-3.5" />
                 {bill.amount !== null ? "Change amount" : "Enter amount"}
               </Button>
             )}
             {bill.status === "amount_entered" && onApprove && (
-              <Button size="sm" disabled={approving || !bill.type || !bill.client || bill.amount === null} onClick={onApprove}>
+              <Button size="sm" disabled={approving || !bill.type || !clientName || bill.amount === null} onClick={onApprove}>
                 <CheckCheck className="mr-1 h-3.5 w-3.5" />Approve
               </Button>
             )}
             {(bill.status === "draft" || bill.status === "awaiting_amount") && (
-              <Button size="sm" variant="outline" disabled={!bill.type || !bill.client} onClick={() => onOpen("request")}>
+              <Button size="sm" variant="outline" disabled={!bill.type || !clientName} onClick={() => onOpen("request")}>
                 <Send className="mr-1 h-3.5 w-3.5" />
                 {bill.status === "awaiting_amount" ? "Send to someone else" : "Send for amount"}
               </Button>
@@ -427,12 +431,12 @@ function BillCard({
           </div>
         )}
 
-        {canManage && editable && (!bill.type || !bill.client) && (
+        {canManage && editable && (!bill.type || !clientName) && (
           <p className="text-xs text-amber-700 dark:text-amber-400">
-            {!bill.client && !bill.type
+            {!clientName && !bill.type
               ? "Choose the client and GST / Non-GST before entering the amount or sending it for the amount."
-              : !bill.client
-                ? "Choose the client before entering the amount or sending it for the amount."
+              : !clientName
+                ? "Choose the client (or Other with the name) before entering the amount or sending it for the amount."
                 : "Choose GST / Non-GST before entering the amount or sending it for the amount."}
           </p>
         )}

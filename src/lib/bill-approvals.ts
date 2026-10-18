@@ -1,7 +1,7 @@
 import { BillType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity-logger";
-import { BillingAccess, getBillingManagerIds, managesCompany, notifyBillingUsers } from "@/lib/billing";
+import { BillingAccess, getBillingManagerIds, hasBillTo, managesCompany, notifyBillingUsers } from "@/lib/billing";
 import { financialYearOf, formatBillNumber } from "@/lib/billing-constants";
 
 type Tx = Prisma.TransactionClient;
@@ -45,7 +45,7 @@ export async function managerApprove(ids: string[], actor: Actor, access: Billin
       result.skipped.push({ id, reason: "Not found" });
       continue;
     }
-    if (!bill.type || !bill.clientId || bill.amount === null) {
+    if (!bill.type || !hasBillTo(bill) || bill.amount === null) {
       result.skipped.push({ id, reason: "Type, client and amount are needed first" });
       continue;
     }
@@ -309,7 +309,15 @@ export async function decideChangeRequest(
           description: changes.description ?? current.description,
           workDate: changes.workDate ? new Date(changes.workDate) : current.workDate,
           remark: current.remark,
-          clientId: changes.clientId ?? current.clientId,
+          // A new client replaces an "Other" name; otherwise the bill-to is kept
+          ...(changes.clientId
+            ? { clientId: changes.clientId }
+            : {
+                clientId: current.clientId,
+                billToName: current.billToName,
+                billToAddress: current.billToAddress,
+                billToGstin: current.billToGstin,
+              }),
           createdById: current.createdById,
           amount: changes.amount ?? current.amount,
           amountEnteredById: changes.amount !== undefined ? actor.id : current.amountEnteredById,

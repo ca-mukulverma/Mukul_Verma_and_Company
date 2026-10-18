@@ -12,8 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatRupees, gstAmount, GST_RATE_PERCENT } from "@/lib/billing-constants";
-import { ClientOption, ClientPicker } from "./client-picker";
-import { apiErrorMessage, Bill, BillAction, BillEvent, EVENT_LABELS, runBillAction } from "./bill-types";
+import { BillTo, BillToPicker, billToPayload, billToValid } from "./client-picker";
+import { apiErrorMessage, Bill, BillAction, BillEvent, billParty, EVENT_LABELS, runBillAction } from "./bill-types";
 
 export type BillDialog = "amount" | "request" | "send_back" | "not_billable" | "final_reject" | "details" | "history";
 
@@ -68,7 +68,7 @@ function useBillAction({ bill, onDone }: Pick<DialogProps, "bill" | "onDone">) {
 }
 
 function BillSummary({ bill }: { bill: Bill }) {
-  const client = bill.client ? bill.client.companyName || bill.client.contactPerson : "No client";
+  const client = billParty(bill) ?? "No client";
   return (
     <div className="rounded-md bg-muted/50 p-3 text-sm">
       <p className="font-medium">{client}</p>
@@ -224,7 +224,12 @@ export function RemarkDialog({ bill, onClose, onDone, kind }: DialogProps & { ki
 }
 
 export function EditDetailsDialog({ bill, onClose, onDone }: DialogProps) {
-  const [client, setClient] = useState<ClientOption | null>(bill.client);
+  const [billTo, setBillTo] = useState<BillTo>({
+    client: bill.client,
+    other: !bill.client && bill.billToName
+      ? { name: bill.billToName, address: bill.billToAddress ?? "", gstin: bill.billToGstin ?? "" }
+      : null,
+  });
   const [description, setDescription] = useState(bill.description);
   const [workDate, setWorkDate] = useState(format(new Date(bill.workDate), "yyyy-MM-dd"));
   const [remark, setRemark] = useState(bill.remark || "");
@@ -234,7 +239,8 @@ export function EditDetailsDialog({ bill, onClose, onDone }: DialogProps) {
     setSaving(true);
     try {
       const response = await axios.patch<Bill>(`/api/bills/${bill.id}`, {
-        clientId: client?.id,
+        // Leave the bill-to alone if nothing has been chosen yet
+        ...(billToValid(billTo) && billToPayload(billTo)),
         description: description.trim(),
         workDate: new Date(`${workDate}T12:00:00`).toISOString(),
         remark: remark.trim() || null,
@@ -258,7 +264,7 @@ export function EditDetailsDialog({ bill, onClose, onDone }: DialogProps) {
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>Client</Label>
-            <ClientPicker value={client} onChange={setClient} />
+            <BillToPicker value={billTo} onChange={setBillTo} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="bill-description">Work done</Label>
@@ -275,7 +281,10 @@ export function EditDetailsDialog({ bill, onClose, onDone }: DialogProps) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={saving || description.trim().length < 3 || !workDate} onClick={save}>
+          <Button
+            disabled={saving || description.trim().length < 3 || !workDate || (!!billTo.other && !billToValid(billTo))}
+            onClick={save}
+          >
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save
           </Button>
         </DialogFooter>

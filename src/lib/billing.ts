@@ -1,4 +1,5 @@
 import { Bill, BillType, Company, Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser } from "@/lib/web-push";
 import { EDITABLE_BILL_STATUSES, formatBillNumber, financialYearOf } from "@/lib/billing-constants";
@@ -80,6 +81,9 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     remark: bill.remark,
     task: bill.task,
     client: bill.client,
+    billToName: bill.billToName,
+    billToAddress: bill.billToAddress,
+    billToGstin: bill.billToGstin,
     createdBy: bill.createdBy,
     createdAt: bill.createdAt,
     amountRequestedFrom: bill.amountRequestedFrom,
@@ -206,9 +210,51 @@ export async function notifyBillingUsers(
   }
 }
 
-export function describeBill(bill: { description: string; client?: { contactPerson: string; companyName: string | null } | null }) {
+// Who the bill is made out to: the saved client, or the name entered under "Other"
+export function billPartyName(bill: {
+  client?: { contactPerson: string; companyName: string | null } | null;
+  billToName?: string | null;
+}) {
+  return bill.client ? bill.client.companyName || bill.client.contactPerson : bill.billToName || null;
+}
+
+// "Other": a name typed in by hand instead of a saved client
+export const otherPartySchema = z.object({
+  name: z.string().trim().min(2, "Enter the name to bill").max(150),
+  address: z.string().trim().max(500).optional().nullable(),
+  gstin: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((v) => v === "" || /^\d{2}[A-Z0-9]{13}$/.test(v), "GSTIN should be 15 characters starting with the state code")
+    .optional()
+    .nullable(),
+});
+
+// Bill fields for a saved client or an "Other" name; choosing one clears the other
+export function billToData(input: { clientId?: string | null; other?: z.infer<typeof otherPartySchema> | null }) {
+  if (input.other) {
+    return {
+      clientId: null,
+      billToName: input.other.name,
+      billToAddress: input.other.address || null,
+      billToGstin: input.other.gstin || null,
+    };
+  }
+  return { clientId: input.clientId ?? null, billToName: null, billToAddress: null, billToGstin: null };
+}
+
+export function hasBillTo(bill: { clientId: string | null; billToName: string | null }) {
+  return !!bill.clientId || !!bill.billToName;
+}
+
+export function describeBill(bill: {
+  description: string;
+  client?: { contactPerson: string; companyName: string | null } | null;
+  billToName?: string | null;
+}) {
   const firstLine = bill.description.split("\n")[0].slice(0, 80);
-  const client = bill.client ? bill.client.companyName || bill.client.contactPerson : null;
+  const client = billPartyName(bill);
   return client ? `${firstLine} (${client})` : firstLine;
 }
 
