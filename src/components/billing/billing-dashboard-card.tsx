@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import axios from "axios";
-import { IndianRupee, Receipt } from "lucide-react";
+import { CheckCheck, IndianRupee, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { COMPANY_LABELS, CompanyValue } from "@/lib/billing-constants";
@@ -19,12 +19,16 @@ interface Summary {
   }[];
   awaitingMyAmountCount: number;
   counts: Record<string, Record<string, number>>;
+  isAdmin: boolean;
+  awaitingFinalCount: number;
+  pendingChangeRequests: number;
 }
 
 const STAGES = [
   { status: "draft", label: "Drafts" },
   { status: "awaiting_amount", label: "Awaiting amount" },
   { status: "amount_entered", label: "Amount entered" },
+  { status: "manager_approved", label: "Final approval" },
 ];
 
 // Dashboard card for partners and admins: bills waiting for their amount and,
@@ -50,6 +54,36 @@ export function BillingDashboardCard() {
         <CardDescription>Bills that need you</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        {summary.isAdmin && (summary.awaitingFinalCount > 0 || summary.pendingChangeRequests > 0) && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+            <div className="text-sm">
+              {summary.awaitingFinalCount > 0 && (
+                <p className="font-medium">
+                  {summary.awaitingFinalCount} bill{summary.awaitingFinalCount === 1 ? "" : "s"} waiting for your final approval
+                </p>
+              )}
+              {summary.pendingChangeRequests > 0 && (
+                <p className="font-medium">
+                  {summary.pendingChangeRequests} edit/cancel/reissue request{summary.pendingChangeRequests === 1 ? "" : "s"}
+                </p>
+              )}
+              <p className="text-muted-foreground">Bills are dated on the day you approve them. Approve before the month ends.</p>
+            </div>
+            <div className="flex gap-2">
+              {summary.awaitingFinalCount > 0 && (
+                <Button asChild size="sm">
+                  <Link href="/dashboard/billing?tab=final"><CheckCheck className="mr-1 h-3.5 w-3.5" />Approve</Link>
+                </Button>
+              )}
+              {summary.pendingChangeRequests > 0 && (
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/dashboard/billing?tab=requests">Requests</Link>
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
         {summary.awaitingMyAmountCount > 0 && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -82,7 +116,7 @@ export function BillingDashboardCard() {
                   <Link href={`/dashboard/billing?tab=${company === "MVC" ? "mvc" : "bedge"}`}>Open</Link>
                 </Button>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {STAGES.map((stage) => (
                   <div key={stage.status} className="rounded-md border p-2 text-center">
                     <p className="text-xl font-semibold">{counts[stage.status] || 0}</p>

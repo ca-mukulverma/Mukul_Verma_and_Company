@@ -15,7 +15,31 @@ import { formatRupees, gstAmount, GST_RATE_PERCENT } from "@/lib/billing-constan
 import { ClientOption, ClientPicker } from "./client-picker";
 import { apiErrorMessage, Bill, BillAction, BillEvent, EVENT_LABELS, runBillAction } from "./bill-types";
 
-export type BillDialog = "amount" | "request" | "send_back" | "not_billable" | "details" | "history";
+export type BillDialog = "amount" | "request" | "send_back" | "not_billable" | "final_reject" | "details" | "history";
+
+const REMARK_DIALOGS = {
+  send_back: {
+    title: "Send back to billing manager",
+    description: "Say what is wrong or what you need to know. Admin and the billing manager will be notified.",
+    required: true,
+    button: "Send back",
+    success: "Sent back",
+  },
+  not_billable: {
+    title: "Mark as not billable",
+    description: "The bill is set aside. You can reopen it later.",
+    required: false,
+    button: "Not billable",
+    success: "Marked not billable",
+  },
+  final_reject: {
+    title: "Return to billing manager",
+    description: "The bill goes back to the billing manager without a number. Say what needs to change.",
+    required: true,
+    button: "Return",
+    success: "Returned to billing manager",
+  },
+} as const;
 
 interface DialogProps {
   bill: Bill;
@@ -158,43 +182,40 @@ export function RequestAmountDialog({ bill, onClose, onDone }: DialogProps) {
   );
 }
 
-// Used for "send back" (remark required) and "not billable" (remark optional)
-export function RemarkDialog({ bill, onClose, onDone, kind }: DialogProps & { kind: "send_back" | "not_billable" }) {
+// Actions that only need a remark: send back, not billable, Admin's return
+export function RemarkDialog({ bill, onClose, onDone, kind }: DialogProps & { kind: keyof typeof REMARK_DIALOGS }) {
   const [remark, setRemark] = useState("");
   const { saving, run } = useBillAction({ bill, onDone });
-  const isSendBack = kind === "send_back";
-  const valid = !isSendBack || remark.trim().length >= 3;
+  const config = REMARK_DIALOGS[kind];
+  const valid = !config.required || remark.trim().length >= 3;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isSendBack ? "Send back to billing manager" : "Mark as not billable"}</DialogTitle>
-          <DialogDescription>
-            {isSendBack
-              ? "Say what is wrong or what you need to know. Admin and the billing manager will be notified."
-              : "The bill is set aside. You can reopen it later."}
-          </DialogDescription>
+          <DialogTitle>{config.title}</DialogTitle>
+          <DialogDescription>{config.description}</DialogDescription>
         </DialogHeader>
         <BillSummary bill={bill} />
         <div className="space-y-2">
-          <Label htmlFor="bill-remark">Remark{isSendBack ? "" : " (optional)"}</Label>
+          <Label htmlFor="bill-remark">Remark{config.required ? "" : " (optional)"}</Label>
           <Textarea id="bill-remark" value={remark} onChange={(e) => setRemark(e.target.value)} autoFocus />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
-            variant={isSendBack ? "default" : "destructive"}
+            variant={kind === "not_billable" ? "destructive" : "default"}
             disabled={!valid || saving}
             onClick={async () => {
-              const action: BillAction = isSendBack
-                ? { action: "send_back", remark: remark.trim() }
-                : { action: "not_billable", remark: remark.trim() || undefined };
-              if (await run(action, isSendBack ? "Sent back" : "Marked not billable")) onClose();
+              const action: BillAction =
+                kind === "not_billable"
+                  ? { action: "not_billable", remark: remark.trim() || undefined }
+                  : { action: kind, remark: remark.trim() };
+              if (await run(action, config.success)) onClose();
             }}
           >
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isSendBack ? "Send back" : "Not billable"}
+            {config.button}
           </Button>
         </DialogFooter>
       </DialogContent>

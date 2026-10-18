@@ -44,6 +44,19 @@ export const billInclude = {
   createdBy: { select: { id: true, name: true } },
   amountRequestedFrom: { select: { id: true, name: true } },
   amountEnteredBy: { select: { id: true, name: true } },
+  reissuedFrom: { select: { id: true, billNumber: true } },
+  reissuedAs: { select: { id: true, billNumber: true } },
+  changeRequests: {
+    where: { status: "pending" },
+    select: {
+      id: true,
+      kind: true,
+      reason: true,
+      changes: true,
+      createdAt: true,
+      requestedBy: { select: { id: true, name: true } },
+    },
+  },
 } satisfies Prisma.BillInclude;
 
 type BillWithRelations = Prisma.BillGetPayload<{ include: typeof billInclude }>;
@@ -75,6 +88,9 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     amount: canSeeAmount && bill.amount !== null ? Number(bill.amount) : null,
     billNumber: isManager ? bill.billNumber : null,
     billDate: isManager ? bill.billDate : null,
+    reissuedFrom: isManager ? bill.reissuedFrom : null,
+    reissuedAs: isManager ? bill.reissuedAs : null,
+    pendingChange: isManager ? (bill.changeRequests[0] ?? null) : null,
     canManage: isManager,
   };
 }

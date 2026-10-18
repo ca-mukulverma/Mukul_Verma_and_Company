@@ -88,33 +88,49 @@ Awaiting amount ── billing manager enters it, or sends it to a Partner/Admin
   ▼
 Amount entered (GST calculated automatically: CGST+SGST in-state, IGST otherwise)
   ▼
-Billing manager approval
+Billing manager approval (one bill or several selected at once)
   ▼
 Admin final approval ──► bill number + bill date assigned ──► Billing List
+  (one or several at once; or "Return" to the billing manager with a remark)
 ```
+
+When several bills are approved together, they are numbered in order of
+work date. A task's bill keeps what the old billing approval did. At final
+approval, the task is saved to the client's history and then removed from the
+task list. The bill keeps the work description.
 
 **Bill date** is the date of Admin final approval. The approval page carries a
 notice that bills are dated on approval, so all pending approvals should be
 cleared before the end of the month. It also shows how many bills are
-waiting. From the 25th of each month, Admin gets a daily reminder while bills
-are still waiting for final approval.
+waiting. From the 25th of each month, Admin gets a daily reminder at 10:00
+(Indian time) while bills are still waiting for final approval. This is the
+`/api/cron/billing-reminders` job in `vercel.json`, which uses the same
+`CRON_SECRET` as the other scheduled jobs.
 
 ### Changes after approval
 
 The billing manager can request an **edit**, **cancellation** or **reissue**
 with a reason. Admin approves or rejects the request.
 
-- **Edit**: the bill keeps its number. The previous version is kept in the bill's history.
+- **Edit**: the bill keeps its number. The fee, work description and work
+  date can change. The previous version is kept in the bill's history.
 - **Cancel**: the number stays in the series, marked *Cancelled*.
-- **Reissue**: the old bill is cancelled and a new number is issued, linked to the old bill.
+- **Reissue**: the old bill is cancelled and a new number is issued, linked to
+  the old bill. A reissue can also change the client and, for MVC, GST or
+  Non-GST. The new number then comes from that series.
+
+Only one request per bill can wait for Admin at a time.
 
 If the bill was already exported to Tally, it is flagged **Tally update
-needed**, and the next XML export alters or cancels the voucher in Tally.
+needed**, and the next XML export alters or cancels the voucher in Tally
+(stage 4).
 
 ## Billing List and exports
 
 Only the billing managers (each for their own company) and Admin can see the
-Billing List. It is filtered by bill type, date range, client and status.
+Billing List. It can be filtered by series, bill date range, status
+(approved/cancelled) and client or work. It shows fee, GST and total per bill,
+with the fee totals for each series.
 
 - **PDF and Word** (`.docx`) bills, either one at a time or several selected
   bills in a ZIP.
@@ -159,12 +175,11 @@ For B Edge bills, "billing manager" means the B Edge billing manager.
 1. **(Done)** Company (MVC/B Edge) on tasks, work entry form, bill records,
    permissions, the three number series, sending bills for an amount,
    notifications and dashboard sections.
-2. Billing manager and Admin approval, the Billing List, and
+2. **(Done)** Billing manager and Admin approval, the Billing List, and
    edit/cancel/reissue requests.
 3. PDF and Word bills, single or bulk.
 4. Tally XML export.
 
-The existing "pending billing" approval on tasks is replaced by this flow in
-stage 2. Tasks already waiting for billing approval will be carried over as
-draft bills then. Until stage 2, both the old approval and the new bills run
-side by side.
+The old "pending billing" approval on tasks has been replaced by this flow.
+Tasks that were waiting under it were carried over as draft bills when the
+stage 2 database update was applied.

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { BillStatus, Company, Prisma } from "@prisma/client";
+import { BillStatus, BillType, Company, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -16,8 +16,10 @@ const workEntrySchema = z.object({
   remark: z.string().trim().max(1000).optional().nullable(),
 });
 
-// GET /api/bills?view=manage|amounts|mine&company=MVC|BEDGE&status=...&search=...&page=1
+// GET /api/bills?view=manage|list|amounts|mine&company=MVC|BEDGE&status=...&search=...&page=1
 //   manage  – bills of the companies the user manages
+//   list    – the Billing List: numbered bills of those companies, filtered by
+//             &type=GST|NON_GST|BEDGE&from=YYYY-MM-DD&to=YYYY-MM-DD (bill date)
 //   amounts – bills sent to the user to enter the amount
 //   mine    – work the user logged or completed
 export async function GET(request: NextRequest) {
@@ -37,12 +39,30 @@ export async function GET(request: NextRequest) {
 
   const where: Prisma.BillWhereInput = {};
 
-  if (view === "manage") {
+  if (view === "manage" || view === "list") {
     const companies = company ? [company as Company] : access.manages;
     if (companies.length === 0 || companies.some((c) => !access.manages.includes(c))) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
     where.company = { in: companies };
+
+    if (view === "list") {
+      const type = searchParams.get("type");
+      const from = searchParams.get("from");
+      const to = searchParams.get("to");
+      if (type && type !== "all") {
+        if (!(type in BillType)) return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+        where.type = type as BillType;
+      }
+      if (from || to) {
+        where.billDate = {
+          // Dates are Indian calendar days
+          ...(from && { gte: new Date(`${from}T00:00:00+05:30`) }),
+          ...(to && { lte: new Date(`${to}T23:59:59.999+05:30`) }),
+        };
+      }
+      if (!status || status === "all") where.status = { in: ["approved", "cancelled"] };
+    }
   } else if (view === "amounts") {
     where.amountRequestedFromId = user.id;
     if (!status) where.status = "awaiting_amount";
@@ -51,6 +71,9 @@ export async function GET(request: NextRequest) {
   }
 
   if (status && status !== "all") {
+    if (view === "list" && status !== "approved" && status !== "cancelled") {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
     if (!(status in BillStatus)) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
@@ -65,15 +88,26 @@ export async function GET(request: NextRequest) {
     ];
   }
 
-  const [bills, total] = await Promise.all([
+  const [bills, total, sums] = await Promise.all([
     prisma.bill.findMany({
       where,
       include: billInclude,
-      orderBy: { createdAt: "desc" },
+      orderBy:
+        view === "list"
+          ? [{ billDate: "desc" }, { sequence: "desc" }]
+          : { createdAt: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
     prisma.bill.count({ where }),
+    // Fee totals of the approved bills in the Billing List, per type (for GST)
+    view === "list"
+      ? prisma.bill.groupBy({
+          by: ["type"],
+          where: { AND: [where, { status: "approved" }] },
+          _sum: { amount: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   return NextResponse.json({
@@ -81,6 +115,9 @@ export async function GET(request: NextRequest) {
     total,
     page,
     pages: Math.ceil(total / PAGE_SIZE),
+    ...(sums && {
+      totals: sums.map((row) => ({ type: row.type, amount: Number(row._sum.amount ?? 0) })),
+    }),
   });
 }
 

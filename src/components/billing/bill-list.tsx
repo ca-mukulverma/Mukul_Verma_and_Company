@@ -5,10 +5,11 @@ import Link from "next/link";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { History, Loader2, MoreVertical, Pencil, RotateCcw, Search, Send, Undo2, Ban, IndianRupee } from "lucide-react";
+import { Ban, CheckCheck, History, IndianRupee, Loader2, MoreVertical, Pencil, RotateCcw, Search, Send, Undo2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,9 +38,13 @@ import {
   RemarkDialog,
   RequestAmountDialog,
 } from "./bill-dialogs";
-import { apiErrorMessage, Bill, runBillAction } from "./bill-types";
+import { apiErrorMessage, Bill, runBillAction, runBulkApproval } from "./bill-types";
 
-export type BillListMode = "manage" | "amounts" | "mine";
+// manage  – billing manager's bills of one company
+// final   – Admin's final approval queue (all companies)
+// amounts – bills sent to the user for the amount
+// mine    – work the user logged or completed
+export type BillListMode = "manage" | "final" | "amounts" | "mine";
 
 const STATUS_STYLES: Record<BillStatusValue, string> = {
   draft: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
@@ -56,6 +61,7 @@ const MANAGE_FILTERS: { value: string; label: string }[] = [
   { value: "draft", label: "Drafts" },
   { value: "awaiting_amount", label: "Awaiting amount" },
   { value: "amount_entered", label: "Amount entered" },
+  { value: "manager_approved", label: "Awaiting final approval" },
   { value: "not_billable", label: "Not billable" },
   { value: "all", label: "All" },
 ];
@@ -76,21 +82,37 @@ export function BillList({
   // Called after any change so the page can refresh its counts
   onChanged?: () => void;
 }) {
-  const [status, setStatus] = useState(mode === "manage" ? "draft" : mode === "amounts" ? "awaiting_amount" : "all");
+  const [status, setStatus] = useState(
+    mode === "manage" ? "draft" : mode === "amounts" ? "awaiting_amount" : mode === "final" ? "manager_approved" : "all"
+  );
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const [bills, setBills] = useState<Bill[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<{ bill: Bill; dialog: BillDialog } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [approving, setApproving] = useState(false);
+
+  // Bills that can be approved together: the manager's "amount entered" list
+  // and Admin's final approval queue
+  const approvalAction =
+    mode === "final" ? "final_approve" : mode === "manage" && status === "amount_entered" ? "manager_approve" : null;
 
   const load = useCallback(async () => {
     try {
       const response = await axios.get("/api/bills", {
-        params: { view: mode, company, status, search: debouncedSearch || undefined, page },
+        params: {
+          view: mode === "final" ? "manage" : mode,
+          company,
+          status,
+          search: debouncedSearch || undefined,
+          page,
+        },
       });
       setBills(response.data.bills);
       setTotal(response.data.total);
+      setSelected(new Set());
     } catch (error) {
       toast.error(apiErrorMessage(error, "Could not load bills"));
       setBills([]);
@@ -117,6 +139,36 @@ export function BillList({
     } catch (error) {
       toast.error(apiErrorMessage(error));
     }
+  };
+
+  const approve = async (ids: string[]) => {
+    if (!approvalAction || ids.length === 0) return;
+    setApproving(true);
+    try {
+      const result = await runBulkApproval(approvalAction, ids);
+      if (result.done.length > 0) {
+        toast.success(
+          approvalAction === "final_approve"
+            ? `${result.done.length} bill${result.done.length === 1 ? "" : "s"} approved and numbered`
+            : `${result.done.length} bill${result.done.length === 1 ? "" : "s"} sent for final approval`
+        );
+      }
+      if (result.skipped.length > 0) {
+        toast.error(`${result.skipped.length} not approved: ${result.skipped[0].reason}`);
+      }
+      handleDone();
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const toggle = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
   };
 
   const reopen = async (bill: Bill) => {
@@ -164,11 +216,32 @@ export function BillList({
         </div>
       </div>
 
+      {approvalAction && bills && bills.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={selected.size === bills.length}
+              onCheckedChange={(checked) => setSelected(checked ? new Set(bills.map((b) => b.id)) : new Set())}
+              aria-label="Select all"
+            />
+            Select all
+          </label>
+          <Button size="sm" disabled={selected.size === 0 || approving} onClick={() => approve([...selected])}>
+            {approving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <CheckCheck className="mr-1 h-3.5 w-3.5" />}
+            {approvalAction === "final_approve" ? "Give final approval" : "Approve"} ({selected.size})
+          </Button>
+        </div>
+      )}
+
       {bills === null ? (
         <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : bills.length === 0 ? (
         <p className="text-center text-sm text-muted-foreground py-12">
-          {mode === "amounts" ? "No bills are waiting for your amount." : "No bills here."}
+          {mode === "amounts"
+            ? "No bills are waiting for your amount."
+            : mode === "final"
+              ? "No bills are waiting for final approval."
+              : "No bills here."}
         </p>
       ) : (
         <div className="space-y-3">
@@ -180,6 +253,10 @@ export function BillList({
               onOpen={(dialog) => setOpen({ bill, dialog })}
               onSetType={(type) => setType(bill, type)}
               onReopen={() => reopen(bill)}
+              onApprove={approvalAction ? () => approve([bill.id]) : undefined}
+              approving={approving}
+              selected={approvalAction ? selected.has(bill.id) : undefined}
+              onToggle={() => toggle(bill.id)}
             />
           ))}
           {pages > 1 && (
@@ -194,7 +271,7 @@ export function BillList({
 
       {open?.dialog === "amount" && <EnterAmountDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {open?.dialog === "request" && <RequestAmountDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
-      {(open?.dialog === "send_back" || open?.dialog === "not_billable") && (
+      {(open?.dialog === "send_back" || open?.dialog === "not_billable" || open?.dialog === "final_reject") && (
         <RemarkDialog bill={open.bill} kind={open.dialog} onClose={() => setOpen(null)} onDone={handleDone} />
       )}
       {open?.dialog === "details" && <EditDetailsDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
@@ -209,12 +286,21 @@ function BillCard({
   onOpen,
   onSetType,
   onReopen,
+  onApprove,
+  approving,
+  selected,
+  onToggle,
 }: {
   bill: Bill;
   mode: BillListMode;
   onOpen: (dialog: BillDialog) => void;
   onSetType: (type: "GST" | "NON_GST") => void;
   onReopen: () => void;
+  onApprove?: () => void;
+  approving?: boolean;
+  // undefined when the bill can't be selected
+  selected?: boolean;
+  onToggle: () => void;
 }) {
   const [title, ...rest] = bill.description.split("\n");
   const clientName = bill.client ? bill.client.companyName || bill.client.contactPerson : null;
@@ -226,10 +312,16 @@ function BillCard({
     <Card>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
+          {selected !== undefined && (
+            <Checkbox checked={selected} onCheckedChange={onToggle} className="mt-1" aria-label="Select bill" />
+          )}
+          <div className="min-w-0 flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <BillStatusBadge status={bill.status} />
               <CompanyBadge company={bill.company} />
+              {mode === "final" && bill.type && bill.company === "MVC" && (
+                <Badge variant="outline">{bill.type === "GST" ? "GST" : "Non-GST"}</Badge>
+              )}
               {bill.billNumber && <Badge variant="secondary">{bill.billNumber}</Badge>}
             </div>
             <p className="font-medium break-words">
@@ -286,6 +378,11 @@ function BillCard({
                 {bill.amount !== null ? "Change amount" : "Enter amount"}
               </Button>
             )}
+            {bill.status === "amount_entered" && onApprove && (
+              <Button size="sm" disabled={approving || !bill.type || !bill.client || bill.amount === null} onClick={onApprove}>
+                <CheckCheck className="mr-1 h-3.5 w-3.5" />Approve
+              </Button>
+            )}
             {(bill.status === "draft" || bill.status === "awaiting_amount") && (
               <Button size="sm" variant="outline" disabled={!bill.type || !bill.client} onClick={() => onOpen("request")}>
                 <Send className="mr-1 h-3.5 w-3.5" />
@@ -322,6 +419,20 @@ function BillCard({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+        )}
+
+        {mode === "final" && bill.status === "manager_approved" && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button size="sm" disabled={approving} onClick={onApprove}>
+              <CheckCheck className="mr-1 h-3.5 w-3.5" />Give final approval
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onOpen("final_reject")}>
+              <Undo2 className="mr-1 h-3.5 w-3.5" />Return
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => onOpen("history")}>
+              <History className="mr-1 h-3.5 w-3.5" />History
+            </Button>
           </div>
         )}
 

@@ -38,7 +38,6 @@ import {
 } from "lucide-react";
 import { TaskComments } from "@/components/tasks/task-comments";
 import { TaskDetailSkeleton } from "@/components/loading/task-skeleton";
-import { BillingApprovalButton } from "@/components/tasks/billing-approval-button"; // Add this import for BillingApprovalButton
 import { TaskAssignees } from "@/components/tasks/task-assignees";
 import { generateAndDownloadTaskPdf } from "@/lib/task-pdf-generate";
 import { getTaskListUrl } from "@/lib/task-list-state";
@@ -611,33 +610,22 @@ export default function TaskDetailPage({
                 </Button>
 
                 {task.status === "completed" &&
-                  currentBillingStatus === "pending_billing" &&
-                  (isAdmin || currentUser?.canApproveBilling) && (
+                  currentBillingStatus !== "billed" &&
+                  (isAdmin || session?.user?.role === "PARTNER") && (
                     <div className="mt-4">
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-950/30 dark:border-amber-900">
                         <div className="flex items-start gap-3">
                           <Receipt className="h-5 w-5 text-amber-600 mt-0.5" />
                           <div>
-                            <h3 className="font-medium">
-                              Billing Approval Required
-                            </h3>
-                            <p className="text-sm text-amber-800 mb-3">
-                              This task has been marked as completed and is
-                              awaiting billing approval.
+                            <h3 className="font-medium">Billing</h3>
+                            <p className="text-sm text-amber-800 dark:text-amber-300 mb-3">
+                              This task is completed. Its bill is handled on the Billing page.
                             </p>
-                            <BillingApprovalButton
-                              taskId={task.id}
-                              onApproved={() => {
-                                setTask((prev) =>
-                                  prev
-                                    ? { ...prev, billingStatus: "billed" }
-                                    : null
-                                );
-                                toast.success(
-                                  "Task billing approved successfully"
-                                );
-                              }}
-                            />
+                            <Button size="sm" variant="outline" asChild>
+                              <Link href={`/dashboard/billing?tab=${task.company === "BEDGE" ? "bedge" : "mvc"}`}>
+                                Open Billing
+                              </Link>
+                            </Button>
                           </div>
                         </div>
                       </div>

@@ -16,6 +16,7 @@ import {
   serializeBill,
 } from "@/lib/billing";
 import { EDITABLE_BILL_STATUSES, formatRupees } from "@/lib/billing-constants";
+import { finalApprove, finalReject, managerApprove } from "@/lib/bill-approvals";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -33,6 +34,9 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("send_back"), remark: z.string().trim().min(3, "Add a remark").max(1000) }),
   z.object({ action: z.literal("not_billable"), remark: z.string().trim().max(1000).optional() }),
   z.object({ action: z.literal("reopen") }),
+  z.object({ action: z.literal("manager_approve") }),
+  z.object({ action: z.literal("final_approve") }),
+  z.object({ action: z.literal("final_reject"), remark: z.string().trim().min(3, "Add a remark").max(1000) }),
 ]);
 
 async function loadContext(id: string) {
@@ -258,6 +262,30 @@ export async function POST(request: NextRequest, { params }: Params) {
         { action: "not_billable", userId: user.id, remark: input.remark || null }
       );
       if (!ok) return conflict();
+      break;
+    }
+
+    case "manager_approve": {
+      if (!isManager) return forbidden();
+      const result = await managerApprove([bill.id], user, access);
+      if (result.done.length === 0) {
+        return NextResponse.json({ error: result.skipped[0]?.reason || "Could not approve" }, { status: 409 });
+      }
+      break;
+    }
+
+    case "final_approve": {
+      if (!access.isAdmin) return forbidden();
+      const result = await finalApprove([bill.id], user);
+      if (result.done.length === 0) {
+        return NextResponse.json({ error: result.skipped[0]?.reason || "Could not approve" }, { status: 409 });
+      }
+      break;
+    }
+
+    case "final_reject": {
+      if (!access.isAdmin) return forbidden();
+      if (!(await finalReject(bill.id, input.remark, user))) return conflict();
       break;
     }
 

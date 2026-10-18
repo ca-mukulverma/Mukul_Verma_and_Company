@@ -13,7 +13,7 @@ export async function GET() {
   const access = await getBillingAccess(user.id);
   if (!access) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [awaitingMyAmount, grouped] = await Promise.all([
+  const [awaitingMyAmount, grouped, awaitingFinalCount, pendingChangeRequests] = await Promise.all([
     prisma.bill.findMany({
       where: { amountRequestedFromId: user.id, status: "awaiting_amount" },
       orderBy: { updatedAt: "desc" },
@@ -32,6 +32,10 @@ export async function GET() {
           _count: { _all: true },
         })
       : Promise.resolve([]),
+    access.isAdmin ? prisma.bill.count({ where: { status: "manager_approved" } }) : Promise.resolve(0),
+    access.manages.length > 0
+      ? prisma.billChangeRequest.count({ where: { status: "pending", bill: { company: { in: access.manages } } } })
+      : Promise.resolve(0),
   ]);
 
   const awaitingMyAmountCount =
@@ -50,5 +54,7 @@ export async function GET() {
     awaitingMyAmount,
     awaitingMyAmountCount,
     counts,
+    awaitingFinalCount,
+    pendingChangeRequests,
   });
 }

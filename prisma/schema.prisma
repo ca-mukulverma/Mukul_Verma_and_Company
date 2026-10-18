@@ -66,6 +66,18 @@ enum BillStatus {
   not_billable
 }
 
+enum BillChangeKind {
+  edit    // same number, new amount/details
+  cancel  // number stays in the series, marked cancelled
+  reissue // old bill cancelled, new bill with a new number
+}
+
+enum BillChangeStatus {
+  pending
+  approved
+  rejected
+}
+
 model User {
   id                      String         @id @default(uuid()) @db.Char(36)
   name                    String         @db.VarChar(50)  // 50 chars is enough for most names
@@ -101,6 +113,8 @@ model User {
   billsAmountRequested    Bill[]         @relation("BillAmountRequestedFrom")
   billsAmountEntered      Bill[]         @relation("BillAmountEnteredBy")
   billEvents              BillEvent[]
+  billChangesRequested    BillChangeRequest[] @relation("BillChangeRequestedBy")
+  billChangesDecided      BillChangeRequest[] @relation("BillChangeDecidedBy")
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -353,7 +367,13 @@ model Bill {
   billNumber    String?   @db.VarChar(30)
   billDate      DateTime?
 
-  events    BillEvent[]
+  // A reissued bill points to the bill it replaced
+  reissuedFromId String? @unique @db.Char(36)
+  reissuedFrom   Bill?   @relation("BillReissue", fields: [reissuedFromId], references: [id])
+  reissuedAs     Bill?   @relation("BillReissue")
+
+  events         BillEvent[]
+  changeRequests BillChangeRequest[]
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
@@ -371,11 +391,35 @@ model BillEvent {
   bill      Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
   action    String   @db.VarChar(40)
   remark    String?  @db.Text
+  details   Json? // e.g. the previous values when an approved bill is edited
   userId    String   @db.Char(36)
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 
   @@index([billId, createdAt])
+}
+
+// Billing manager's request to edit, cancel or reissue an approved bill;
+// Admin approves or rejects it
+model BillChangeRequest {
+  id             String           @id @default(uuid()) @db.Char(36)
+  billId         String           @db.Char(36)
+  bill           Bill             @relation(fields: [billId], references: [id], onDelete: Cascade)
+  kind           BillChangeKind
+  reason         String           @db.Text
+  // New values for edit/reissue: amount, description, workDate, clientId, type
+  changes        Json?
+  status         BillChangeStatus @default(pending)
+  requestedById  String           @db.Char(36)
+  requestedBy    User             @relation("BillChangeRequestedBy", fields: [requestedById], references: [id])
+  decidedById    String?          @db.Char(36)
+  decidedBy      User?            @relation("BillChangeDecidedBy", fields: [decidedById], references: [id])
+  decidedAt      DateTime?
+  decisionRemark String?          @db.Text
+  createdAt      DateTime         @default(now())
+
+  @@index([status, createdAt])
+  @@index([billId])
 }
 
 // Next number for each bill series; restarts at 1 every 1 April

@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/cache-warmup",
       "schedule": "0 7 * * 1-5"
+    },
+    {
+      "path": "/api/cron/billing-reminders",
+      "schedule": "30 4 * * *"
     }
   ],
   "headers": [

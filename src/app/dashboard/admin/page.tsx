@@ -30,7 +30,6 @@ import {
 import { RecentNotificationsCard } from "@/components/dashboard/recent-notifications-card";
 import { OverviewStats } from "@/components/dashboard/overview-stats";
 import { TaskProgress } from "@/components/dashboard/task-progress";
-import { PendingBillingTasks } from "@/components/admin/pending-billing-tasks";
 import { BillingDashboardCard } from "@/components/billing/billing-dashboard-card";
 import {
   DashboardStatsSkeleton,
@@ -572,7 +571,6 @@ export default function AdminDashboard() {
               {/* Billing Section */}
               <div className="grid gap-4 md:grid-cols-1">
                 <BillingDashboardCard />
-                <PendingBillingTasks />
               </div>
             </>
           )}
