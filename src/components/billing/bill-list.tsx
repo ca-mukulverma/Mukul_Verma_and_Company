@@ -5,7 +5,7 @@ import Link from "next/link";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Ban, CheckCheck, History, IndianRupee, Loader2, MoreVertical, Pencil, RotateCcw, Search, Send, Undo2 } from "lucide-react";
+import { Ban, CheckCheck, History, IndianRupee, Loader2, MoreVertical, Pencil, RotateCcw, Search, Send, Undo2, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -372,6 +372,11 @@ function BillCard({
             {bill.company === "MVC" && !editable && bill.type && (
               <Badge variant="outline">{bill.type === "GST" ? "GST – MVC & Company" : "Non-GST – CA Mukul Verma"}</Badge>
             )}
+            {editable && !bill.client && (
+              <Button size="sm" className="bg-amber-600 text-white hover:bg-amber-700" onClick={() => onOpen("details")}>
+                <UserPlus className="mr-1 h-3.5 w-3.5" />Choose client
+              </Button>
+            )}
             {editable && (
               <Button size="sm" variant="outline" disabled={!bill.type || !bill.client} onClick={() => onOpen("amount")}>
                 <IndianRupee className="mr-1 h-3.5 w-3.5" />
@@ -420,6 +425,16 @@ function BillCard({
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+        )}
+
+        {canManage && editable && (!bill.type || !bill.client) && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            {!bill.client && !bill.type
+              ? "Choose the client and GST / Non-GST before entering the amount or sending it for the amount."
+              : !bill.client
+                ? "Choose the client before entering the amount or sending it for the amount."
+                : "Choose GST / Non-GST before entering the amount or sending it for the amount."}
+          </p>
         )}
 
         {mode === "final" && bill.status === "manager_approved" && (
