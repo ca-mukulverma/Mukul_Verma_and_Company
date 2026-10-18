@@ -55,6 +55,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { canModifyClient } from "@/lib/permissions";
+import { ClientImportDialog } from "@/components/clients/client-import-dialog";
 import { DataTable } from "@/components/ui/data-table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ClientListSkeleton } from "@/components/loading/client-skeleton";
@@ -618,6 +619,7 @@ const deleteClient = async () => {
         </div>
       </Link>
     </Button>
+    <ClientImportDialog onImported={refresh} />
     <Button variant="outline" asChild className="flex-1">
       <Link href="/dashboard/clients/guest/create">
         <div className="flex items-center justify-center">
