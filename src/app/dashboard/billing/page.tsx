@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BillList } from "@/components/billing/bill-list";
 import { BillingRegister } from "@/components/billing/billing-register";
 import { ChangeRequests } from "@/components/billing/change-requests";
+import { EntityProfiles } from "@/components/billing/entity-profiles";
 import { cn } from "@/lib/utils";
 import { SeriesSettings } from "@/components/billing/series-settings";
 import { WorkEntryForm } from "@/components/billing/work-entry-form";
@@ -121,7 +122,7 @@ function BillingPageContent() {
     ...(isManager ? ["list", "requests"] : []),
     "log",
     "mine",
-    ...(summary.isAdmin ? ["series"] : []),
+    ...(summary.isAdmin ? ["series", "profiles"] : []),
   ];
   const defaultTab =
     summary.isAdmin && summary.awaitingFinalCount > 0
@@ -173,6 +174,7 @@ function BillingPageContent() {
             <TabsTrigger value="log">Log work</TabsTrigger>
             <TabsTrigger value="mine">My entries</TabsTrigger>
             {summary.isAdmin && <TabsTrigger value="series">Number series</TabsTrigger>}
+            {summary.isAdmin && <TabsTrigger value="profiles">Company profiles</TabsTrigger>}
           </TabsList>
         </div>
 
@@ -215,6 +217,11 @@ function BillingPageContent() {
         {summary.isAdmin && (
           <TabsContent value="series" className="mt-4">
             <SeriesSettings />
+          </TabsContent>
+        )}
+        {summary.isAdmin && (
+          <TabsContent value="profiles" className="mt-4">
+            <EntityProfiles />
           </TabsContent>
         )}
       </Tabs>

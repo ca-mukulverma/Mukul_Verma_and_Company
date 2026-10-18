@@ -429,3 +429,25 @@ model BillSeries {
   nextNumber    Int
   updatedAt     DateTime @updatedAt
 }
+
+// Letterhead and payment details printed on each type of bill; Admin edits
+// these in Billing → Company profiles
+model BillingEntity {
+  type        BillType @id
+  name        String   @db.VarChar(100)
+  address     String?  @db.Text
+  phone       String?  @db.VarChar(30)
+  email       String?  @db.VarChar(75)
+  pan         String?  @db.VarChar(10)
+  gstin       String?  @db.VarChar(15)
+  // GST state code, e.g. "23" for Madhya Pradesh; decides CGST+SGST or IGST
+  stateCode   String?  @db.VarChar(2)
+  sacCode     String?  @db.VarChar(10)
+  bankName    String?  @db.VarChar(100)
+  bankAccount String?  @db.VarChar(30)
+  bankIfsc    String?  @db.VarChar(11)
+  bankBranch  String?  @db.VarChar(100)
+  signatory   String?  @db.VarChar(100)
+  footerNote  String?  @db.Text
+  updatedAt   DateTime @updatedAt
+}

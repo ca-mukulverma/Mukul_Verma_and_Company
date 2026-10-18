@@ -108,3 +108,33 @@ export const EVENT_LABELS: Record<string, string> = {
 };
 
 export const CHANGE_KIND_LABELS = { edit: "Edit", cancel: "Cancel", reissue: "Reissue" } as const;
+
+// Downloads a bill file from the API and saves it under the server's file name
+export async function downloadBillFile(
+  request: { method: "get"; url: string } | { method: "post"; url: string; data: unknown }
+) {
+  const response = await axios.request<Blob>({ ...request, responseType: "blob" });
+  const disposition = String(response.headers["content-disposition"] || "");
+  const fileName = disposition.match(/filename="([^"]+)"/)?.[1] || "bill";
+  const url = URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Error bodies of blob requests arrive as a Blob, not JSON
+export async function blobErrorMessage(error: unknown, fallback = "Download failed") {
+  if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
+    try {
+      const body = JSON.parse(await error.response.data.text());
+      if (typeof body.error === "string") return body.error;
+    } catch {
+      // not JSON
+    }
+  }
+  return fallback;
+}

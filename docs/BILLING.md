@@ -32,10 +32,16 @@ number series and its own Tally company:
 For MVC work, the MVC billing manager chooses GST or Non-GST. B Edge bills are
 always non-GST.
 
-Admin edits each entity's profile in Settings: name, address, PAN, GSTIN and
-state (MVC & Company only), bank details, logo and signatory. For now the
-profiles hold only the names above, and the other fields stay empty until
-they're filled in.
+Admin edits each entity's profile in **Billing → Company profiles**: name,
+address, phone, email, PAN, bank details, signatory and a note for the bottom
+of the bill. MVC & Company also has GSTIN, GST state code and SAC code. The
+profiles start with only the names above.
+
+GST on a GST bill:
+- **CGST 9% + SGST 9%** when the client's GSTIN is from the firm's state.
+- **IGST 18%** when the client's GSTIN is from another state.
+- A client without a GSTIN is treated as being in the firm's state.
+- Until the state code is filled in, the bill shows a single "GST @ 18%" line.
 
 ### Number series
 
@@ -132,8 +138,17 @@ Billing List. It can be filtered by series, bill date range, status
 (approved/cancelled) and client or work. It shows fee, GST and total per bill,
 with the fee totals for each series.
 
-- **PDF and Word** (`.docx`) bills, either one at a time or several selected
-  bills in a ZIP.
+- **PDF and Word** (`.docx`) bills, one at a time from a bill's ⋮ menu, or
+  several selected bills as a ZIP of PDFs, a ZIP of Word files, or one
+  combined PDF for printing.
+- Bills use a standard layout until the firm's own formats are supplied:
+  - letterhead, then "TAX INVOICE" (GST) or "BILL";
+  - bill to, then bill no., date and place of supply;
+  - the work done, the fee and the GST lines;
+  - the total in words (lakh/crore), bank details and the signature block.
+- Cancelled bills carry a "CANCELLED" stamp.
+- The standard PDF fonts have no ₹ sign, so PDFs print amounts as "Rs.".
+  Word files use ₹.
 - **Tally XML**: one file per billing entity (separate Tally companies). It
   contains the bills not yet exported, plus edits and cancellations. Bills
   are marked as exported to avoid duplicates. Ledger names are set in
@@ -177,7 +192,7 @@ For B Edge bills, "billing manager" means the B Edge billing manager.
    notifications and dashboard sections.
 2. **(Done)** Billing manager and Admin approval, the Billing List, and
    edit/cancel/reissue requests.
-3. PDF and Word bills, single or bulk.
+3. **(Done)** PDF and Word bills, single or bulk, and the company profiles.
 4. Tally XML export.
 
 The old "pending billing" approval on tasks has been replaced by this flow.

@@ -4,13 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Ban, History, Loader2, MoreVertical, Pencil, RefreshCw, Search } from "lucide-react";
+import { Ban, Download, FileText, History, Loader2, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -22,7 +24,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { BILL_TYPE_LABELS, BillTypeValue, CompanyValue, formatRupees, gstAmount } from "@/lib/billing-constants";
 import { HistoryDialog } from "./bill-dialogs";
 import { BillStatusBadge } from "./bill-list";
-import { apiErrorMessage, Bill, CHANGE_KIND_LABELS } from "./bill-types";
+import { apiErrorMessage, Bill, blobErrorMessage, CHANGE_KIND_LABELS, downloadBillFile } from "./bill-types";
 import { ChangeKind, ChangeRequestDialog } from "./change-request-dialog";
 
 // Numbered bills (approved and cancelled) of the companies the user manages
@@ -40,6 +42,35 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ bills: Bill[]; total: number; totals: { type: BillTypeValue; amount: number }[] } | null>(null);
   const [open, setOpen] = useState<{ bill: Bill; dialog: ChangeKind | "history" } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  const download = async (
+    key: string,
+    request: Parameters<typeof downloadBillFile>[0]
+  ) => {
+    setDownloading(key);
+    try {
+      await downloadBillFile(request);
+    } catch (error) {
+      toast.error(await blobErrorMessage(error));
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const downloadSelected = (format: "pdf" | "docx" | "combined") =>
+    download(format, { method: "post", url: "/api/bills/documents", data: { ids: [...selected], format } });
+
+  const downloadOne = (bill: Bill, format: "pdf" | "docx") =>
+    download(`${bill.id}-${format}`, { method: "get", url: `/api/bills/${bill.id}/document?format=${format}` });
+
+  const toggle = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -55,6 +86,7 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
         },
       });
       setData(response.data);
+      setSelected(new Set());
     } catch (error) {
       toast.error(apiErrorMessage(error, "Could not load the billing list"));
       setData({ bills: [], total: 0, totals: [] });
@@ -134,6 +166,31 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
         </div>
       )}
 
+      {data && data.bills.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+          <label className="flex items-center gap-2 text-sm mr-2">
+            <Checkbox
+              checked={selected.size === data.bills.length}
+              onCheckedChange={(checked) => setSelected(checked ? new Set(data.bills.map((b) => b.id)) : new Set())}
+              aria-label="Select all bills"
+            />
+            Select all ({selected.size})
+          </label>
+          <Button size="sm" variant="outline" disabled={selected.size === 0 || !!downloading} onClick={() => downloadSelected("pdf")}>
+            {downloading === "pdf" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+            PDFs (ZIP)
+          </Button>
+          <Button size="sm" variant="outline" disabled={selected.size === 0 || !!downloading} onClick={() => downloadSelected("docx")}>
+            {downloading === "docx" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1 h-3.5 w-3.5" />}
+            Word (ZIP)
+          </Button>
+          <Button size="sm" variant="outline" disabled={selected.size === 0 || !!downloading} onClick={() => downloadSelected("combined")}>
+            {downloading === "combined" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Printer className="mr-1 h-3.5 w-3.5" />}
+            One PDF to print
+          </Button>
+        </div>
+      )}
+
       {data === null ? (
         <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : data.bills.length === 0 ? (
@@ -145,6 +202,7 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8"><span className="sr-only">Select</span></TableHead>
                 <TableHead>Bill no.</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Client</TableHead>
@@ -163,6 +221,13 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                 const cancelled = bill.status === "cancelled";
                 return (
                   <TableRow key={bill.id} className={cancelled ? "text-muted-foreground" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selected.has(bill.id)}
+                        onCheckedChange={() => toggle(bill.id)}
+                        aria-label={`Select bill ${bill.billNumber}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-mono whitespace-nowrap">
                       <span className={cancelled ? "line-through" : undefined}>{bill.billNumber}</span>
                       <p className="font-sans text-xs text-muted-foreground">
@@ -205,6 +270,13 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => downloadOne(bill, "pdf")}>
+                            <Download className="mr-2 h-4 w-4" />Download PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => downloadOne(bill, "docx")}>
+                            <FileText className="mr-2 h-4 w-4" />Download Word
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "history" })}>
                             <History className="mr-2 h-4 w-4" />History
                           </DropdownMenuItem>
