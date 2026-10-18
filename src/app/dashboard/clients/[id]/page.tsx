@@ -39,7 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UnifiedHistoryTab } from "@/components/clients/unified-history-tab";
-import { canCreateTask, canModifyClient } from "@/lib/permissions";
+import { canCreateTask, canEditClient, canModifyClient } from "@/lib/permissions";
 import { CredentialsTab } from "@/components/clients/credentials-tab";
 
 interface Client {
@@ -85,6 +85,10 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
   const [error, setError] = useState<string | null>(null);
 
   // Check if user has write access
+  // Admins and partners can edit the client; history and credential
+  // management stay with admins
+  const canEdit = canEditClient(session);
+
   const hasWriteAccess = useMemo(() => {
     return canModifyClient(session);
   }, [session]);
@@ -200,7 +204,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
               {client.isGuest && client.accessExpiry && isClientExpired(client) && (
                 <Badge variant="destructive">Expired</Badge>
               )}
-              {!hasWriteAccess && (
+              {!canEdit && (
                 <Badge variant="outline" className="bg-blue-100 text-blue-800">
                   Read Only
                 </Badge>
@@ -209,7 +213,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-        {hasWriteAccess && (
+        {canEdit && (
           <Button asChild>
             <Link href={`/dashboard/clients/${client.id}/edit`}>
               <Pencil className="mr-2 h-4 w-4" />

@@ -24,10 +24,10 @@ const routePermissions = {
   // Client management routes - accessible to all staff
   "/dashboard/clients": ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
   "/dashboard/clients/[id]": ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
-  // Restrict creation and modification to ADMIN only
-  "/dashboard/clients/create": ["ADMIN"],
-  "/dashboard/clients/guest/create": ["ADMIN"],
-  "/dashboard/clients/[id]/edit": ["ADMIN"],
+  // Admins and partners can add and edit clients
+  "/dashboard/clients/create": ["ADMIN", "PARTNER"],
+  "/dashboard/clients/guest/create": ["ADMIN", "PARTNER"],
+  "/dashboard/clients/[id]/edit": ["ADMIN", "PARTNER"],
   // Task management routes (partners may only edit tasks they created; enforced by the API)
   "/dashboard/tasks/create": ["ADMIN", "PARTNER"],
   "/dashboard/tasks/[id]/edit": ["ADMIN", "PARTNER"],

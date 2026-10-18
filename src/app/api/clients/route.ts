@@ -124,10 +124,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Modified: Only allow ADMIN to create clients
-    if (session.user.role !== "ADMIN") {
+    // Admins and partners can add clients; editing and deleting stay with admins
+    if (session.user.role !== "ADMIN" && session.user.role !== "PARTNER") {
       return NextResponse.json(
-        { error: "Only administrators can create clients" },
+        { error: "Only administrators and partners can add clients" },
         { status: 403 }
       );
     }

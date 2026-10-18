@@ -54,7 +54,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { canModifyClient } from "@/lib/permissions";
+import { canCreateClient, canEditClient, canModifyClient } from "@/lib/permissions";
+import { ClientImportDialog } from "@/components/clients/client-import-dialog";
 import { DataTable } from "@/components/ui/data-table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ClientListSkeleton } from "@/components/loading/client-skeleton";
@@ -79,10 +80,12 @@ interface Client {
 const ClientCard = ({ 
   client, 
   confirmDelete,
+  canEdit,
   canDelete
 }: { 
   client: Client, 
   confirmDelete: (id: string) => void,
+  canEdit: boolean,
   canDelete: boolean
 }) => {
   const router = useRouter();
@@ -186,24 +189,26 @@ const ClientCard = ({
             </Link>
           </Button>
           
-          {canDelete && (
+          {canEdit && (
             <div className="flex gap-1">
               <Button variant="ghost" size="sm" className="hover:bg-blue-50 hover:text-blue-600" asChild>
-                <Link href={`/dashboard/clients`}>
+                <Link href={`/dashboard/clients/${client.id}/edit`}>
                   <Edit className="h-3.5 w-3.5 mr-1" />
                   Edit
                 </Link>
               </Button>
               
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:bg-red-50 dark:hover:bg-red-950/20"
-                onClick={() => confirmDelete(client.id)}
-              >
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
-                Delete
-              </Button>
+              {canDelete && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:bg-red-50 dark:hover:bg-red-950/20"
+                  onClick={() => confirmDelete(client.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  Delete
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -279,6 +284,10 @@ const refresh = useCallback(() => {
   const clients = clientsResponse?.clients || [];
 
   // Check if user can modify clients
+  // Admins and partners can add and edit clients; only admins delete
+  const canAddClients = canCreateClient(session);
+  const canEditClients = canEditClient(session);
+
   const hasWriteAccess = useMemo(() => {
     return canModifyClient(session);
   }, [session]);
@@ -385,8 +394,8 @@ const refresh = useCallback(() => {
       accessorKey: "actions",
       cell: (client: Client) => (
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-          {hasWriteAccess ? (
-            // Show dropdown menu with all actions for users with write access
+          {canEditClients ? (
+            // Menu with the actions this user may take
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -411,13 +420,15 @@ const refresh = useCallback(() => {
                     Edit Client
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-red-600 focus:text-red-600"
-                  onClick={() => confirmDelete(client.id)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete Client
-                </DropdownMenuItem>
+                {hasWriteAccess && (
+                  <DropdownMenuItem
+                    className="text-red-600 focus:text-red-600"
+                    onClick={() => confirmDelete(client.id)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete Client
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
@@ -437,7 +448,7 @@ const refresh = useCallback(() => {
       ),
       className: "text-right"
     }
-  ], [hasWriteAccess, confirmDelete]); // Remove isClientExpired and getDisplayName from deps since they're now component functions
+  ], [hasWriteAccess, canEditClients, confirmDelete]); // Remove isClientExpired and getDisplayName from deps since they're now component functions
 
   // Handle view mode toggle
   const handleViewModeChange = useCallback((value: string) => {
@@ -606,8 +617,8 @@ const deleteClient = async () => {
           </p>
         </div>
 
-        {/* Only show create buttons for admin users */}
-        {hasWriteAccess && (
+        {/* Create buttons for admins and partners */}
+        {canAddClients && (
   <div className="flex flex-row gap-2">
     <Button asChild className="flex-1">
       <Link href="/dashboard/clients/create">
@@ -618,6 +629,7 @@ const deleteClient = async () => {
         </div>
       </Link>
     </Button>
+    <ClientImportDialog onImported={refresh} />
     <Button variant="outline" asChild className="flex-1">
       <Link href="/dashboard/clients/guest/create">
         <div className="flex items-center justify-center">
@@ -794,14 +806,16 @@ const deleteClient = async () => {
                     ? "No guest clients have been added yet"
                     : "No clients have been added yet"}
                 </p>
-                <div className="flex justify-center gap-3">
-                  <Button asChild>
-                    <Link href="/dashboard/clients/create">Add Permanent Client</Link>
-                  </Button>
-                  <Button variant="outline" asChild>
-                    <Link href="/dashboard/clients/guest/create">Add Guest Client</Link>
-                  </Button>
-                </div>
+                {canAddClients && (
+                  <div className="flex justify-center gap-3">
+                    <Button asChild>
+                      <Link href="/dashboard/clients/create">Add Permanent Client</Link>
+                    </Button>
+                    <Button variant="outline" asChild>
+                      <Link href="/dashboard/clients/guest/create">Add Guest Client</Link>
+                    </Button>
+                  </div>
+                )}
               </div>
             ) : viewMode === "table" ? (
               // TABLE VIEW
@@ -820,6 +834,7 @@ const deleteClient = async () => {
                     key={client.id} 
                     client={client} 
                     confirmDelete={confirmDelete} 
+                    canEdit={canEditClients}
                     canDelete={hasWriteAccess}
                   />
                 ))}

@@ -36,7 +36,7 @@ import {
 import { toast } from "sonner";
 import { ArrowLeft, CalendarIcon, Loader2, AlertCircle } from "lucide-react";
 import Link from "next/link";
-import { canModifyClient } from "@/lib/permissions";
+import { canEditClient } from "@/lib/permissions";
 import { useSession } from "next-auth/react";
 
 // Form schema with conditional validation
@@ -115,7 +115,7 @@ export default function EditClientPage({
   // Check for permissions when component mounts
   useEffect(() => {
     // Redirect if not admin
-    if (status !== "loading" && !canModifyClient(session)) {
+    if (status !== "loading" && !canEditClient(session)) {
       toast.error("You don't have permission to edit clients");
       router.push(`/dashboard/clients/${clientId}`);
     }
@@ -204,7 +204,7 @@ export default function EditClientPage({
     );
   }
 
-  if (!canModifyClient(session)) {
+  if (!canEditClient(session)) {
     return null; // Will redirect in the useEffect
   }
 

@@ -32,7 +32,7 @@ import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { canModifyClient } from "@/lib/permissions";
+import { canCreateClient } from "@/lib/permissions";
 import { useSession } from "next-auth/react";
 
 // Schema for permanent client
@@ -81,8 +81,8 @@ export default function ClientCreatePage() {
 
   // Check for permissions when component mounts
   useEffect(() => {
-    // Redirect if not admin
-    if (status !== "loading" && !canModifyClient(session)) {
+    // Redirect if not allowed to add clients
+    if (status !== "loading" && !canCreateClient(session)) {
       toast.error("You don't have permission to create clients");
       router.push("/dashboard/clients");
     }
@@ -114,7 +114,7 @@ export default function ClientCreatePage() {
     );
   }
 
-  if (!canModifyClient(session)) {
+  if (!canCreateClient(session)) {
     return null; // Will redirect in the useEffect
   }
 
