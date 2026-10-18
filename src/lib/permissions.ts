@@ -87,9 +87,17 @@ export const canModifyClient = (session: Session | null): boolean => {
 
 /**
  * Check if user can add clients (one at a time, guest, or from Excel).
- * Admins and partners can add; editing and deleting stay with admins.
+ * Admins and partners can add; deleting stays with admins.
  */
 export const canCreateClient = (session: Session | null): boolean => {
+  return session?.user?.role === "ADMIN" || session?.user?.role === "PARTNER";
+};
+
+/**
+ * Check if user can edit a client's details. Admins and partners can edit;
+ * deleting clients, client history and credential deletion stay with admins.
+ */
+export const canEditClient = (session: Session | null): boolean => {
   return session?.user?.role === "ADMIN" || session?.user?.role === "PARTNER";
 };
 

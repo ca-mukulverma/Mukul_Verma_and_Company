@@ -93,10 +93,10 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Add role-based access control
-    if (session.user.role !== "ADMIN") {
+    // Admins and partners can edit clients; deleting stays with admins
+    if (session.user.role !== "ADMIN" && session.user.role !== "PARTNER") {
       return NextResponse.json(
-        { error: "Only administrators can update clients" },
+        { error: "Only administrators and partners can update clients" },
         { status: 403 }
       );
     }
