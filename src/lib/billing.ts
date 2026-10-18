@@ -91,6 +91,8 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     reissuedFrom: isManager ? bill.reissuedFrom : null,
     reissuedAs: isManager ? bill.reissuedAs : null,
     pendingChange: isManager ? (bill.changeRequests[0] ?? null) : null,
+    tallyExportedAt: isManager ? bill.tallyExportedAt : null,
+    tallyNeedsUpdate: isManager ? bill.tallyNeedsUpdate : false,
     canManage: isManager,
   };
 }

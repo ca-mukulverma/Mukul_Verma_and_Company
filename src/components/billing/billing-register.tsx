@@ -255,6 +255,11 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                     <TableCell>
                       <div className="flex flex-col items-start gap-1">
                         <BillStatusBadge status={bill.status} />
+                        {bill.tallyExportedAt && (
+                          <Badge variant="outline" className="whitespace-nowrap">
+                            {bill.tallyNeedsUpdate ? "Tally update due" : "In Tally"}
+                          </Badge>
+                        )}
                         {bill.pendingChange && (
                           <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-300 whitespace-nowrap">
                             {CHANGE_KIND_LABELS[bill.pendingChange.kind]} requested

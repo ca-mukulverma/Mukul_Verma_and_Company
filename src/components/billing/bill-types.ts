@@ -24,6 +24,8 @@ export interface Bill {
   reissuedFrom: { id: string; billNumber: string | null } | null;
   reissuedAs: { id: string; billNumber: string | null } | null;
   pendingChange: PendingChange | null;
+  tallyExportedAt: string | null;
+  tallyNeedsUpdate: boolean;
   canManage: boolean;
 }
 

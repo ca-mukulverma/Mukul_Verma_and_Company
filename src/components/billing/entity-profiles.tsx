@@ -28,11 +28,17 @@ interface Entity {
   bankBranch: string | null;
   signatory: string | null;
   footerNote: string | null;
+  tallyCompany: string | null;
+  tallyVoucherType: string | null;
+  tallySalesLedger: string | null;
+  tallyCgstLedger: string | null;
+  tallySgstLedger: string | null;
+  tallyIgstLedger: string | null;
 }
 
 type Field = Exclude<keyof Entity, "type">;
 
-const FIELDS: { key: Field; label: string; placeholder?: string; gstOnly?: boolean; long?: boolean }[] = [
+const FIELDS: { key: Field; label: string; placeholder?: string; gstOnly?: boolean; long?: boolean; tally?: boolean }[] = [
   { key: "name", label: "Name on the bill" },
   { key: "address", label: "Address", long: true },
   { key: "phone", label: "Phone" },
@@ -47,6 +53,13 @@ const FIELDS: { key: Field; label: string; placeholder?: string; gstOnly?: boole
   { key: "bankBranch", label: "Branch" },
   { key: "signatory", label: "Signatory name" },
   { key: "footerNote", label: "Note at the bottom of the bill", long: true },
+  // Names exactly as they are in Tally; empty fields use the default shown
+  { key: "tallyCompany", label: "Company name in Tally", tally: true },
+  { key: "tallyVoucherType", label: "Voucher type", placeholder: "Sales", tally: true },
+  { key: "tallySalesLedger", label: "Sales / fee ledger", placeholder: "Professional Fees", tally: true },
+  { key: "tallyCgstLedger", label: "CGST ledger", placeholder: "Output CGST", gstOnly: true, tally: true },
+  { key: "tallySgstLedger", label: "SGST ledger", placeholder: "Output SGST", gstOnly: true, tally: true },
+  { key: "tallyIgstLedger", label: "IGST ledger", placeholder: "Output IGST", gstOnly: true, tally: true },
 ];
 
 // Admin edits the letterhead and bank details printed on each type of bill
@@ -112,17 +125,26 @@ function EntityForm({ entity }: { entity: Entity }) {
             save();
           }}
         >
-          {FIELDS.filter((field) => isGst || !field.gstOnly).map((field) => {
+          {FIELDS.filter((field) => isGst || !field.gstOnly).map((field, index, shown) => {
             const id = `${entity.type}-${field.key}`;
+            const firstTallyField = field.tally && !shown[index - 1]?.tally;
             const props = {
               id,
               value: values[field.key] ?? "",
-              placeholder: field.placeholder,
+              placeholder: field.key === "tallyCompany" ? values.name : field.placeholder,
               onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
                 setValues({ ...values, [field.key]: e.target.value }),
             };
             return (
               <div key={field.key} className="space-y-1">
+                {firstTallyField && (
+                  <div className="pt-4 pb-1">
+                    <p className="font-medium">Tally</p>
+                    <p className="text-xs text-muted-foreground">
+                      Names exactly as they are in Tally. Empty fields use the name shown in grey.
+                    </p>
+                  </div>
+                )}
                 <Label htmlFor={id}>{field.label}</Label>
                 {field.long ? <Textarea {...props} className="min-h-[70px]" /> : <Input {...props} />}
               </div>

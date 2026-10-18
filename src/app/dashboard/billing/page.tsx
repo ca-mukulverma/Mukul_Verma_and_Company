@@ -9,6 +9,7 @@ import { BillList } from "@/components/billing/bill-list";
 import { BillingRegister } from "@/components/billing/billing-register";
 import { ChangeRequests } from "@/components/billing/change-requests";
 import { EntityProfiles } from "@/components/billing/entity-profiles";
+import { TallyExport } from "@/components/billing/tally-export";
 import { cn } from "@/lib/utils";
 import { SeriesSettings } from "@/components/billing/series-settings";
 import { WorkEntryForm } from "@/components/billing/work-entry-form";
@@ -119,7 +120,7 @@ function BillingPageContent() {
     ...(summary.canEnterAmounts ? ["amounts"] : []),
     ...(summary.manages.includes("MVC") ? ["mvc"] : []),
     ...(summary.manages.includes("BEDGE") ? ["bedge"] : []),
-    ...(isManager ? ["list", "requests"] : []),
+    ...(isManager ? ["list", "tally", "requests"] : []),
     "log",
     "mine",
     ...(summary.isAdmin ? ["series", "profiles"] : []),
@@ -168,6 +169,7 @@ function BillingPageContent() {
               <TabsTrigger value="bedge">B Edge bills<CountBadge count={pendingCount("BEDGE")} /></TabsTrigger>
             )}
             {isManager && <TabsTrigger value="list">Billing list</TabsTrigger>}
+            {isManager && <TabsTrigger value="tally">Tally</TabsTrigger>}
             {isManager && (
               <TabsTrigger value="requests">Change requests<CountBadge count={summary.pendingChangeRequests} /></TabsTrigger>
             )}
@@ -196,6 +198,11 @@ function BillingPageContent() {
         {isManager && (
           <TabsContent value="list" className="mt-4 min-w-0">
             <BillingRegister manages={summary.manages} onChanged={loadSummary} />
+          </TabsContent>
+        )}
+        {isManager && (
+          <TabsContent value="tally" className="mt-4 min-w-0">
+            <TallyExport isAdmin={summary.isAdmin} />
           </TabsContent>
         )}
         {isManager && (

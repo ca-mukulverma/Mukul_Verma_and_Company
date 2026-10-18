@@ -115,6 +115,7 @@ model User {
   billEvents              BillEvent[]
   billChangesRequested    BillChangeRequest[] @relation("BillChangeRequestedBy")
   billChangesDecided      BillChangeRequest[] @relation("BillChangeDecidedBy")
+  tallyExports            TallyExport[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -129,6 +130,7 @@ model Client {
   address        String?      @db.VarChar(150)  // Reduced from 255
   notes          String?      @db.Text        // Keep as Text for longer content
   gstin          String?      @db.VarChar(15) // Standard GSTIN is 15 chars
+  tallyLedgerName String?     @db.VarChar(100) // Party ledger in Tally, if not the client's name
   isGuest        Boolean      @default(false) // Whether this is a temporary guest client
   accessExpiry   DateTime?    // When guest client access expires
   createdAt      DateTime     @default(now())
@@ -372,6 +374,12 @@ model Bill {
   reissuedFrom   Bill?   @relation("BillReissue", fields: [reissuedFromId], references: [id])
   reissuedAs     Bill?   @relation("BillReissue")
 
+  // Tally: when the bill was last sent, and whether a later change still has to be sent
+  tallyExportedAt  DateTime?
+  tallyNeedsUpdate Boolean      @default(false)
+  tallyExportId    String?      @db.Char(36)
+  tallyExport      TallyExport? @relation(fields: [tallyExportId], references: [id])
+
   events         BillEvent[]
   changeRequests BillChangeRequest[]
   createdAt DateTime    @default(now())
@@ -449,5 +457,28 @@ model BillingEntity {
   bankBranch  String?  @db.VarChar(100)
   signatory   String?  @db.VarChar(100)
   footerNote  String?  @db.Text
+  // Names as they are in Tally; defaults are used while these are empty
+  tallyCompany     String? @db.VarChar(100)
+  tallyVoucherType String? @db.VarChar(50)
+  tallySalesLedger String? @db.VarChar(100)
+  tallyCgstLedger  String? @db.VarChar(100)
+  tallySgstLedger  String? @db.VarChar(100)
+  tallyIgstLedger  String? @db.VarChar(100)
   updatedAt   DateTime @updatedAt
+}
+
+// One Tally XML file that was downloaded; kept so the same file can be
+// downloaded again if the import has to be repeated
+model TallyExport {
+  id          String   @id @default(uuid()) @db.Char(36)
+  type        BillType
+  xml         String   @db.Text
+  newCount    Int
+  updateCount Int
+  createdById String   @db.Char(36)
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  bills       Bill[]
+
+  @@index([type, createdAt])
 }

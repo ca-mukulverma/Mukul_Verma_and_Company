@@ -270,6 +270,8 @@ export async function decideChangeRequest(
             ...(changes.amount !== undefined && { amount: changes.amount }),
             ...(changes.description !== undefined && { description: changes.description }),
             ...(changes.workDate !== undefined && { workDate: new Date(changes.workDate) }),
+            // Already in Tally: the next export alters the voucher
+            tallyNeedsUpdate: current.tallyExportedAt !== null,
           },
         });
         await tx.billEvent.create({
@@ -284,8 +286,12 @@ export async function decideChangeRequest(
         return;
       }
 
-      // cancel and reissue both cancel the current bill; its number stays used
-      await tx.bill.update({ where: { id: bill.id }, data: { status: "cancelled" } });
+      // cancel and reissue both cancel the current bill; its number stays used.
+      // Already in Tally: the next export cancels the voucher.
+      await tx.bill.update({
+        where: { id: bill.id },
+        data: { status: "cancelled", tallyNeedsUpdate: current.tallyExportedAt !== null },
+      });
 
       if (request.kind === "cancel") {
         await tx.billEvent.create({ data: { billId: bill.id, action: "cancelled", userId: actor.id, remark: request.reason } });

@@ -128,8 +128,7 @@ with a reason. Admin approves or rejects the request.
 Only one request per bill can wait for Admin at a time.
 
 If the bill was already exported to Tally, it is flagged **Tally update
-needed**, and the next XML export alters or cancels the voucher in Tally
-(stage 4).
+due**, and the next XML export alters or cancels the voucher in Tally.
 
 ## Billing List and exports
 
@@ -149,10 +148,31 @@ with the fee totals for each series.
 - Cancelled bills carry a "CANCELLED" stamp.
 - The standard PDF fonts have no ₹ sign, so PDFs print amounts as "Rs.".
   Word files use ₹.
-- **Tally XML**: one file per billing entity (separate Tally companies). It
-  contains the bills not yet exported, plus edits and cancellations. Bills
-  are marked as exported to avoid duplicates. Ledger names are set in
-  Settings.
+- **Tally XML**: one file per billing entity, from the **Tally** tab, because
+  each entity is a separate company in Tally. In TallyPrime, use
+  *Import → Vouchers*.
+  - Each bill becomes a sales voucher. The party ledger is debited with the
+    total, and the fee ledger and the GST ledgers are credited. GST vouchers
+    also carry the party GSTIN and place of supply.
+  - A voucher's REMOTEID is the bill's id, so Tally recognises it again
+    later:
+    - a bill not sent before goes as *Create*;
+    - an approved bill edited after it was sent goes as *Alter*;
+    - a bill cancelled or reissued after it was sent goes as *Cancel* (the
+      reissued bill goes as a new *Create*).
+  - Bills cancelled before they were ever sent are not sent.
+  - Downloading the file marks its bills as sent. Every file is kept, and
+    an earlier file can be downloaded again if an import has to be
+    repeated. Two people exporting at the same moment cannot both send the
+    same bills.
+  - **Ledger names:**
+    - The Tally company name, voucher type, fee ledger and CGST/SGST/IGST
+      ledgers are set per entity in *Company profiles*. Until they're set,
+      the defaults are used: the entity's name, "Sales", "Professional
+      Fees", "Output CGST/SGST/IGST".
+    - Each client's party ledger defaults to the client's name. A billing
+      manager can change it on the Tally tab when the name in Tally
+      differs. Client ledgers must already exist in Tally.
 
 ## Dashboards
 
@@ -193,7 +213,7 @@ For B Edge bills, "billing manager" means the B Edge billing manager.
 2. **(Done)** Billing manager and Admin approval, the Billing List, and
    edit/cancel/reissue requests.
 3. **(Done)** PDF and Word bills, single or bulk, and the company profiles.
-4. Tally XML export.
+4. **(Done)** Tally XML export.
 
 The old "pending billing" approval on tasks has been replaced by this flow.
 Tasks that were waiting under it were carried over as draft bills when the

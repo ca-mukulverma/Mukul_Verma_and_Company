@@ -22,6 +22,12 @@ const entitySchema = z.object({
   bankBranch: optional(100),
   signatory: optional(100),
   footerNote: optional(500),
+  tallyCompany: optional(100),
+  tallyVoucherType: optional(50),
+  tallySalesLedger: optional(100),
+  tallyCgstLedger: optional(100),
+  tallySgstLedger: optional(100),
+  tallyIgstLedger: optional(100),
 });
 
 async function requireAdmin() {
