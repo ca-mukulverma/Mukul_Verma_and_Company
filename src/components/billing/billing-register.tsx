@@ -268,7 +268,9 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                       </div>
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
+                      {/* Not modal: these items open dialogs, and a modal menu leaves the page
+                          unclickable (pointer-events: none) after the dialog closes */}
+                      <DropdownMenu modal={false}>
                         <DropdownMenuTrigger asChild>
                           <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Bill actions">
                             <MoreVertical className="h-4 w-4" />
