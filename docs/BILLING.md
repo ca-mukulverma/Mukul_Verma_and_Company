@@ -91,8 +91,8 @@ GST bills.
 | Admin | Admin role | Everything. Gives final approval and approves edit/cancel/reissue requests |
 | MVC billing manager | Selected Partner(s)/Admin | All MVC bills and amounts. Sets GST/Non-GST, enters or requests amounts, approves, requests edit/cancel/reissue, exports |
 | B Edge billing manager | Selected Partner(s)/Admin | Same as above, but only for B Edge bills |
-| Amount setter | Any Partner/Admin a bill is sent to | Only the bills sent to them. Enters the amount or sends the bill back with a remark |
-| Everyone else | — | Can log work done. Never sees amounts, bill numbers or the Billing List |
+| Amount setter | Admin, or a Partner Admin has allowed to enter amounts, that a bill is sent to | Only the bills sent to them. Enters the amount or sends the bill back with a remark |
+| Everyone else | Executives, consultants and the other Partners | Can log work done. Never sees amounts, bill numbers or the Billing List |
 
 Amounts are removed **on the server** for anyone without permission. Hiding them
 on screen is not enough, because the data can be read from the browser.
@@ -104,7 +104,7 @@ Draft (task completed / direct work / B Edge work)
   │  MVC: billing manager selects GST (MVC & Company) or Non-GST (CA Mukul Verma)
   │  B Edge: automatically B Edge, non-GST
   ▼
-Awaiting amount ── billing manager enters it, or sends it to a Partner/Admin
+Awaiting amount ── billing manager enters it, or sends it to an allowed Partner/Admin
   │                 who enters it or sends it back with a remark
   ▼
 Amount entered (GST calculated automatically: CGST+SGST in-state, IGST otherwise)
@@ -191,7 +191,7 @@ with the fee totals for each series.
 
 ## Dashboards
 
-- **Partner/Admin:** "Bills awaiting your amount" for bills sent to them.
+- **Admin and allowed Partners:** "Bills awaiting your amount" for bills sent to them.
 - **Admin:** "Awaiting final approval", with the month-end notice.
 - **Billing managers:** count of bills at each stage for their company.
 
@@ -218,7 +218,11 @@ For B Edge bills, "billing manager" means the B Edge billing manager.
   partners. It now appears as "MVC Billing Manager" in Settings → Permissions.
 - **B Edge billing manager** is a new switch on the same page.
 - Admins are always billing managers for both companies.
-- Bills can be sent to any active Partner or Admin to enter the amount.
+- **Can enter amounts** is a switch on the same page. Bills can be sent for the
+  amount only to active Admins and to Partners with this switch on. Other
+  Partners see billing like executives and consultants. Turning the switch off
+  sends the bills waiting for that Partner's amount back to the billing
+  managers as drafts.
 
 ## Build stages
 

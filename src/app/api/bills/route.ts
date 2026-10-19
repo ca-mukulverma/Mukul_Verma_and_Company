@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
       if (!status || status === "all") where.status = { in: ["approved", "cancelled"] };
     }
   } else if (view === "amounts") {
+    if (!access.canEnterAmounts) return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     where.amountRequestedFromId = user.id;
     if (!status) where.status = "awaiting_amount";
   } else {

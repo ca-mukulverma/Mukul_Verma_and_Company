@@ -138,6 +138,7 @@ export async function GET(request: NextRequest) {
         avatar: true,
         canApproveBilling: true,
         canManageBedgeBilling: true,
+        canEnterBillAmounts: true,
       },
     });
 
@@ -308,16 +309,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Array of { id, canApproveBilling, canManageBedgeBilling? }
+  // Array of { id, canApproveBilling, canManageBedgeBilling?, canEnterBillAmounts? }
   const { updates } = await request.json() as {
-    updates: { id: string; canApproveBilling: boolean; canManageBedgeBilling?: boolean }[];
+    updates: { id: string; canApproveBilling: boolean; canManageBedgeBilling?: boolean; canEnterBillAmounts?: boolean }[];
   };
 
   try {
     const updatePromises = updates.map(async (update) => {
       const before = await prisma.user.findUnique({
         where: { id: update.id },
-        select: { canApproveBilling: true, canManageBedgeBilling: true },
+        select: { canApproveBilling: true, canManageBedgeBilling: true, canEnterBillAmounts: true },
       });
       const updatedUser = await prisma.user.update({
         where: { id: update.id },
@@ -326,8 +327,34 @@ export async function POST(request: NextRequest) {
           ...(update.canManageBedgeBilling !== undefined && {
             canManageBedgeBilling: update.canManageBedgeBilling,
           }),
+          ...(update.canEnterBillAmounts !== undefined && {
+            canEnterBillAmounts: update.canEnterBillAmounts,
+          }),
         },
       });
+
+      // Bills waiting for this partner's amount go back to the billing managers
+      if (update.canEnterBillAmounts === false && before?.canEnterBillAmounts) {
+        await prisma.$transaction(async (tx) => {
+          const waiting = await tx.bill.findMany({
+            where: { amountRequestedFromId: update.id, status: "awaiting_amount" },
+            select: { id: true },
+          });
+          if (waiting.length === 0) return;
+          await tx.bill.updateMany({
+            where: { id: { in: waiting.map((b) => b.id) }, status: "awaiting_amount" },
+            data: { status: "draft", amountRequestedFromId: null },
+          });
+          await tx.billEvent.createMany({
+            data: waiting.map((b) => ({
+              billId: b.id,
+              action: "sent_back",
+              userId: session.user.id,
+              remark: `${updatedUser.name} can no longer enter amounts`,
+            })),
+          });
+        });
+      }
 
       // Notify only about permissions that were just granted
       const granted: string[] = [];
@@ -336,6 +363,9 @@ export async function POST(request: NextRequest) {
       }
       if (update.canManageBedgeBilling && !before?.canManageBedgeBilling) {
         granted.push("You have been made a B Edge billing manager. You can now manage B Edge bills from the Billing page.");
+      }
+      if (update.canEnterBillAmounts && !before?.canEnterBillAmounts) {
+        granted.push("Billing managers can now send you bills to enter the amount. They appear under \"Awaiting my amount\" on the Billing page.");
       }
       for (const content of granted) {
         const notification = await prisma.notification.create({

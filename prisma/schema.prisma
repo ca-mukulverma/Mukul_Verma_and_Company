@@ -108,6 +108,7 @@ model User {
   clientHistories         ClientHistory[] @relation("CreatedBy")
   canApproveBilling       Boolean        @default(false) // Whether this user can approve billing (also: MVC billing manager)
   canManageBedgeBilling   Boolean        @default(false) // B Edge billing manager
+  canEnterBillAmounts     Boolean        @default(false) // Partner bills can be sent to for the amount
   pushSubscriptions       PushSubscription[]
   billsCreated            Bill[]         @relation("BillCreatedBy")
   billsAmountRequested    Bill[]         @relation("BillAmountRequestedFrom")

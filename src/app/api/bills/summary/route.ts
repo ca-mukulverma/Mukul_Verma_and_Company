@@ -14,18 +14,20 @@ export async function GET() {
   if (!access) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [awaitingMyAmount, grouped, awaitingFinalCount, pendingChangeRequests] = await Promise.all([
-    prisma.bill.findMany({
-      where: { amountRequestedFromId: user.id, status: "awaiting_amount" },
-      orderBy: { updatedAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        company: true,
-        description: true,
-        client: { select: { contactPerson: true, companyName: true } },
-        billToName: true,
-      },
-    }),
+    access.canEnterAmounts
+      ? prisma.bill.findMany({
+          where: { amountRequestedFromId: user.id, status: "awaiting_amount" },
+          orderBy: { updatedAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            company: true,
+            description: true,
+            client: { select: { contactPerson: true, companyName: true } },
+            billToName: true,
+          },
+        })
+      : Promise.resolve([]),
     access.manages.length > 0
       ? prisma.bill.groupBy({
           by: ["company", "status"],

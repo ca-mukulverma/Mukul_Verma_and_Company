@@ -138,7 +138,7 @@ export function RequestAmountDialog({ bill, onClose, onDone }: DialogProps) {
 
   useEffect(() => {
     axios
-      .get("/api/users", { params: { roles: "ADMIN,PARTNER", status: "active" } })
+      .get("/api/users", { params: { billAmounts: "1" } })
       .then((response) => setUsers(response.data.users || []))
       .catch(() => toast.error("Could not load partners"));
   }, []);
@@ -149,7 +149,8 @@ export function RequestAmountDialog({ bill, onClose, onDone }: DialogProps) {
         <DialogHeader>
           <DialogTitle>Send for amount</DialogTitle>
           <DialogDescription>
-            The partner or admin you choose will see this bill on their dashboard and enter the amount.
+            The partner or admin you choose will see this bill on their dashboard and enter the amount. Only
+            partners Admin has allowed to enter amounts are listed.
           </DialogDescription>
         </DialogHeader>
         <BillSummary bill={bill} />
