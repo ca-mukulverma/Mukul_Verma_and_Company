@@ -403,7 +403,9 @@ function BillCard({
                 <RotateCcw className="mr-1 h-3.5 w-3.5" />Reopen
               </Button>
             )}
-            <DropdownMenu>
+            {/* Not modal: these items open dialogs, and a modal menu leaves the page
+                unclickable (pointer-events: none) after the dialog closes */}
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="More actions">
                   <MoreVertical className="h-4 w-4" />
