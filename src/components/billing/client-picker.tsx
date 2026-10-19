@@ -65,7 +65,9 @@ export function ClientPicker({
   }, [debouncedSearch, open]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // modal: inside a dialog the list would otherwise not take clicks or typing,
+    // because the dialog keeps focus and pointer events to itself
+    <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -163,14 +165,36 @@ export function billToValid(value: BillTo) {
 // typed in for work that is not for a saved client
 export function BillToPicker({ value, onChange }: { value: BillTo; onChange: (value: BillTo) => void }) {
   const other = value.other;
+  const useOther = () => onChange({ client: null, other: other ?? { name: "", address: "", gstin: "" } });
   return (
     <div className="space-y-3">
-      <ClientPicker
-        value={value.client}
-        label={other ? "Other – name entered below" : null}
-        onChange={(client) => onChange({ client, other: null })}
-        onOther={() => onChange({ client: null, other: other ?? { name: "", address: "", gstin: "" } })}
-      />
+      <div role="radiogroup" aria-label="Bill to" className="inline-flex rounded-md border p-1 gap-1">
+        {[
+          { key: "client", label: "Saved client", active: !other, onClick: () => onChange({ client: value.client, other: null }) },
+          { key: "other", label: "Other (not a saved client)", active: !!other, onClick: useOther },
+        ].map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            role="radio"
+            aria-checked={option.active}
+            onClick={option.onClick}
+            className={cn(
+              "px-3 py-1 text-sm rounded transition-colors",
+              option.active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {!other && (
+        <ClientPicker
+          value={value.client}
+          onChange={(client) => onChange({ client, other: null })}
+          onOther={useOther}
+        />
+      )}
       {other && (
         <div className="space-y-3 rounded-md border p-3">
           <div className="space-y-1">

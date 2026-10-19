@@ -68,7 +68,7 @@ export function WorkEntryForm({ onLogged }: { onLogged?: () => void }) {
             <Label>Client*</Label>
             <BillToPicker value={billTo} onChange={setBillTo} />
             <p className="text-xs text-muted-foreground">
-              Not a saved client? Choose <strong>Other</strong> at the end of the list and type the name to bill.
+              Not a saved client? Choose <strong>Other</strong> and type the name to bill.
             </p>
           </div>
           <div className="space-y-2">
