@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { Check, ChevronsUpDown, Loader2, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,10 @@ export function ClientPicker({
   const debouncedSearch = useDebounce(search, 300);
   const [options, setOptions] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // Inside a dialog the list must open within the dialog, or the dialog keeps
+  // the typing cursor and clicks to itself
+  const [container, setContainer] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -65,11 +69,16 @@ export function ClientPicker({
   }, [debouncedSearch, open]);
 
   return (
-    // modal: inside a dialog the list would otherwise not take clicks or typing,
-    // because the dialog keeps focus and pointer events to itself
-    <Popover open={open} onOpenChange={setOpen} modal>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setContainer(trigger.current?.closest<HTMLElement>("[role=dialog]") ?? null);
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
+          ref={trigger}
           type="button"
           variant="outline"
           role="combobox"
@@ -83,7 +92,7 @@ export function ClientPicker({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start" container={container}>
         <Command shouldFilter={false}>
           <CommandInput placeholder="Type a name..." value={search} onValueChange={setSearch} />
           <CommandList>
