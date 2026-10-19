@@ -23,7 +23,6 @@ import {
   Building2,
   LayoutDashboard,
   ArrowRight,
-  Code,
   Heart,
   Receipt,
 } from "lucide-react";
@@ -393,9 +392,7 @@ export default function DashboardLayout({
                             © {new Date().getFullYear()} All rights reserved
                           </p>
                           <div className="mt-2 pt-1 border-t border-border/40">
-                            <p className="font-medium text-xs">Created by</p>
-                            <p className="text-xs">Sahil Vishwakarma</p>
-                            <p className="text-xs">Priyesh Kurmi</p>
+                            <p className="font-medium text-xs">Created for MVC</p>
                           </div>
                         </div>
                       </TooltipContent>
@@ -562,18 +559,11 @@ export default function DashboardLayout({
                       </Button>
                     </div>
                   
-                    {/* Creator credits - moved inside the flex-col for better spacing */}
+                    {/* Credit line */}
                     <div className="mt-auto pt-4 pb-4 text-xs text-muted-foreground/80">
-                      <div className="flex items-center justify-center gap-1.5 mb-2 font-medium">
-                        <Code className="h-3.5 w-3.5" /> 
-                        <span>Created with</span> 
+                      <div className="flex items-center justify-center gap-1.5 font-medium">
                         <Heart className="h-3 w-3 text-rose-500 animate-pulse" />
-                      </div>
-                      <div className="text-center font-medium">
-                        Sahil Vishwakarma
-                      </div>
-                      <div className="text-center font-medium mt-2">
-                        Priyesh Kurmi
+                        <span>Created for MVC</span>
                       </div>
                     </div>
                   </div>

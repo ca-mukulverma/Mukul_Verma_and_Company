@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { Check, ChevronsUpDown, Loader2, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,10 @@ export function ClientPicker({
   const debouncedSearch = useDebounce(search, 300);
   const [options, setOptions] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // Inside a dialog the list must open within the dialog, or the dialog keeps
+  // the typing cursor and clicks to itself
+  const [container, setContainer] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -65,9 +69,16 @@ export function ClientPicker({
   }, [debouncedSearch, open]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setContainer(trigger.current?.closest<HTMLElement>("[role=dialog]") ?? null);
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
+          ref={trigger}
           type="button"
           variant="outline"
           role="combobox"
@@ -81,7 +92,7 @@ export function ClientPicker({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start" container={container}>
         <Command shouldFilter={false}>
           <CommandInput placeholder="Type a name..." value={search} onValueChange={setSearch} />
           <CommandList>
@@ -163,14 +174,36 @@ export function billToValid(value: BillTo) {
 // typed in for work that is not for a saved client
 export function BillToPicker({ value, onChange }: { value: BillTo; onChange: (value: BillTo) => void }) {
   const other = value.other;
+  const useOther = () => onChange({ client: null, other: other ?? { name: "", address: "", gstin: "" } });
   return (
     <div className="space-y-3">
-      <ClientPicker
-        value={value.client}
-        label={other ? "Other – name entered below" : null}
-        onChange={(client) => onChange({ client, other: null })}
-        onOther={() => onChange({ client: null, other: other ?? { name: "", address: "", gstin: "" } })}
-      />
+      <div role="radiogroup" aria-label="Bill to" className="inline-flex rounded-md border p-1 gap-1">
+        {[
+          { key: "client", label: "Saved client", active: !other, onClick: () => onChange({ client: value.client, other: null }) },
+          { key: "other", label: "Other (not a saved client)", active: !!other, onClick: useOther },
+        ].map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            role="radio"
+            aria-checked={option.active}
+            onClick={option.onClick}
+            className={cn(
+              "px-3 py-1 text-sm rounded transition-colors",
+              option.active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {!other && (
+        <ClientPicker
+          value={value.client}
+          onChange={(client) => onChange({ client, other: null })}
+          onOther={useOther}
+        />
+      )}
       {other && (
         <div className="space-y-3 rounded-md border p-3">
           <div className="space-y-1">

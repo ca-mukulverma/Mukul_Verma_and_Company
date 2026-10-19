@@ -414,31 +414,10 @@ export default function Home() {
             © {new Date().getFullYear()} MV Company. All rights reserved.
           </p>
           
-          {/* Developer Credits */}
           <div className="mt-6 pt-6 border-t border-border/40">
-            <p className="text-sm font-medium mb-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-              Designed & Developed by
+            <p className="text-sm font-medium bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+              Created for MVC
             </p>
-            <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8">
-              <div className="flex flex-col items-center">
-                <p className="font-medium">Sahil Vishwakarma</p>
-                <a 
-                  href="mailto:sahilvishwa2108@gmail.com" 
-                  className="text-sm text-muted-foreground hover:text-indigo-500 transition-colors"
-                >
-                  sahilvishwa2108@gmail.com
-                </a>
-              </div>
-              <div className="flex flex-col items-center">
-                <p className="font-medium">Priyesh Kurmi</p>
-                <a 
-                  href="mailto:kpriyesh1908@gmail.com" 
-                  className="text-sm text-muted-foreground hover:text-indigo-500 transition-colors"
-                >
-                  kpriyesh1908@gmail.com
-                </a>
-              </div>
-            </div>
           </div>
         </div>
       </footer>
