@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { v4 as uuidv4 } from "uuid";
 import { logActivity } from "@/lib/activity-logger";
 import { hash } from "bcryptjs";
+import { amountSetterWhere } from "@/lib/billing";
 
 export async function POST(req: NextRequest) {
   try {
@@ -141,6 +142,11 @@ export async function GET(request: NextRequest) {
       where.role = { in: roles };
     }
     
+    // Only the users a bill can be sent to for the amount
+    if (searchParams.get("billAmounts") === "1") {
+      Object.assign(where, amountSetterWhere);
+    }
+
     // Apply status filter
     if (status === "active") {
       where.isActive = true;

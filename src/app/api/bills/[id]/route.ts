@@ -6,6 +6,7 @@ import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   BillingAccess,
+  amountSetterWhere,
   billInclude,
   billToData,
   canViewBill,
@@ -14,6 +15,7 @@ import {
   otherPartySchema,
   getBillingAccess,
   getBillingManagerIds,
+  isAmountSetterFor,
   managesCompany,
   notifyBillingUsers,
   serializeBill,
@@ -91,7 +93,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   // The history contains remarks about amounts, so only people who deal with
   // the amount see it
-  const canSeeHistory = managesCompany(access, bill.company) || bill.amountRequestedFromId === access.userId;
+  const canSeeHistory = managesCompany(access, bill.company) || isAmountSetterFor(bill, access);
   const events = canSeeHistory
     ? await prisma.billEvent.findMany({
         where: { billId: bill.id },
@@ -150,7 +152,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
   const input = parsed.data;
   const isManager = managesCompany(access, bill.company);
-  const isRequestedUser = bill.amountRequestedFromId === user.id;
+  const isRequestedUser = access.canEnterAmounts && bill.amountRequestedFromId === user.id;
   const billLabel = describeBill(bill);
 
   switch (input.action) {
@@ -174,12 +176,15 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (!bill.type) return NextResponse.json({ error: "Choose GST or Non-GST first" }, { status: 400 });
       if (!hasBillTo(bill)) return NextResponse.json({ error: "Select the client or enter the name to bill first" }, { status: 400 });
 
-      const target = await prisma.user.findUnique({
-        where: { id: input.userId },
-        select: { id: true, name: true, role: true, isActive: true },
+      const target = await prisma.user.findFirst({
+        where: { id: input.userId, ...amountSetterWhere },
+        select: { id: true, name: true },
       });
-      if (!target || !target.isActive || !["ADMIN", "PARTNER"].includes(target.role)) {
-        return NextResponse.json({ error: "Amounts can only be sent to an active Partner or Admin" }, { status: 400 });
+      if (!target) {
+        return NextResponse.json(
+          { error: "Amounts can only be sent to an Admin or a Partner allowed to enter amounts" },
+          { status: 400 }
+        );
       }
 
       const ok = await updateIfStatus(

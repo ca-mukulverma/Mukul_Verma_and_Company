@@ -19,6 +19,7 @@ export default function PermissionsPage() {
     avatar: string | null; // Avatar URL or fallback
     canApproveBilling: boolean;
     canManageBedgeBilling: boolean;
+    canEnterBillAmounts: boolean;
   }
 
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -45,6 +46,7 @@ export default function PermissionsPage() {
           avatar: user.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name)}`, // Use DiceBear if no avatar
           canApproveBilling: user.canApproveBilling || false,
           canManageBedgeBilling: user.canManageBedgeBilling || false,
+          canEnterBillAmounts: user.canEnterBillAmounts || false,
         }))
       );
       setLoading(false);
@@ -56,7 +58,7 @@ export default function PermissionsPage() {
   };
 
   // Toggle a billing permission for a partner
-  const handleToggle = (id: string, permission: "canApproveBilling" | "canManageBedgeBilling") => {
+  const handleToggle = (id: string, permission: "canApproveBilling" | "canManageBedgeBilling" | "canEnterBillAmounts") => {
     setPartners((prev) =>
       prev.map((partner) =>
         partner.id === id
@@ -70,10 +72,11 @@ export default function PermissionsPage() {
   const handleSave = async () => {
     try {
       setError(null);
-      const updates = partners.map(({ id, canApproveBilling, canManageBedgeBilling }) => ({
+      const updates = partners.map(({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts }) => ({
         id,
         canApproveBilling,
         canManageBedgeBilling,
+        canEnterBillAmounts,
       }));
       await axios.post("/api/admin/dashboard", { updates });
       setDialogOpen(true); // Open the dialog after successful save
@@ -95,7 +98,8 @@ export default function PermissionsPage() {
           <CardTitle className="text-2xl font-bold">Billing Permissions for Partners</CardTitle>
           <p className="text-sm text-muted-foreground">
             MVC billing managers handle MVC bills (GST and Non-GST); B Edge billing managers handle B Edge bills.
-            They see amounts, choose the bill type and send bills to partners for the amount. Admins can always do both.
+            They see amounts, choose the bill type and send bills for the amount. Bills can only be sent for the amount to
+            partners with Can Enter Amounts on; other partners see billing like any other staff. Admins can always do all three.
           </p>
         </CardHeader>
         <CardContent>
@@ -113,6 +117,7 @@ export default function PermissionsPage() {
                         <TableHead>Name</TableHead>
                         <TableHead className="text-center">MVC Billing Manager</TableHead>
                         <TableHead className="text-center">B Edge Billing Manager</TableHead>
+                        <TableHead className="text-center">Can Enter Amounts</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -137,6 +142,13 @@ export default function PermissionsPage() {
                               checked={partner.canManageBedgeBilling}
                               onCheckedChange={() => handleToggle(partner.id, "canManageBedgeBilling")}
                               aria-label={`${partner.name}: B Edge billing manager`}
+                            />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Switch
+                              checked={partner.canEnterBillAmounts}
+                              onCheckedChange={() => handleToggle(partner.id, "canEnterBillAmounts")}
+                              aria-label={`${partner.name}: can enter amounts`}
                             />
                           </TableCell>
                         </TableRow>

@@ -11,14 +11,14 @@ export interface BillingAccess {
   isAdmin: boolean;
   // Companies whose bills this user manages (sees amounts, sets type, approves)
   manages: Company[];
-  // Partners and Admins can be asked to enter an amount
+  // Admins, and the partners Admin has allowed, can be asked to enter an amount
   canEnterAmounts: boolean;
 }
 
 export async function getBillingAccess(userId: string): Promise<BillingAccess | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, isActive: true, canApproveBilling: true, canManageBedgeBilling: true },
+    select: { role: true, isActive: true, canApproveBilling: true, canManageBedgeBilling: true, canEnterBillAmounts: true },
   });
   if (!user || !user.isActive) return null;
 
@@ -28,12 +28,30 @@ export async function getBillingAccess(userId: string): Promise<BillingAccess | 
   if (isAdmin || (isPartner && user.canApproveBilling)) manages.push("MVC");
   if (isAdmin || (isPartner && user.canManageBedgeBilling)) manages.push("BEDGE");
 
-  return { userId, isAdmin, manages, canEnterAmounts: isAdmin || isPartner };
+  return { userId, isAdmin, manages, canEnterAmounts: isAdmin || (isPartner && user.canEnterBillAmounts) };
 }
 
 export function managesCompany(access: BillingAccess, company: Company) {
   return access.manages.includes(company);
 }
+
+// The bill was sent to this user, or they entered its amount. Only counts while
+// they may enter amounts; without that they see bills like any other staff.
+export function isAmountSetterFor(
+  bill: Pick<Bill, "amountRequestedFromId" | "amountEnteredById">,
+  access: BillingAccess
+) {
+  return (
+    access.canEnterAmounts &&
+    (bill.amountRequestedFromId === access.userId || bill.amountEnteredById === access.userId)
+  );
+}
+
+// Who a bill may be sent to for the amount: active Admins and allowed Partners
+export const amountSetterWhere = {
+  isActive: true,
+  OR: [{ role: "ADMIN" }, { role: "PARTNER", canEnterBillAmounts: true }],
+} satisfies Prisma.UserWhereInput;
 
 export function isEditableStatus(status: Bill["status"]) {
   return (EDITABLE_BILL_STATUSES as string[]).includes(status);
@@ -66,10 +84,7 @@ type BillWithRelations = Prisma.BillGetPayload<{ include: typeof billInclude }>;
 // anyone who is not allowed to see them; hiding them in the UI is not enough.
 export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
   const isManager = managesCompany(access, bill.company);
-  const canSeeAmount =
-    isManager ||
-    bill.amountRequestedFromId === access.userId ||
-    bill.amountEnteredById === access.userId;
+  const canSeeAmount = isManager || isAmountSetterFor(bill, access);
 
   return {
     id: bill.id,
@@ -109,8 +124,7 @@ export function canViewBill(
   return (
     managesCompany(access, bill.company) ||
     bill.createdById === access.userId ||
-    bill.amountRequestedFromId === access.userId ||
-    bill.amountEnteredById === access.userId
+    isAmountSetterFor(bill, access)
   );
 }
 
