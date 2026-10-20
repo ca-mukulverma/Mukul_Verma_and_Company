@@ -24,10 +24,6 @@
     {
       "path": "/api/cron/billing-email-delivery",
       "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/cron/bill-amount-reminders",
-      "schedule": "0 * * * *"
     }
   ],
   "headers": [

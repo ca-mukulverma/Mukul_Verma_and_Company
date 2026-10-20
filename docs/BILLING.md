@@ -326,18 +326,8 @@ Notifications appear in the app and as push notifications.
 | Request approved / rejected | | ✔ | |
 | Month-end reminder (from the 25th) | ✔ | | |
 | Amount changed by Admin | | ✔ | ✔ |
-| Hourly reminder: bills awaiting your amount | | | ✔ |
 
 For B Edge bills, "billing manager" means the B Edge billing manager.
-
-**Hourly amount reminder.** Every hour, each Admin or Partner with bills
-waiting for their amount gets one reminder with the count, until they enter
-the amount or send the bill back. Reminders start an hour after the bill was
-sent, pause at night (9 PM – 8 AM Indian time), and replace the previous
-reminder so the list doesn't fill up. This is the
-`/api/cron/bill-amount-reminders` job in `vercel.json` (schedule
-`0 * * * *`), using the same `CRON_SECRET`. Vercel runs hourly jobs only on
-the Pro plan.
 
 ## Permissions in the app
 
