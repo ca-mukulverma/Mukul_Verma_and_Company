@@ -2,7 +2,13 @@ import { Bill, BillType, Company, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser } from "@/lib/web-push";
-import { BILL_TYPES, EDITABLE_BILL_STATUSES, formatBillNumber, financialYearOf } from "@/lib/billing-constants";
+import {
+  ADMIN_AMOUNT_EDIT_STATUSES,
+  BILL_TYPES,
+  EDITABLE_BILL_STATUSES,
+  formatBillNumber,
+  financialYearOf,
+} from "@/lib/billing-constants";
 
 // What the signed-in user may do in billing. Read from the database on every
 // request (not the session) so a permission removed by Admin applies at once.
@@ -139,6 +145,8 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     tallyExportedAt: isManager ? bill.tallyExportedAt : null,
     tallyNeedsUpdate: isManager ? bill.tallyNeedsUpdate : false,
     canManage: isManager,
+    // Admin may correct the amount at any stage after it is entered
+    canEditAmount: access.isAdmin && bill.amount !== null && ADMIN_AMOUNT_EDIT_STATUSES.includes(bill.status),
   };
 }
 
