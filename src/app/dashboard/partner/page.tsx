@@ -898,18 +898,33 @@ function PartnerDashboardContent() {
   );
 }
 
+type DashboardTask = PartnerDashboardData["tasks"][number];
+type DashboardAssignee = NonNullable<DashboardTask["assignees"]>[number];
+
+// Assignees come either as { user } or as a flat user
+type RawAssignee = Partial<DashboardAssignee> & {
+  id?: string;
+  name?: string;
+  image?: string;
+  avatar?: string;
+};
+
+type RawDashboardData = Partial<Omit<PartnerDashboardData, "tasks">> & {
+  tasks?: Array<Omit<DashboardTask, "assignees"> & { assignees?: RawAssignee[] }>;
+};
+
 // Add this function to normalize API data
-const normalizeApiResponse = (data: any): PartnerDashboardData => {
+const normalizeApiResponse = (data: RawDashboardData): PartnerDashboardData => {
   // Ensure the tasks have the expected structure
-  const normalizedTasks = data.tasks?.map((task: any) => {
+  const normalizedTasks = data.tasks?.map((task) => {
     // Normalize assignees structure
-    let normalizedAssignees = [];
+    let normalizedAssignees: DashboardAssignee[] = [];
     
     if (Array.isArray(task.assignees)) {
-      normalizedAssignees = task.assignees.map((assignee: any) => {
+      normalizedAssignees = task.assignees.map((assignee): DashboardAssignee => {
         // Check if the assignee already has the correct structure
         if (assignee.user && typeof assignee.user === 'object') {
-          return assignee;
+          return assignee as DashboardAssignee;
         }
         
         // Otherwise, create the expected structure
@@ -917,7 +932,7 @@ const normalizeApiResponse = (data: any): PartnerDashboardData => {
           user: {
             id: assignee.id || 'unknown-id',
             name: assignee.name || 'Unknown User',
-            avatar: assignee.image || assignee.avatar || null
+            avatar: assignee.image || assignee.avatar || undefined
           }
         };
       });

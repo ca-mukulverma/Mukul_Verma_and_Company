@@ -156,8 +156,8 @@ export default function ProfilePage() {
 
       setUpdateSuccess(true);
       toast.success("Profile updated successfully");
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || "Failed to update profile");
+    } catch (error) {
+      toast.error((axios.isAxiosError(error) && error.response?.data?.error) || "Failed to update profile");
     } finally {
       setIsSubmitting(false);
     }
@@ -496,7 +496,7 @@ export default function ProfilePage() {
                         <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       </div>
                       <FormDescription>
-                        Don't forget to add your mobile number with{" "}
+                        Don&apos;t forget to add your mobile number with{" "}
                         <strong>+91</strong> to receive notifications on
                         WhatsApp.
                       </FormDescription>

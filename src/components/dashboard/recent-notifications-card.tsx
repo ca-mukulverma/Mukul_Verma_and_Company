@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useNotifications } from "@/components/notifications/notification-system";
+import { useNotifications, type Notification as AppNotification } from "@/components/notifications/notification-system";
 import {
   Bell,
   Info,
@@ -33,7 +33,7 @@ const getClearedNotificationIds = (): string[] => {
 };
 
 // Add this function to detect role change notifications
-const isRoleChangeNotification = (notification: any): boolean => {
+const isRoleChangeNotification = (notification: Pick<AppNotification, "content">): boolean => {
   if (!notification.content) return false;
   return notification.content.includes("Role changed from");
 };
@@ -81,7 +81,7 @@ export function RecentNotificationsCard({
   }, [notifications, clearedIds]);
 
   // Get icon based on notification type
-  const getNotificationIcon = (notification: any, type?: string) => {
+  const getNotificationIcon = (notification: AppNotification, type?: string) => {
   
       if (isRoleChangeNotification(notification)) {
         return <ShieldAlert className="h-4 w-4 text-red-600" />;

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession as nextAuthGetServerSession } from "next-auth";
-import { Session } from "next-auth";
+import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth"; 
 
 export async function GET(
@@ -95,8 +94,4 @@ export async function POST(
     }
     return NextResponse.json({ error: "Failed to add credential" }, { status: 500 });
   }
-}
-
-function getServerSession(authOptions: any): Promise<Session | null> {
-  return nextAuthGetServerSession(authOptions);
 }

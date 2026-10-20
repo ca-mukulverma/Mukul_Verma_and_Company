@@ -339,7 +339,7 @@ function JuniorDashboardContent() {
                           No priority tasks
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-[220px]">
-                          You don't have any high priority tasks at the moment
+                          You don&apos;t have any high priority tasks at the moment
                         </p>
                       </div>
                     ) : (

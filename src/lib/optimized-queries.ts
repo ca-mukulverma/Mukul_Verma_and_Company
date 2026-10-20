@@ -1,3 +1,4 @@
+import { Prisma, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { dashboardCache } from '@/lib/cache';
 
@@ -53,9 +54,9 @@ export async function getDashboardTasks(
   const cachedTasks = await dashboardCache.get(cacheKey);
   if (cachedTasks) return cachedTasks;
   
-  const where: any = {};
+  const where: Prisma.TaskWhereInput = {};
   if (status && status !== 'all') {
-    where.status = status;
+    where.status = status as TaskStatus;
   }
   
   // Either tasks assigned to this user OR created by this user

@@ -171,7 +171,7 @@ export default function CreateTaskPage() {
   const fetchClients = async () => {
     try {
       // Specify a high limit to get all clients at once
-      const response = await axios.get<{ clients?: Client[], pagination?: any }>("/api/clients", {
+      const response = await axios.get<{ clients?: Client[], pagination?: unknown }>("/api/clients", {
         params: {
           limit: 1000 // Request a high number to get all clients
         }
