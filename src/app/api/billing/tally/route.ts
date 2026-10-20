@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { BillType } from "@prisma/client";
 import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -91,7 +92,7 @@ export async function GET() {
   return NextResponse.json({ series });
 }
 
-const exportSchema = z.object({ type: z.enum(["GST", "NON_GST", "BEDGE"]) });
+const exportSchema = z.object({ type: z.nativeEnum(BillType) });
 
 // POST /api/billing/tally – download the XML of everything waiting in a
 // series; those bills are then marked as sent

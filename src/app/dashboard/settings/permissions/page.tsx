@@ -20,6 +20,7 @@ export default function PermissionsPage() {
     canApproveBilling: boolean;
     canManageBedgeBilling: boolean;
     canEnterBillAmounts: boolean;
+    canViewBillingList: boolean;
   }
 
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -47,6 +48,7 @@ export default function PermissionsPage() {
           canApproveBilling: user.canApproveBilling || false,
           canManageBedgeBilling: user.canManageBedgeBilling || false,
           canEnterBillAmounts: user.canEnterBillAmounts || false,
+          canViewBillingList: user.canViewBillingList || false,
         }))
       );
       setLoading(false);
@@ -58,7 +60,10 @@ export default function PermissionsPage() {
   };
 
   // Toggle a billing permission for a partner
-  const handleToggle = (id: string, permission: "canApproveBilling" | "canManageBedgeBilling" | "canEnterBillAmounts") => {
+  const handleToggle = (
+    id: string,
+    permission: "canApproveBilling" | "canManageBedgeBilling" | "canEnterBillAmounts" | "canViewBillingList"
+  ) => {
     setPartners((prev) =>
       prev.map((partner) =>
         partner.id === id
@@ -72,12 +77,15 @@ export default function PermissionsPage() {
   const handleSave = async () => {
     try {
       setError(null);
-      const updates = partners.map(({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts }) => ({
-        id,
-        canApproveBilling,
-        canManageBedgeBilling,
-        canEnterBillAmounts,
-      }));
+      const updates = partners.map(
+        ({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts, canViewBillingList }) => ({
+          id,
+          canApproveBilling,
+          canManageBedgeBilling,
+          canEnterBillAmounts,
+          canViewBillingList,
+        })
+      );
       await axios.post("/api/admin/dashboard", { updates });
       setDialogOpen(true); // Open the dialog after successful save
     } catch (err) {
@@ -99,7 +107,9 @@ export default function PermissionsPage() {
           <p className="text-sm text-muted-foreground">
             MVC billing managers handle MVC bills (GST and Non-GST); B Edge billing managers handle B Edge bills.
             They see amounts, choose the bill type and send bills for the amount. Bills can only be sent for the amount to
-            partners with Can Enter Amounts on; other partners see billing like any other staff. Admins can always do all three.
+            partners with Can Enter Amounts on. Partners with Billing List on see the whole Billing List of both companies,
+            download bills and email them to clients, but can&apos;t change bills. Other partners see billing like any other staff.
+            Admins can always do all of these.
           </p>
         </CardHeader>
         <CardContent>
@@ -118,6 +128,7 @@ export default function PermissionsPage() {
                         <TableHead className="text-center">MVC Billing Manager</TableHead>
                         <TableHead className="text-center">B Edge Billing Manager</TableHead>
                         <TableHead className="text-center">Can Enter Amounts</TableHead>
+                        <TableHead className="text-center">Billing List</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -149,6 +160,13 @@ export default function PermissionsPage() {
                               checked={partner.canEnterBillAmounts}
                               onCheckedChange={() => handleToggle(partner.id, "canEnterBillAmounts")}
                               aria-label={`${partner.name}: can enter amounts`}
+                            />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Switch
+                              checked={partner.canViewBillingList}
+                              onCheckedChange={() => handleToggle(partner.id, "canViewBillingList")}
+                              aria-label={`${partner.name}: sees the Billing List and emails bills`}
                             />
                           </TableCell>
                         </TableRow>

@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { format } from "date-fns";
 import { toast } from "sonner";
-import { Ban, Download, FileText, History, Loader2, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
+import { Ban, Download, FileText, History, Loader2, Mail, MailCheck, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,20 +20,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useDebounce } from "@/hooks/use-debounce";
-import { BILL_TYPE_LABELS, BillTypeValue, CompanyValue, formatRupees, gstAmount } from "@/lib/billing-constants";
+import {
+  BILL_TYPE_LABELS,
+  BillTypeValue,
+  billTypesOf,
+  CompanyValue,
+  formatIndianDate,
+  formatRupees,
+  gstAmount,
+} from "@/lib/billing-constants";
 import { HistoryDialog } from "./bill-dialogs";
+import { EmailBillsDialog, MAX_EMAIL_BILLS } from "./bill-email-dialog";
+import { billTypeShortLabel } from "./bill-type-select";
+import { EmailStatus } from "./email-status";
 import { BillStatusBadge } from "./bill-list";
 import { apiErrorMessage, Bill, billParty, blobErrorMessage, CHANGE_KIND_LABELS, downloadBillFile } from "./bill-types";
 import { ChangeKind, ChangeRequestDialog } from "./change-request-dialog";
 
-// Numbered bills (approved and cancelled) of the companies the user manages
-export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[]; onChanged?: () => void }) {
-  const types: BillTypeValue[] = [
-    ...(manages.includes("MVC") ? (["GST", "NON_GST"] as const) : []),
-    ...(manages.includes("BEDGE") ? (["BEDGE"] as const) : []),
-  ];
+// Numbered bills (approved and cancelled) of the companies whose Billing List
+// the user sees: the ones they manage, or both for a partner Admin has allowed.
+// Only billing managers can ask for changes; everyone here can download and email.
+export function BillingRegister({ companies, onChanged }: { companies: CompanyValue[]; onChanged?: () => void }) {
+  const types = billTypesOf(companies);
   const [type, setType] = useState<string>("all");
   const [status, setStatus] = useState("all");
+  // all, yes (emailed to the party) or no (not emailed yet)
+  const [emailed, setEmailed] = useState("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [search, setSearch] = useState("");
@@ -44,6 +55,9 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
   const [open, setOpen] = useState<{ bill: Bill; dialog: ChangeKind | "history" } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
+  // Bills being emailed; kept in state so the dialog gets the same list on every render
+  const [emailIds, setEmailIds] = useState<string[] | null>(null);
+  const [checkingDelivery, setCheckingDelivery] = useState(false);
 
   const download = async (
     key: string,
@@ -79,6 +93,7 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
           view: "list",
           type,
           status,
+          emailed: emailed === "all" ? undefined : emailed,
           from: from || undefined,
           to: to || undefined,
           search: debouncedSearch || undefined,
@@ -91,19 +106,54 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
       toast.error(apiErrorMessage(error, "Could not load the billing list"));
       setData({ bills: [], total: 0, totals: [] });
     }
-  }, [type, status, from, to, debouncedSearch, page]);
+  }, [type, status, emailed, from, to, debouncedSearch, page]);
 
   useEffect(() => {
     load();
   }, [load]);
+  // The latest load, with the filters as they are when a delivery check returns
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
-  useEffect(() => setPage(1), [type, status, from, to, debouncedSearch]);
+  // Reads Gmail's bounce notices so failed deliveries show against the bills.
+  // On opening the list it runs quietly (the server skips it if it ran in the
+  // last few minutes); the button runs it now and reports the result.
+  const checkDelivery = useCallback(
+    async (force: boolean) => {
+      if (force) setCheckingDelivery(true);
+      try {
+        const { data } = await axios.post<{ configured: boolean; checked: boolean; updated: number; error?: string }>(
+          "/api/bills/email/delivery",
+          { force }
+        );
+        if (data.updated > 0) loadRef.current();
+        if (!force) return;
+        if (!data.configured) toast.error("Bill emails are not set up yet");
+        else if (data.error) toast.error(data.error);
+        else if (!data.checked) toast.info("Delivery was checked a moment ago");
+        else if (data.updated > 0) toast.warning(`Delivery problems found on ${data.updated} bill${data.updated === 1 ? "" : "s"}`);
+        else toast.success("Checked: no new delivery problems");
+      } catch (error) {
+        if (force) toast.error(apiErrorMessage(error, "Could not check delivery"));
+      } finally {
+        setCheckingDelivery(false);
+      }
+    },
+    []
+  );
+
+  // Once when the list opens
+  useEffect(() => {
+    checkDelivery(false);
+  }, [checkDelivery]);
+
+  useEffect(() => setPage(1), [type, status, emailed, from, to, debouncedSearch]);
 
   const pages = data ? Math.max(Math.ceil(data.total / 50), 1) : 1;
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
         <div className="space-y-1 col-span-2 lg:col-span-1">
           <Label className="text-xs">Series</Label>
           <Select value={type} onValueChange={setType}>
@@ -132,6 +182,18 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
               <SelectItem value="all">Approved and cancelled</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Email</Label>
+          <Select value={emailed} onValueChange={setEmailed}>
+            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Emailed or not</SelectItem>
+              <SelectItem value="yes">Emailed to party</SelectItem>
+              <SelectItem value="failed">Not delivered</SelectItem>
+              <SelectItem value="no">Not emailed yet</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -188,6 +250,26 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
             {downloading === "combined" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Printer className="mr-1 h-3.5 w-3.5" />}
             One PDF to print
           </Button>
+          <Button
+            size="sm"
+            disabled={selected.size === 0 || selected.size > MAX_EMAIL_BILLS}
+            title={selected.size > MAX_EMAIL_BILLS ? `Email up to ${MAX_EMAIL_BILLS} bills at a time` : undefined}
+            onClick={() => setEmailIds([...selected])}
+          >
+            <Mail className="mr-1 h-3.5 w-3.5" />
+            Email to parties
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            disabled={checkingDelivery}
+            title="Look for emails that could not be delivered"
+            onClick={() => checkDelivery(true)}
+          >
+            {checkingDelivery ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <MailCheck className="mr-1 h-3.5 w-3.5" />}
+            Check delivery
+          </Button>
         </div>
       )}
 
@@ -211,6 +293,7 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                 <TableHead className="text-right">GST</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Emailed</TableHead>
                 <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
@@ -231,11 +314,11 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                     <TableCell className="font-mono whitespace-nowrap">
                       <span className={cancelled ? "line-through" : undefined}>{bill.billNumber}</span>
                       <p className="font-sans text-xs text-muted-foreground">
-                        {bill.type ? BILL_TYPE_LABELS[bill.type].split(" – ")[0] : ""}
+                        {bill.type ? billTypeShortLabel(bill.type) : ""}
                       </p>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
-                      {bill.billDate ? format(new Date(bill.billDate), "d MMM yyyy") : "—"}
+                      {bill.billDate ? formatIndianDate(bill.billDate, "medium") : "—"}
                     </TableCell>
                     <TableCell className="min-w-40">
                       {billParty(bill) ?? "—"}
@@ -267,6 +350,9 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                         )}
                       </div>
                     </TableCell>
+                    <TableCell className="min-w-40 max-w-60 whitespace-normal">
+                      <EmailStatus bill={bill} />
+                    </TableCell>
                     <TableCell>
                       {/* Not modal: these items open dialogs, and a modal menu leaves the page
                           unclickable (pointer-events: none) after the dialog closes */}
@@ -283,11 +369,16 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                           <DropdownMenuItem onClick={() => downloadOne(bill, "docx")}>
                             <FileText className="mr-2 h-4 w-4" />Download Word
                           </DropdownMenuItem>
+                          {bill.status === "approved" && (
+                            <DropdownMenuItem onClick={() => setEmailIds([bill.id])}>
+                              <Mail className="mr-2 h-4 w-4" />{bill.emailStatus ? "Email again" : "Email to party"}
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "history" })}>
                             <History className="mr-2 h-4 w-4" />History
                           </DropdownMenuItem>
-                          {bill.status === "approved" && !bill.pendingChange && (
+                          {bill.canManage && bill.status === "approved" && !bill.pendingChange && (
                             <>
                               <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "edit" })}>
                                 <Pencil className="mr-2 h-4 w-4" />Request edit
@@ -320,6 +411,7 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
       )}
 
       {open?.dialog === "history" && <HistoryDialog bill={open.bill} onClose={() => setOpen(null)} />}
+      {emailIds && <EmailBillsDialog billIds={emailIds} onClose={() => setEmailIds(null)} onSent={load} />}
       {open && open.dialog !== "history" && (
         <ChangeRequestDialog
           bill={open.bill}

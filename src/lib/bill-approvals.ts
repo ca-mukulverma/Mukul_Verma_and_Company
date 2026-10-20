@@ -2,7 +2,7 @@ import { BillType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity-logger";
 import { BillingAccess, getBillingManagerIds, hasBillTo, managesCompany, notifyBillingUsers } from "@/lib/billing";
-import { financialYearOf, formatBillNumber } from "@/lib/billing-constants";
+import { MvcBillTypeValue, financialYearOf, formatBillNumber } from "@/lib/billing-constants";
 
 type Tx = Prisma.TransactionClient;
 type Actor = { id: string; name: string };
@@ -214,13 +214,13 @@ export function countLabel(n: number) {
 }
 
 // New values a billing manager can ask for. Edit keeps the bill number;
-// a reissue may also change the client or, for MVC, GST/Non-GST.
+// a reissue may also change the client or, for MVC, who the bill is issued by.
 export interface BillChanges {
   amount?: number;
   description?: string;
   workDate?: string;
   clientId?: string;
-  type?: "GST" | "NON_GST";
+  type?: MvcBillTypeValue;
 }
 
 // Admin approves or rejects an edit/cancel/reissue request.

@@ -2,6 +2,7 @@ import { BillingEntity, BillType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { GST_STATES, gstLines } from "@/lib/bill-document";
 import { BillingAccess } from "@/lib/billing";
+import { billTypesOf } from "@/lib/billing-constants";
 
 // Tally import file (XML) of sales vouchers, one file per billing entity,
 // since each entity is a separate company in Tally.
@@ -220,13 +221,18 @@ export async function createTallyExport(type: BillType, userId: string) {
   });
 }
 
-// GST and Non-GST bills belong to MVC; B Edge bills to B Edge
+// GST and the Non-GST series belong to MVC; B Edge bills to B Edge
 export function tallyTypesFor(access: BillingAccess): BillType[] {
-  return [
-    ...(access.manages.includes("MVC") ? (["GST", "NON_GST"] as const) : []),
-    ...(access.manages.includes("BEDGE") ? (["BEDGE"] as const) : []),
-  ];
+  return billTypesOf(access.manages);
 }
+
+const TALLY_FILE_LABELS: Record<BillType, string> = {
+  GST: "GST",
+  NON_GST: "NonGST",
+  NON_GST_HV: "NonGST-HV",
+  NON_GST_VLA: "NonGST-VLA",
+  BEDGE: "BEdge",
+};
 
 export function tallyFileName(type: BillType, date: Date) {
   const stamp = new Intl.DateTimeFormat("en-CA", {
@@ -240,5 +246,5 @@ export function tallyFileName(type: BillType, date: Date) {
   })
     .format(date)
     .replace(/[^0-9]+/g, "-");
-  return `Tally-${type === "GST" ? "GST" : type === "NON_GST" ? "NonGST" : "BEdge"}-${stamp}.xml`;
+  return `Tally-${TALLY_FILE_LABELS[type]}-${stamp}.xml`;
 }

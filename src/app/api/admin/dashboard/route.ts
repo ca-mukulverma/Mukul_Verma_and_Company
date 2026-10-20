@@ -139,6 +139,7 @@ export async function GET(request: NextRequest) {
         canApproveBilling: true,
         canManageBedgeBilling: true,
         canEnterBillAmounts: true,
+        canViewBillingList: true,
       },
     });
 
@@ -309,16 +310,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Array of { id, canApproveBilling, canManageBedgeBilling?, canEnterBillAmounts? }
+  // Array of { id, canApproveBilling, canManageBedgeBilling?, canEnterBillAmounts?, canViewBillingList? }
   const { updates } = await request.json() as {
-    updates: { id: string; canApproveBilling: boolean; canManageBedgeBilling?: boolean; canEnterBillAmounts?: boolean }[];
+    updates: {
+      id: string;
+      canApproveBilling: boolean;
+      canManageBedgeBilling?: boolean;
+      canEnterBillAmounts?: boolean;
+      canViewBillingList?: boolean;
+    }[];
   };
 
   try {
     const updatePromises = updates.map(async (update) => {
       const before = await prisma.user.findUnique({
         where: { id: update.id },
-        select: { canApproveBilling: true, canManageBedgeBilling: true, canEnterBillAmounts: true },
+        select: { canApproveBilling: true, canManageBedgeBilling: true, canEnterBillAmounts: true, canViewBillingList: true },
       });
       const updatedUser = await prisma.user.update({
         where: { id: update.id },
@@ -329,6 +336,9 @@ export async function POST(request: NextRequest) {
           }),
           ...(update.canEnterBillAmounts !== undefined && {
             canEnterBillAmounts: update.canEnterBillAmounts,
+          }),
+          ...(update.canViewBillingList !== undefined && {
+            canViewBillingList: update.canViewBillingList,
           }),
         },
       });
@@ -366,6 +376,9 @@ export async function POST(request: NextRequest) {
       }
       if (update.canEnterBillAmounts && !before?.canEnterBillAmounts) {
         granted.push("Billing managers can now send you bills to enter the amount. They appear under \"Awaiting my amount\" on the Billing page.");
+      }
+      if (update.canViewBillingList && !before?.canViewBillingList) {
+        granted.push("You can now see the Billing List of MVC and B Edge on the Billing page, download bills and email them to clients.");
       }
       for (const content of granted) {
         const notification = await prisma.notification.create({

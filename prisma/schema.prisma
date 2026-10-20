@@ -51,9 +51,11 @@ enum Company {
 
 // Each bill type has its own number series (see docs/BILLING.md)
 enum BillType {
-  GST      // MVC & Company
-  NON_GST  // CA Mukul Verma
-  BEDGE    // B Edge
+  GST         // MVC & Company
+  NON_GST     // CA Mukul Verma
+  NON_GST_HV  // CA Harsh Verma
+  NON_GST_VLA // Verma Law Associates
+  BEDGE       // B Edge
 }
 
 enum BillStatus {
@@ -64,6 +66,13 @@ enum BillStatus {
   approved         // numbered and in the Billing List
   cancelled
   not_billable
+}
+
+// What happened to the last email of a bill (see docs/BILLING.md)
+enum BillEmailStatus {
+  sent    // accepted by Gmail; no failure reported
+  delayed // the recipient's server is not accepting it yet; Gmail keeps trying
+  failed  // not delivered; the reason is in emailError
 }
 
 enum BillChangeKind {
@@ -109,6 +118,7 @@ model User {
   canApproveBilling       Boolean        @default(false) // Whether this user can approve billing (also: MVC billing manager)
   canManageBedgeBilling   Boolean        @default(false) // B Edge billing manager
   canEnterBillAmounts     Boolean        @default(false) // Partner bills can be sent to for the amount
+  canViewBillingList      Boolean        @default(false) // Partner who sees the whole Billing List and emails bills
   pushSubscriptions       PushSubscription[]
   billsCreated            Bill[]         @relation("BillCreatedBy")
   billsAmountRequested    Bill[]         @relation("BillAmountRequestedFrom")
@@ -385,6 +395,15 @@ model Bill {
   tallyExportId    String?      @db.Char(36)
   tallyExport      TallyExport? @relation(fields: [tallyExportId], references: [id])
 
+  // Last time the bill was emailed to the party, to whom, and whether it was
+  // delivered. emailMessageId matches bounce notices to the email.
+  emailedAt      DateTime?
+  emailedTo      String?          @db.VarChar(400)
+  emailStatus    BillEmailStatus?
+  emailError     String?          @db.Text
+  emailStatusAt  DateTime?
+  emailMessageId String?          @db.VarChar(200)
+
   events         BillEvent[]
   changeRequests BillChangeRequest[]
   createdAt DateTime    @default(now())
@@ -395,6 +414,7 @@ model Bill {
   @@index([amountRequestedFromId, status])
   @@index([createdById])
   @@index([clientId])
+  @@index([emailMessageId])
 }
 
 // History of everything done to a bill
@@ -470,6 +490,24 @@ model BillingEntity {
   tallySgstLedger  String? @db.VarChar(100)
   tallyIgstLedger  String? @db.VarChar(100)
   updatedAt   DateTime @updatedAt
+}
+
+// How bills are emailed to clients; a single row (id 1) that Admin edits in
+// Billing → Bill emails
+model BillingEmailSetting {
+  id           Int      @id @default(1)
+  // Off: clients can't reply; replies go to an address that does not exist
+  allowReplies Boolean  @default(false)
+  // Where replies go when they are allowed
+  replyTo      String?  @db.VarChar(75)
+  // Gets a hidden copy (BCC) of every bill email
+  copyTo       String?  @db.VarChar(75)
+  // Reading bounce notices from the billing mailbox: when it was last read,
+  // how far ("<uidValidity>:<last uid>"), and why the last read failed
+  bounceCheckedAt  DateTime?
+  bounceCheckpoint String?   @db.VarChar(60)
+  bounceCheckError String?   @db.Text
+  updatedAt    DateTime @updatedAt
 }
 
 // One Tally XML file that was downloaded; kept so the same file can be
