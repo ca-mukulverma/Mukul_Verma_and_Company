@@ -212,8 +212,8 @@ Before sending, the window shows each party with the client's saved email
 address. Several addresses can be given, separated by commas. For an "Other"
 name or a client without an address, type it in; for a saved client it can
 also be saved on the client. An optional message is added to every email.
-The bill then shows **Emailed** with the date (and the address, on hover),
-and the bill's history records it.
+The bill then shows **Emailed** with the date and the address, and the
+bill's history records it.
 
 Billing managers, Admin and partners allowed to see the Billing List can
 email bills.
@@ -227,6 +227,7 @@ Bills go out from **billing.camukulverma@gmail.com**. To set it up:
 2. On Vercel, add the environment variable `BILLING_EMAIL_PASSWORD` with the
    app password, and redeploy. If the mailbox is a different address, also
    set `BILLING_EMAIL_USER`.
+3. In that Gmail account, turn on IMAP (see *Delivery* below).
 
 A free Gmail account can send about 500 emails a day.
 
@@ -245,10 +246,53 @@ A free Gmail account can send about 500 emails a day.
 Gmail cannot refuse mail that a client writes *directly* to the billing
 address. To keep the mailbox empty, add a filter in that Gmail account:
 Settings → *See all settings* → *Filters and blocked addresses* → *Create a
-new filter*, **To:** `billing.camukulverma@gmail.com` → *Create filter* →
-tick **Delete it** (and **Never send it to Spam**) → *Create filter*.
-Optionally, a vacation responder can tell such senders where to write
-instead.
+new filter*, **Has the words:**
+
+```
+deliveredto:billing.camukulverma@gmail.com -from:(mailer-daemon@googlemail.com OR no-reply@accounts.google.com)
+```
+
+→ *Create filter* → tick **Delete it** and **Never send it to Spam** →
+*Create filter*. The `-from:` part keeps Gmail's bounce notices, which the
+delivery check below reads, and Google's security alerts. To answer such
+senders automatically, also tick **Send template** with a saved Gmail
+template ("This mailbox is not monitored, please write to …").
+
+### Delivery: was the email received?
+
+Against every bill, the Billing List's **Emailed** column shows what
+happened to its last email:
+
+| Shown | Meaning |
+|---|---|
+| **Not emailed** | Never emailed |
+| **Emailed on 20 Oct 2026** to … | Gmail accepted it and no failure has been reported |
+| **Delivery delayed** + reason | The client's mail server isn't accepting it yet; Gmail keeps trying for up to 2 days. Shown as emailed after 3 days without a failure |
+| **Not delivered** + reason | It did not reach the client, e.g. the address does not exist, the domain does not exist, the mailbox is full, or it was blocked as spam |
+
+The Email filter has a **Not delivered** option to find these bills. After
+correcting the address, use **Email again** from the bill's ⋮ menu. The
+person who sent the email and the billing managers are notified of a
+failure, and the bill's history keeps the full technical reason.
+
+How it works:
+
+- An email Gmail does not accept at all (wrong app password, daily limit
+  reached, Gmail unreachable) is marked *Not delivered* at once.
+- A client's server that refuses the email later makes Gmail send a
+  "Delivery Status Notification" to the billing mailbox. The app reads
+  these over IMAP with the same app password and matches each one to its
+  email by the email's Message-ID. It reads them when someone opens the
+  Billing List (at most every 3 minutes), with the **Check delivery**
+  button, and once a day (`/api/cron/billing-email-delivery` in
+  `vercel.json`). It only reads the mailbox; nothing there is changed.
+- **IMAP must be on** in the billing Gmail account: Settings → *See all
+  settings* → *Forwarding and POP/IMAP* → **Enable IMAP** → *Save Changes*.
+  *Billing → Bill emails* shows when the mailbox was last read and any
+  error.
+- Email cannot confirm that the client *read* the bill, or that it did
+  not land in their spam folder: servers don't report that. *Emailed*
+  means it was accepted and no failure came back.
 
 ## Dashboards
 

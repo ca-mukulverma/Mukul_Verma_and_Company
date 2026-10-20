@@ -31,6 +31,10 @@ export interface Bill {
   tallyNeedsUpdate: boolean;
   emailedAt: string | null;
   emailedTo: string | null;
+  // Delivery of the last email: failed and delayed come with a reason
+  emailStatus: "sent" | "delayed" | "failed" | null;
+  emailError: string | null;
+  emailStatusAt: string | null;
   canManage: boolean;
 }
 
@@ -121,6 +125,8 @@ export const EVENT_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
   reissued: "Reissued",
   emailed: "Emailed to party",
+  email_failed: "Email not delivered",
+  email_delayed: "Email delivery delayed",
 };
 
 export const CHANGE_KIND_LABELS = { edit: "Edit", cancel: "Cancel", reissue: "Reissue" } as const;

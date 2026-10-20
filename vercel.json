@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/billing-reminders",
       "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/cron/billing-email-delivery",
+      "schedule": "0 5 * * *"
     }
   ],
   "headers": [

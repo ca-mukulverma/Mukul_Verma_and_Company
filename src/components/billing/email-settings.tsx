@@ -17,6 +17,8 @@ interface EmailSettingsData {
   allowReplies: boolean;
   replyTo: string | null;
   copyTo: string | null;
+  bounceCheckedAt: string | null;
+  bounceCheckError: string | null;
 }
 
 // Admin decides whether clients can reply to bill emails, and who gets a copy
@@ -118,9 +120,27 @@ export function EmailSettings() {
           />
         </div>
 
+        <div className="space-y-1 rounded-md border p-3 text-sm">
+          <p className="font-medium">Delivery check</p>
+          <p className="text-muted-foreground">
+            Failed deliveries are read from the billing mailbox&apos;s bounce notices and shown against the bills. This
+            needs IMAP turned on in that Gmail account (Settings → Forwarding and POP/IMAP → Enable IMAP).
+          </p>
+          <p className="text-muted-foreground">
+            Last checked:{" "}
+            {settings.bounceCheckedAt
+              ? new Date(settings.bounceCheckedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })
+              : "never"}
+          </p>
+          {settings.bounceCheckError && (
+            <p className="text-red-700 dark:text-red-400">{settings.bounceCheckError}</p>
+          )}
+        </div>
+
         <p className="text-xs text-muted-foreground">
           Clients can still write to {settings.sender} directly. To keep that mailbox empty, add a Gmail filter
-          there that deletes all incoming mail (see the billing guide).
+          there that deletes incoming mail, except the bounce notices from mailer-daemon that the delivery check
+          reads (see the billing guide).
         </p>
 
         <div className="flex justify-end">

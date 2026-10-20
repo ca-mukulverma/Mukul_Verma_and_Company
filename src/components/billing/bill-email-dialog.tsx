@@ -87,7 +87,7 @@ export function EmailBillsDialog({ billIds, onClose, onSent }: { billIds: string
         );
       }
       if (failed.length > 0) {
-        toast.error(`Not sent to ${failed.map((r) => r.partyName).join(", ")}. Try again in a while.`);
+        for (const r of failed) toast.error(`Not sent to ${r.partyName}: ${r.error ?? "the email could not be sent"}`);
       }
       onSent();
       if (failed.length === 0) onClose();

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { randomUUID } from "crypto";
 import { Company, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -25,6 +26,24 @@ export const NO_REPLY_ADDRESS = "no-reply@no-reply.invalid";
 // The brand an email goes out under when its bills come from more than one
 // entity of the same company
 const COMPANY_SENDERS: Record<Company, string> = { MVC: "MVC & Company", BEDGE: "B Edge" };
+
+// Every bill email gets a Message-ID of this form, so a bounce can be matched
+// to it: "<uuid>.bills@gmail.com"
+export function newBillEmailMessageId(uuid: string) {
+  return `${uuid}.bills@${BILLING_EMAIL_ADDRESS.split("@")[1]}`;
+}
+// Reason for an email Gmail did not accept at all while sending
+export function sendFailureReason(error: unknown): string {
+  const e = error as { code?: string; responseCode?: number; response?: string; message?: string };
+  const response = e.response || e.message || "";
+  if (e.code === "EAUTH") return "Gmail refused the billing mailbox's login (check the app password)";
+  if (/daily.*limit|5\.4\.5/i.test(response)) return "Gmail's daily sending limit has been reached. Try again tomorrow";
+  if (e.code === "EENVELOPE" || e.responseCode === 553 || e.responseCode === 550) {
+    return `Gmail refused the address${response ? `: ${response.slice(0, 200)}` : ""}`;
+  }
+  if (["ECONNECTION", "ETIMEDOUT", "ESOCKET", "EDNS"].includes(e.code ?? "")) return "Could not connect to Gmail. Try again in a while";
+  return `The email could not be sent${response ? `: ${response.slice(0, 200)}` : ""}`;
+}
 
 export async function getBillEmailSettings() {
   return prisma.billingEmailSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
@@ -257,8 +276,12 @@ export async function sendBillEmails(
   try {
     for (const { group, to } of sends) {
       const content = buildBillEmail(group, { allowReplies: settings.allowReplies, note: options.note });
+      const billIds = group.docs.map((d) => d.id);
+      const emailedTo = to.join(", ").slice(0, 400);
+      const messageId = newBillEmailMessageId(randomUUID());
       try {
         await transporter.sendMail({
+          messageId: `<${messageId}>`,
           from: { name: content.from, address: BILLING_EMAIL_ADDRESS },
           to,
           ...(settings.copyTo && { bcc: settings.copyTo }),
@@ -276,23 +299,37 @@ export async function sendBillEmails(
           })),
         });
       } catch (error) {
+        // Not accepted by Gmail at all: recorded on the bills with the reason
         console.error(`Failed to email bills to ${to.join(", ")}:`, error);
-        results.push({ key: group.key, partyName: group.partyName, to, ok: false, error: "The email could not be sent" });
+        const reason = sendFailureReason(error);
+        const now = new Date();
+        await prisma.$transaction([
+          prisma.bill.updateMany({
+            where: { id: { in: billIds } },
+            data: { emailedAt: now, emailedTo, emailStatus: "failed", emailError: reason, emailStatusAt: now, emailMessageId: null },
+          }),
+          prisma.billEvent.createMany({
+            data: billIds.map((billId) => ({ billId, action: "email_failed", userId: options.userId, remark: `${reason} – ${emailedTo}` })),
+          }),
+        ]);
+        results.push({ key: group.key, partyName: group.partyName, to, ok: false, error: reason });
         continue;
       }
 
       const now = new Date();
-      const emailedTo = to.join(", ").slice(0, 400);
-      const billIds = group.docs.map((d) => d.id);
       await prisma.$transaction([
-        prisma.bill.updateMany({ where: { id: { in: billIds } }, data: { emailedAt: now, emailedTo } }),
+        prisma.bill.updateMany({
+          where: { id: { in: billIds } },
+          data: { emailedAt: now, emailedTo, emailStatus: "sent", emailError: null, emailStatusAt: now, emailMessageId: messageId },
+        }),
         prisma.billEvent.createMany({
           data: billIds.map((billId) => ({
             billId,
             action: "emailed",
             userId: options.userId,
             remark: `Emailed to ${emailedTo}`,
-            details: { to, billNumbers: group.docs.map((d) => d.billNumber) } as Prisma.InputJsonValue,
+            // messageId lets a later bounce notice be matched to this email
+            details: { to, messageId, billNumbers: group.docs.map((d) => d.billNumber) } as Prisma.InputJsonValue,
           })),
         }),
       ]);

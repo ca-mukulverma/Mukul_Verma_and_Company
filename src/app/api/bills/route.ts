@@ -22,7 +22,8 @@ const workEntrySchema = z.object({
 //   manage  – bills of the companies the user manages
 //   list    – the Billing List: numbered bills of those companies (both for a
 //             partner Admin has allowed to see it), filtered by &type=<BillType>
-//             &from=YYYY-MM-DD&to=YYYY-MM-DD (bill date)&emailed=yes|no
+//             &from=YYYY-MM-DD&to=YYYY-MM-DD (bill date)
+//             &emailed=yes (delivered, as far as is known) | failed | no (never emailed)
 //   amounts – bills sent to the user to enter the amount
 //   mine    – work the user logged or completed
 export async function GET(request: NextRequest) {
@@ -68,8 +69,9 @@ export async function GET(request: NextRequest) {
       }
       if (!status || status === "all") where.status = { in: ["approved", "cancelled"] };
       const emailed = searchParams.get("emailed");
-      if (emailed === "yes") where.emailedAt = { not: null };
-      if (emailed === "no") where.emailedAt = null;
+      if (emailed === "yes") where.emailStatus = { in: ["sent", "delayed"] };
+      if (emailed === "failed") where.emailStatus = "failed";
+      if (emailed === "no") where.emailStatus = null;
     }
   } else if (view === "amounts") {
     if (!access.canEnterAmounts) return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });

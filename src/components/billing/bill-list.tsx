@@ -27,12 +27,12 @@ import {
   BillStatusValue,
   CompanyValue,
   EDITABLE_BILL_STATUSES,
-  formatIndianDate,
   formatRupees,
   gstAmount,
   MvcBillTypeValue,
 } from "@/lib/billing-constants";
 import { CompanyBadge } from "./company-select";
+import { EmailStatus } from "./email-status";
 import {
   BillDialog,
   EditDetailsDialog,
@@ -359,12 +359,7 @@ function BillCard({
             <span>Waiting for {bill.amountRequestedFrom.name}</span>
           )}
           {bill.amountEnteredBy && <span>Amount by {bill.amountEnteredBy.name}</span>}
-          {bill.emailedAt && (
-            <span>
-              Emailed on {formatIndianDate(bill.emailedAt, "medium")}
-              {bill.emailedTo && ` to ${bill.emailedTo}`}
-            </span>
-          )}
+          <EmailStatus bill={bill} compact />
         </div>
         {bill.remark && <p className="text-xs text-muted-foreground">Remark: {bill.remark}</p>}
 

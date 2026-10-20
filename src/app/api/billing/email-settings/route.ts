@@ -35,6 +35,8 @@ async function respond() {
     allowReplies: settings.allowReplies,
     replyTo: settings.replyTo,
     copyTo: settings.copyTo,
+    bounceCheckedAt: settings.bounceCheckedAt,
+    bounceCheckError: settings.bounceCheckError,
   });
 }
 

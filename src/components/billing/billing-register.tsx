@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Ban, Download, FileText, History, Loader2, Mail, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
+import { Ban, Download, FileText, History, Loader2, Mail, MailCheck, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,6 +32,7 @@ import {
 import { HistoryDialog } from "./bill-dialogs";
 import { EmailBillsDialog, MAX_EMAIL_BILLS } from "./bill-email-dialog";
 import { billTypeShortLabel } from "./bill-type-select";
+import { EmailStatus } from "./email-status";
 import { BillStatusBadge } from "./bill-list";
 import { apiErrorMessage, Bill, billParty, blobErrorMessage, CHANGE_KIND_LABELS, downloadBillFile } from "./bill-types";
 import { ChangeKind, ChangeRequestDialog } from "./change-request-dialog";
@@ -56,6 +57,7 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
   const [downloading, setDownloading] = useState<string | null>(null);
   // Bills being emailed; kept in state so the dialog gets the same list on every render
   const [emailIds, setEmailIds] = useState<string[] | null>(null);
+  const [checkingDelivery, setCheckingDelivery] = useState(false);
 
   const download = async (
     key: string,
@@ -109,6 +111,41 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
   useEffect(() => {
     load();
   }, [load]);
+  // The latest load, with the filters as they are when a delivery check returns
+  const loadRef = useRef(load);
+  loadRef.current = load;
+
+  // Reads Gmail's bounce notices so failed deliveries show against the bills.
+  // On opening the list it runs quietly (the server skips it if it ran in the
+  // last few minutes); the button runs it now and reports the result.
+  const checkDelivery = useCallback(
+    async (force: boolean) => {
+      if (force) setCheckingDelivery(true);
+      try {
+        const { data } = await axios.post<{ configured: boolean; checked: boolean; updated: number; error?: string }>(
+          "/api/bills/email/delivery",
+          { force }
+        );
+        if (data.updated > 0) loadRef.current();
+        if (!force) return;
+        if (!data.configured) toast.error("Bill emails are not set up yet");
+        else if (data.error) toast.error(data.error);
+        else if (!data.checked) toast.info("Delivery was checked a moment ago");
+        else if (data.updated > 0) toast.warning(`Delivery problems found on ${data.updated} bill${data.updated === 1 ? "" : "s"}`);
+        else toast.success("Checked: no new delivery problems");
+      } catch (error) {
+        if (force) toast.error(apiErrorMessage(error, "Could not check delivery"));
+      } finally {
+        setCheckingDelivery(false);
+      }
+    },
+    []
+  );
+
+  // Once when the list opens
+  useEffect(() => {
+    checkDelivery(false);
+  }, [checkDelivery]);
 
   useEffect(() => setPage(1), [type, status, emailed, from, to, debouncedSearch]);
 
@@ -155,6 +192,7 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
             <SelectContent>
               <SelectItem value="all">Emailed or not</SelectItem>
               <SelectItem value="yes">Emailed to party</SelectItem>
+              <SelectItem value="failed">Not delivered</SelectItem>
               <SelectItem value="no">Not emailed yet</SelectItem>
             </SelectContent>
           </Select>
@@ -220,6 +258,17 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
           >
             <Mail className="mr-1 h-3.5 w-3.5" />
             Email to parties
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            disabled={checkingDelivery}
+            title="Look for emails that could not be delivered"
+            onClick={() => checkDelivery(true)}
+          >
+            {checkingDelivery ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <MailCheck className="mr-1 h-3.5 w-3.5" />}
+            Check delivery
           </Button>
         </div>
       )}
@@ -301,21 +350,8 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="min-w-40 max-w-56 whitespace-normal">
-                      {bill.emailedAt ? (
-                        <>
-                          <p className="whitespace-nowrap text-green-700 dark:text-green-400">
-                            Emailed on {formatIndianDate(bill.emailedAt, "medium")}
-                          </p>
-                          {bill.emailedTo && (
-                            <p className="text-xs text-muted-foreground break-words">to {bill.emailedTo}</p>
-                          )}
-                        </>
-                      ) : cancelled ? (
-                        "—"
-                      ) : (
-                        <span className="whitespace-nowrap text-xs text-amber-700 dark:text-amber-400">Not emailed</span>
-                      )}
+                    <TableCell className="min-w-40 max-w-60 whitespace-normal">
+                      <EmailStatus bill={bill} />
                     </TableCell>
                     <TableCell>
                       {/* Not modal: these items open dialogs, and a modal menu leaves the page
@@ -335,7 +371,7 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
                           </DropdownMenuItem>
                           {bill.status === "approved" && (
                             <DropdownMenuItem onClick={() => setEmailIds([bill.id])}>
-                              <Mail className="mr-2 h-4 w-4" />{bill.emailedAt ? "Email again" : "Email to party"}
+                              <Mail className="mr-2 h-4 w-4" />{bill.emailStatus ? "Email again" : "Email to party"}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />

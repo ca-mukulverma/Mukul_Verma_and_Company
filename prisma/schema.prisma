@@ -68,6 +68,13 @@ enum BillStatus {
   not_billable
 }
 
+// What happened to the last email of a bill (see docs/BILLING.md)
+enum BillEmailStatus {
+  sent    // accepted by Gmail; no failure reported
+  delayed // the recipient's server is not accepting it yet; Gmail keeps trying
+  failed  // not delivered; the reason is in emailError
+}
+
 enum BillChangeKind {
   edit    // same number, new amount/details
   cancel  // number stays in the series, marked cancelled
@@ -388,9 +395,14 @@ model Bill {
   tallyExportId    String?      @db.Char(36)
   tallyExport      TallyExport? @relation(fields: [tallyExportId], references: [id])
 
-  // Last time the bill was emailed to the party, and to whom
-  emailedAt DateTime?
-  emailedTo String?   @db.VarChar(400)
+  // Last time the bill was emailed to the party, to whom, and whether it was
+  // delivered. emailMessageId matches bounce notices to the email.
+  emailedAt      DateTime?
+  emailedTo      String?          @db.VarChar(400)
+  emailStatus    BillEmailStatus?
+  emailError     String?          @db.Text
+  emailStatusAt  DateTime?
+  emailMessageId String?          @db.VarChar(200)
 
   events         BillEvent[]
   changeRequests BillChangeRequest[]
@@ -402,6 +414,7 @@ model Bill {
   @@index([amountRequestedFromId, status])
   @@index([createdById])
   @@index([clientId])
+  @@index([emailMessageId])
 }
 
 // History of everything done to a bill
@@ -489,6 +502,11 @@ model BillingEmailSetting {
   replyTo      String?  @db.VarChar(75)
   // Gets a hidden copy (BCC) of every bill email
   copyTo       String?  @db.VarChar(75)
+  // Reading bounce notices from the billing mailbox: when it was last read,
+  // how far ("<uidValidity>:<last uid>"), and why the last read failed
+  bounceCheckedAt  DateTime?
+  bounceCheckpoint String?   @db.VarChar(60)
+  bounceCheckError String?   @db.Text
   updatedAt    DateTime @updatedAt
 }
 
