@@ -85,11 +85,6 @@ export default function EditTaskPage() {
   const router = useRouter();
   const params = useParams();
   const taskId = params?.id as string;
-  
-  if (!taskId) {
-    router.push('/dashboard/tasks');
-    return null;
-  }
 
   const [users, setUsers] = useState<User[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -135,6 +130,11 @@ export default function EditTaskPage() {
 
   // Load task data, users, and clients on component mount
   useEffect(() => {
+    if (!taskId) {
+      router.push('/dashboard/tasks');
+      return;
+    }
+
     const fetchData = async () => {
       try {
         setIsFetching(true);

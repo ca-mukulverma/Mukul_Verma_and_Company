@@ -4,13 +4,13 @@ import { clientBrowserCache } from '@/lib/browser-cache';
 
 interface OptimisticMutationOptions<T, U> {
   onMutate?: (data: U) => T; // Transform input to optimistic update
-  onSuccess?: (data: any) => void;
-  onError?: (error: any, rollbackData: T | null) => void;
+  onSuccess?: (data: unknown) => void;
+  onError?: (error: unknown, rollbackData: T | null) => void;
   onSettled?: () => void;
   invalidateQueries?: string[]; // Cache keys to invalidate on success
 }
 
-export function useOptimisticMutation<T, U = any>(
+export function useOptimisticMutation<T, U = unknown>(
   url: string,
   options: OptimisticMutationOptions<T, U> & Omit<AxiosRequestConfig, 'url' | 'data'> = {}
 ) {

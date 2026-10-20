@@ -127,7 +127,7 @@ export function SearchableMultiSelect({
   };
   
   // Remove a selected item
-  const removeItem = (value: string, e: React.MouseEvent) => {
+  const removeItem = (value: string, e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
     onChange(selected.filter(item => item !== value));
@@ -175,7 +175,7 @@ export function SearchableMultiSelect({
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
-                                  removeItem(option.value, e as any);
+                                  removeItem(option.value, e);
                                 }
                               }}
                               className="text-destructive h-full w-full flex items-center justify-center cursor-pointer"

@@ -41,7 +41,7 @@ export default function PermissionsPage() {
       const response = await axios.get("/api/admin/dashboard");
       const users = response.data.partners || [];
       setPartners(
-        users.map((user: any) => ({
+        users.map((user: Partial<Partner> & { id: string; name: string }) => ({
           id: user.id,
           name: user.name,
           avatar: user.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.name)}`, // Use DiceBear if no avatar

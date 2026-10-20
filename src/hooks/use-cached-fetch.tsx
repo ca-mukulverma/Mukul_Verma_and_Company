@@ -6,11 +6,11 @@ interface UseCachedFetchOptions {
   cacheTtl?: number; // Cache time-to-live in seconds
   cache?: BrowserCache; // Custom cache instance
   enabled?: boolean; // Whether to execute the fetch automatically
-  onSuccess?: (data: any) => void;
-  onError?: (error: any) => void;
+  onSuccess?: (data: unknown) => void;
+  onError?: (error: unknown) => void;
 }
 
-export function useCachedFetch<T = any>(
+export function useCachedFetch<T = unknown>(
   url: string,
   options: UseCachedFetchOptions & AxiosRequestConfig = {}
 ) {

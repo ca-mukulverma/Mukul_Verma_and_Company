@@ -242,7 +242,7 @@ export async function DELETE(
   } catch (error) {
     console.error("Error deleting client:", error);
     return NextResponse.json(
-      { error: "Failed to delete client", details: (error as any).message },
+      { error: "Failed to delete client", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

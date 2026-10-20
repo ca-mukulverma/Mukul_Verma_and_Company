@@ -145,9 +145,9 @@ export function UnifiedHistoryTab({
       );
 
       toast.success(`Entry ${pinned ? "pinned" : "unpinned"} successfully`);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to update pinned status:", err);
-      toast.error(err.message || "Failed to update pinned status");
+      toast.error((err instanceof Error && err.message) || "Failed to update pinned status");
     }
   };
 
@@ -190,7 +190,7 @@ export function UnifiedHistoryTab({
       const data = await response.json();
       setGeneralHistory(data.historyEntries || []);
       return data.historyEntries || [];
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to fetch general history:", err);
       throw err;
     }
@@ -208,7 +208,7 @@ export function UnifiedHistoryTab({
       const data = await response.json();
       setTaskHistory(data.taskHistory || []);
       return data.taskHistory || [];
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to fetch task history:", err);
       throw err;
     }
@@ -225,9 +225,9 @@ export function UnifiedHistoryTab({
         fetchGeneralHistory(),
         isPermanent ? fetchTaskHistory() : Promise.resolve([]),
       ]);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to fetch history:", err);
-      setError(err.message || "Failed to load history");
+      setError((err instanceof Error && err.message) || "Failed to load history");
     } finally {
       setLoading(false);
     }
@@ -259,9 +259,9 @@ export function UnifiedHistoryTab({
       form.reset();
 
       toast.success("History entry added successfully");
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to add history entry:", err);
-      toast.error(err.message || "Failed to add history entry");
+      toast.error((err instanceof Error && err.message) || "Failed to add history entry");
     } finally {
       setAdding(false);
     }
@@ -287,9 +287,9 @@ export function UnifiedHistoryTab({
       setEntryToDelete(null);
 
       toast.success("History entry deleted successfully");
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to delete history entry:", err);
-      toast.error(err.message || "Failed to delete history entry");
+      toast.error((err instanceof Error && err.message) || "Failed to delete history entry");
     }
   };
 
@@ -365,7 +365,7 @@ export function UnifiedHistoryTab({
       y += 5; // Minimal spacing
 
       // Second line - Company name and email on same line if possible
-      let secondLineText: string[] = [];
+      const secondLineText: string[] = [];
       if (client.companyName) secondLineText.push(client.companyName);
       if (client.email) secondLineText.push(client.email);
 
@@ -643,7 +643,7 @@ export function UnifiedHistoryTab({
           <div className="flex items-center gap-2">
             <Tabs
               value={activeTab}
-              onValueChange={(v) => setActiveTab(v as any)}
+              onValueChange={(v) => setActiveTab(v as typeof activeTab)}
               className="w-fit"
             >
               <TabsList className="grid grid-cols-3 w-[300px]">
