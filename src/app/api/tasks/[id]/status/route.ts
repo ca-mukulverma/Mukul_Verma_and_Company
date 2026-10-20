@@ -14,10 +14,11 @@ const statusUpdateSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    console.log(`🔍 PATCH /api/tasks/${params.id}/status - Request received`);
+    const { id: taskId } = await params;
+    console.log(`🔍 PATCH /api/tasks/${taskId}/status - Request received`);
     
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -25,7 +26,6 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const taskId = params.id;
     const body = await request.json();
     console.log("📝 Request body:", body);
     

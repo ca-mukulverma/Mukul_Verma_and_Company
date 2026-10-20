@@ -6,9 +6,9 @@ import { authOptions } from "@/lib/auth";
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const resolvedParams = params instanceof Promise ? await params : params;
+  const resolvedParams = await params;
   const clientId = resolvedParams.id;
 
   if (!clientId) {
@@ -43,9 +43,9 @@ export async function GET(
 // Update the POST handler as well to match the correct params structure
 export async function POST(
   request: NextRequest, 
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const resolvedParams = params instanceof Promise ? await params : params;
+  const resolvedParams = await params;
   const clientId = resolvedParams.id;
   const session = await getServerSession(authOptions);
 

@@ -20,7 +20,7 @@ const clientUpdateSchema = z.object({
 // GET specific client - keep accessible to all authenticated users
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -29,8 +29,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fix: Await params before accessing id
-    const resolvedParams = params instanceof Promise ? await params : params;
+    const resolvedParams = await params;
     const id = resolvedParams.id;
 
     const client = await prisma.client.findUnique({
@@ -84,7 +83,7 @@ export async function GET(
 // PATCH update client - restrict to Admin only
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -101,8 +100,7 @@ export async function PATCH(
       );
     }
 
-    // Fix: Access id safely from params object 
-    const resolvedParams = params instanceof Promise ? await params : params;
+    const resolvedParams = await params;
     const id = resolvedParams.id;
 
     // Get the existing client
@@ -187,7 +185,7 @@ export async function PATCH(
 // DELETE client - restrict to Admin only
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -204,8 +202,7 @@ export async function DELETE(
       );
     }
 
-    // Fix: Access id safely from params object
-    const resolvedParams = params instanceof Promise ? await params : params;
+    const resolvedParams = await params;
     const id = resolvedParams.id;
 
     // Get client name for activity log

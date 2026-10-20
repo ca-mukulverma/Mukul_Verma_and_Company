@@ -6,7 +6,7 @@ import { authOptions } from "@/lib/auth";
 // This is the correct format for App Router dynamic route handlers
 export async function PATCH(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,8 +18,7 @@ export async function PATCH(
 
     const { role } = session.user;
     
-    // Await the params to satisfy Next.js
-    const resolvedParams = await Promise.resolve(context.params);
+    const resolvedParams = await context.params;
     const userId = resolvedParams.id;
 
     // Only admins and partners can change user status

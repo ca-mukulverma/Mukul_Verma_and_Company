@@ -5,11 +5,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Properly await and extract the notification ID from params
-    const { id: notificationId } = await Promise.resolve(params);
+    const { id: notificationId } = await params;
 
     // Get authenticated user
     const session = await getServerSession(authOptions);
@@ -63,11 +62,10 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Properly await and extract the notification ID from params
-    const { id: notificationId } = await Promise.resolve(params);
+    const { id: notificationId } = await params;
 
     // Get authenticated user
     const session = await getServerSession(authOptions);

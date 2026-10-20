@@ -5,10 +5,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const resolvedParams = params instanceof Promise ? await params : params; // Await params if it's a Promise
+    const resolvedParams = await params;
     const clientId = resolvedParams.id;
     
     // Validate that the client exists (this would be using clientId)
@@ -54,7 +54,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -70,7 +70,7 @@ export async function POST(
       );
     }
 
-    const resolvedParams = params instanceof Promise ? await params : params;
+    const resolvedParams = await params;
     const clientId = resolvedParams.id;
     const body = await request.json();
 
@@ -114,7 +114,7 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -125,7 +125,7 @@ export async function DELETE(
       );
     }
 
-    const resolvedParams = params instanceof Promise ? await params : params;
+    const resolvedParams = await params;
     const clientId = resolvedParams.id;
     const { searchParams } = new URL(request.url);
     const entryId = searchParams.get("entryId");
@@ -171,11 +171,10 @@ export async function DELETE(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Fix: Resolve params if it's a Promise
-    const resolvedParams = params instanceof Promise ? await params : params;
+    const resolvedParams = await params;
     const clientId = resolvedParams.id;
     
     const body = await request.json();

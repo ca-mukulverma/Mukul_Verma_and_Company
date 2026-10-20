@@ -84,7 +84,7 @@ export class BrowserCache {
   clear(): void {
     try {
       const storage = this.getStorage();
-      const keysToRemove = [];
+      const keysToRemove: string[] = [];
       
       for (let i = 0; i < storage.length; i++) {
         const key = storage.key(i);

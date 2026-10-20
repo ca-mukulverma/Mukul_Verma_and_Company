@@ -3,10 +3,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const resolvedParams = params instanceof Promise ? await params : params; // Await params if it's a Promise
+    const resolvedParams = await params;
     const { id: clientId } = resolvedParams;
 
     // Check if client exists
