@@ -1,5 +1,5 @@
 import axios from "axios";
-import { BillStatusValue, BillTypeValue, CompanyValue } from "@/lib/billing-constants";
+import { BillStatusValue, BillTypeValue, CompanyValue, MvcBillTypeValue } from "@/lib/billing-constants";
 import { ClientOption } from "./client-picker";
 
 // A bill as returned by /api/bills (amounts are null when the user may not see them)
@@ -29,6 +29,8 @@ export interface Bill {
   pendingChange: PendingChange | null;
   tallyExportedAt: string | null;
   tallyNeedsUpdate: boolean;
+  emailedAt: string | null;
+  emailedTo: string | null;
   canManage: boolean;
 }
 
@@ -37,7 +39,7 @@ export interface BillChanges {
   description?: string;
   workDate?: string;
   clientId?: string;
-  type?: "GST" | "NON_GST";
+  type?: MvcBillTypeValue;
 }
 
 export interface PendingChange {
@@ -66,9 +68,9 @@ export interface BillEvent {
 }
 
 export type BillAction =
-  | { action: "set_type"; type: "GST" | "NON_GST" }
+  | { action: "set_type"; type: MvcBillTypeValue }
   | { action: "request_amount"; userId: string }
-  | { action: "enter_amount"; amount: number }
+  | { action: "enter_amount"; amount: number; type?: MvcBillTypeValue }
   | { action: "send_back"; remark: string }
   | { action: "not_billable"; remark?: string }
   | { action: "reopen" }
@@ -118,6 +120,7 @@ export const EVENT_LABELS: Record<string, string> = {
   edited: "Edited",
   cancelled: "Cancelled",
   reissued: "Reissued",
+  emailed: "Emailed to party",
 };
 
 export const CHANGE_KIND_LABELS = { edit: "Edit", cancel: "Cancel", reissue: "Reissue" } as const;

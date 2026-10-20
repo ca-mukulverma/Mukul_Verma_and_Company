@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const access = await getBillingAccess(user.id);
-  if (!access || access.manages.length === 0) {
+  if (!access || access.listCompanies.length === 0) {
     return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
   }
 

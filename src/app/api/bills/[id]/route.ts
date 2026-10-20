@@ -18,9 +18,10 @@ import {
   isAmountSetterFor,
   managesCompany,
   notifyBillingUsers,
+  seesInBillingList,
   serializeBill,
 } from "@/lib/billing";
-import { EDITABLE_BILL_STATUSES, formatRupees } from "@/lib/billing-constants";
+import { BILL_TYPE_LABELS, EDITABLE_BILL_STATUSES, MVC_BILL_TYPES, formatRupees } from "@/lib/billing-constants";
 import { finalApprove, finalReject, managerApprove } from "@/lib/bill-approvals";
 
 type Params = { params: Promise<{ id: string }> };
@@ -34,9 +35,10 @@ const detailsSchema = z.object({
 });
 
 const actionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("set_type"), type: z.enum(["GST", "NON_GST"]) }),
+  z.object({ action: z.literal("set_type"), type: z.enum(MVC_BILL_TYPES) }),
   z.object({ action: z.literal("request_amount"), userId: z.string().min(1) }),
-  z.object({ action: z.literal("enter_amount"), amount: z.number().positive().max(1e10) }),
+  // A billing manager may choose who an MVC bill is issued by in the same step
+  z.object({ action: z.literal("enter_amount"), amount: z.number().positive().max(1e10), type: z.enum(MVC_BILL_TYPES).optional() }),
   z.object({ action: z.literal("send_back"), remark: z.string().trim().min(3, "Add a remark").max(1000) }),
   z.object({ action: z.literal("not_billable"), remark: z.string().trim().max(1000).optional() }),
   z.object({ action: z.literal("reopen") }),
@@ -93,7 +95,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   // The history contains remarks about amounts, so only people who deal with
   // the amount see it
-  const canSeeHistory = managesCompany(access, bill.company) || isAmountSetterFor(bill, access);
+  const canSeeHistory =
+    managesCompany(access, bill.company) || seesInBillingList(bill, access) || isAmountSetterFor(bill, access);
   const events = canSeeHistory
     ? await prisma.billEvent.findMany({
         where: { billId: bill.id },
@@ -165,7 +168,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         bill.id,
         EDITABLE_BILL_STATUSES as BillStatus[],
         { type: input.type },
-        { action: "type_set", userId: user.id, remark: input.type === "GST" ? "GST" : "Non-GST" }
+        { action: "type_set", userId: user.id, remark: BILL_TYPE_LABELS[input.type] }
       );
       if (!ok) return conflict();
       break;
@@ -214,15 +217,22 @@ export async function POST(request: NextRequest, { params }: Params) {
           ? ["awaiting_amount"]
           : [];
       if (allowedStatuses.length === 0) return forbidden();
-      if (!bill.type) return NextResponse.json({ error: "Choose GST or Non-GST first" }, { status: 400 });
+      const changesType = input.type !== undefined && input.type !== bill.type;
+      if (changesType && (!isManager || bill.company !== "MVC")) return forbidden();
+      const type = input.type ?? bill.type;
+      if (!type) return NextResponse.json({ error: "Choose GST or Non-GST first" }, { status: 400 });
       if (!hasBillTo(bill)) return NextResponse.json({ error: "Select the client or enter the name to bill first" }, { status: 400 });
 
       const amount = Math.round(input.amount * 100) / 100;
       const ok = await updateIfStatus(
         bill.id,
         allowedStatuses,
-        { status: "amount_entered", amount, amountEnteredById: user.id, amountEnteredAt: new Date() },
-        { action: "amount_entered", userId: user.id, remark: formatRupees(amount) }
+        { status: "amount_entered", type, amount, amountEnteredById: user.id, amountEnteredAt: new Date() },
+        {
+          action: "amount_entered",
+          userId: user.id,
+          remark: changesType ? `${formatRupees(amount)} (${BILL_TYPE_LABELS[type]})` : formatRupees(amount),
+        }
       );
       if (!ok) return conflict();
 

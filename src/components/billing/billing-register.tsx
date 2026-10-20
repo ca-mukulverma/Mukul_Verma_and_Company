@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Ban, Download, FileText, History, Loader2, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
+import { Ban, Download, FileText, History, Loader2, Mail, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,18 +21,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useDebounce } from "@/hooks/use-debounce";
-import { BILL_TYPE_LABELS, BillTypeValue, CompanyValue, formatRupees, gstAmount } from "@/lib/billing-constants";
+import { BILL_TYPE_LABELS, BillTypeValue, billTypesOf, CompanyValue, formatRupees, gstAmount } from "@/lib/billing-constants";
 import { HistoryDialog } from "./bill-dialogs";
+import { EmailBillsDialog, MAX_EMAIL_BILLS } from "./bill-email-dialog";
+import { billTypeShortLabel } from "./bill-type-select";
 import { BillStatusBadge } from "./bill-list";
 import { apiErrorMessage, Bill, billParty, blobErrorMessage, CHANGE_KIND_LABELS, downloadBillFile } from "./bill-types";
 import { ChangeKind, ChangeRequestDialog } from "./change-request-dialog";
 
-// Numbered bills (approved and cancelled) of the companies the user manages
-export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[]; onChanged?: () => void }) {
-  const types: BillTypeValue[] = [
-    ...(manages.includes("MVC") ? (["GST", "NON_GST"] as const) : []),
-    ...(manages.includes("BEDGE") ? (["BEDGE"] as const) : []),
-  ];
+// Numbered bills (approved and cancelled) of the companies whose Billing List
+// the user sees: the ones they manage, or both for a partner Admin has allowed.
+// Only billing managers can ask for changes; everyone here can download and email.
+export function BillingRegister({ companies, onChanged }: { companies: CompanyValue[]; onChanged?: () => void }) {
+  const types = billTypesOf(companies);
   const [type, setType] = useState<string>("all");
   const [status, setStatus] = useState("all");
   const [from, setFrom] = useState("");
@@ -44,6 +45,8 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
   const [open, setOpen] = useState<{ bill: Bill; dialog: ChangeKind | "history" } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
+  // Bills being emailed; kept in state so the dialog gets the same list on every render
+  const [emailIds, setEmailIds] = useState<string[] | null>(null);
 
   const download = async (
     key: string,
@@ -188,6 +191,15 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
             {downloading === "combined" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Printer className="mr-1 h-3.5 w-3.5" />}
             One PDF to print
           </Button>
+          <Button
+            size="sm"
+            disabled={selected.size === 0 || selected.size > MAX_EMAIL_BILLS}
+            title={selected.size > MAX_EMAIL_BILLS ? `Email up to ${MAX_EMAIL_BILLS} bills at a time` : undefined}
+            onClick={() => setEmailIds([...selected])}
+          >
+            <Mail className="mr-1 h-3.5 w-3.5" />
+            Email to parties
+          </Button>
         </div>
       )}
 
@@ -231,7 +243,7 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                     <TableCell className="font-mono whitespace-nowrap">
                       <span className={cancelled ? "line-through" : undefined}>{bill.billNumber}</span>
                       <p className="font-sans text-xs text-muted-foreground">
-                        {bill.type ? BILL_TYPE_LABELS[bill.type].split(" – ")[0] : ""}
+                        {bill.type ? billTypeShortLabel(bill.type) : ""}
                       </p>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
@@ -255,6 +267,11 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                     <TableCell>
                       <div className="flex flex-col items-start gap-1">
                         <BillStatusBadge status={bill.status} />
+                        {bill.emailedAt && (
+                          <Badge variant="outline" className="whitespace-nowrap" title={bill.emailedTo ? `Emailed to ${bill.emailedTo}` : undefined}>
+                            Emailed {format(new Date(bill.emailedAt), "d MMM")}
+                          </Badge>
+                        )}
                         {bill.tallyExportedAt && (
                           <Badge variant="outline" className="whitespace-nowrap">
                             {bill.tallyNeedsUpdate ? "Tally update due" : "In Tally"}
@@ -283,11 +300,16 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
                           <DropdownMenuItem onClick={() => downloadOne(bill, "docx")}>
                             <FileText className="mr-2 h-4 w-4" />Download Word
                           </DropdownMenuItem>
+                          {bill.status === "approved" && (
+                            <DropdownMenuItem onClick={() => setEmailIds([bill.id])}>
+                              <Mail className="mr-2 h-4 w-4" />{bill.emailedAt ? "Email again" : "Email to party"}
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "history" })}>
                             <History className="mr-2 h-4 w-4" />History
                           </DropdownMenuItem>
-                          {bill.status === "approved" && !bill.pendingChange && (
+                          {bill.canManage && bill.status === "approved" && !bill.pendingChange && (
                             <>
                               <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "edit" })}>
                                 <Pencil className="mr-2 h-4 w-4" />Request edit
@@ -320,6 +342,7 @@ export function BillingRegister({ manages, onChanged }: { manages: CompanyValue[
       )}
 
       {open?.dialog === "history" && <HistoryDialog bill={open.bill} onClose={() => setOpen(null)} />}
+      {emailIds && <EmailBillsDialog billIds={emailIds} onClose={() => setEmailIds(null)} onSent={load} />}
       {open && open.dialog !== "history" && (
         <ChangeRequestDialog
           bill={open.bill}

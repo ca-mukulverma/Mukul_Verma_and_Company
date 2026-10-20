@@ -20,17 +20,21 @@ On the task form there is a **Company: MVC / B Edge** choice. After the task is
 created, only the person who created it or an Admin can change it. Tasks show
 the company as a badge.
 
-A bill is issued by one of three billing entities. Each entity has its own
+A bill is issued by one of five billing entities. Each entity has its own
 number series and its own Tally company:
 
-| Bill type | Issued by | Applies to | GST | Last number used before go-live |
-|---|---|---|---|---|
-| GST | MVC & Company | MVC work | Yes (tax invoice) | `26-27/0217` (14 Oct 2026) |
-| Non-GST | CA Mukul Verma | MVC work | No | `2026-27/26985` (15 Oct 2026) |
-| B Edge | B Edge | B Edge work | No (always) | `BE/26149` (30 Sep 2026) |
+| Bill type | Issued by | Applies to | GST | Number format | Last number used before go-live |
+|---|---|---|---|---|---|
+| GST | MVC & Company | MVC work | Yes (tax invoice) | `26-27/0218` | `26-27/0217` (14 Oct 2026) |
+| Non-GST | CA Mukul Verma | MVC work | No | `2026-27/26986` | `2026-27/26985` (15 Oct 2026) |
+| Non-GST | CA Harsh Verma | MVC work | No | `HV/2026-27/1` | – |
+| Non-GST | Verma Law Associates | MVC work | No | `VLA/2026-27/1` | – |
+| B Edge | B Edge | B Edge work | No (always) | `BE/26150` | `BE/26149` (30 Sep 2026) |
 
-For MVC work, the MVC billing manager chooses GST or Non-GST. B Edge bills are
-always non-GST.
+For MVC work, the MVC billing manager or Admin chooses GST or Non-GST and,
+for Non-GST, whose name the bill is raised in: CA Mukul Verma, CA Harsh
+Verma or Verma Law Associates. They choose it on the bill, or in the *Enter
+amount* window while entering the fee. B Edge bills are always non-GST.
 
 Admin edits each entity's profile in **Billing → Company profiles**: name,
 address, phone, email, PAN, bank details, signatory and a note for the bottom
@@ -45,9 +49,9 @@ GST on a GST bill:
 
 ### Number series
 
-- All three series restart at **1** on **1 April** each year, with no
+- All series restart at **1** on **1 April** each year, with no
   leading zeros except the GST series, which keeps its four digits:
-  `27-28/0001`, `2027-28/1`, `BE/1`. B Edge numbers carry no year, so the
+  `27-28/0001`, `2027-28/1`, `HV/2027-28/1`, `VLA/2027-28/1`, `BE/1`. B Edge numbers carry no year, so the
   same B Edge number recurs in different financial years. The financial
   year is stored with every bill to tell them apart.
 - On go-live day, Admin sets the **next number** for each series in Settings,
@@ -91,6 +95,7 @@ GST bills.
 | Admin | Admin role | Everything. Gives final approval and approves edit/cancel/reissue requests |
 | MVC billing manager | Selected Partner(s)/Admin | All MVC bills and amounts. Sets GST/Non-GST, enters or requests amounts, approves, requests edit/cancel/reissue, exports |
 | B Edge billing manager | Selected Partner(s)/Admin | Same as above, but only for B Edge bills |
+| Billing List viewer | Partner(s) Admin allows | The whole Billing List of MVC and B Edge: amounts, bill numbers, downloads and emailing bills to clients. Can't change bills, approve or export to Tally |
 | Amount setter | Admin, or a Partner Admin has allowed to enter amounts, that a bill is sent to | Only the bills sent to them. Enters the amount or sends the bill back with a remark |
 | Everyone else | Executives, consultants and the other Partners | Can log work done. Never sees amounts, bill numbers or the Billing List |
 
@@ -147,8 +152,8 @@ due**, and the next XML export alters or cancels the voucher in Tally.
 
 ## Billing List and exports
 
-Only the billing managers (each for their own company) and Admin can see the
-Billing List. It can be filtered by series, bill date range, status
+Only the billing managers (each for their own company), Admin and the
+partners Admin allows to see it (both companies) can see the Billing List. It can be filtered by series, bill date range, status
 (approved/cancelled) and client or work. It shows fee, GST and total per bill,
 with the fee totals for each series.
 
@@ -189,6 +194,62 @@ with the fee totals for each series.
       manager can change it on the Tally tab when the name in Tally
       differs. Client ledgers must already exist in Tally.
 
+## Emailing bills
+
+Approved bills are emailed to the party from the **Billing List**:
+
+- one bill from its ⋮ menu (*Email to party*), or
+- several selected bills with **Email to parties** (up to 30 at a time).
+
+Each party gets **one email** with all of its selected bills attached as PDFs,
+whichever entity issued them. MVC and B Edge bills always go in separate
+emails. The email is a short covering letter: the bills with their dates and
+amounts, the total payable, the bank details (when all the bills are paid
+into the same account), and the firm's phone and email from the company
+profile. Cancelled bills are never emailed.
+
+Before sending, the window shows each party with the client's saved email
+address. Several addresses can be given, separated by commas. For an "Other"
+name or a client without an address, type it in; for a saved client it can
+also be saved on the client. An optional message is added to every email.
+The bill then shows **Emailed** with the date (and the address, on hover),
+and the bill's history records it.
+
+Billing managers, Admin and partners allowed to see the Billing List can
+email bills.
+
+### The billing mailbox
+
+Bills go out from **billing.camkulverma@gmail.com**. To set it up:
+
+1. In that Google account, turn on 2-Step Verification, then create an
+   **App password** (Google Account → Security → App passwords).
+2. On Vercel, add the environment variable `BILLING_EMAIL_PASSWORD` with the
+   app password, and redeploy. If the mailbox is a different address, also
+   set `BILLING_EMAIL_USER`.
+
+A free Gmail account can send about 500 emails a day.
+
+### Replies (Billing → Bill emails, Admin)
+
+- **Clients can reply: off** (the default). The email's reply address is one
+  that cannot receive mail, so a client who clicks *Reply* gets a bounce
+  and nothing reaches the mailbox. The email says that the mailbox is not
+  monitored and gives the firm's phone and email instead. It also asks mail
+  servers not to send out-of-office replies.
+- **On**: replies go to the address entered there, or to the billing mailbox
+  if it is left empty.
+- **Hidden copy**: an address (e.g. the office email) that gets a BCC of
+  every bill email.
+
+Gmail cannot refuse mail that a client writes *directly* to the billing
+address. To keep the mailbox empty, add a filter in that Gmail account:
+Settings → *See all settings* → *Filters and blocked addresses* → *Create a
+new filter*, **To:** `billing.camkulverma@gmail.com` → *Create filter* →
+tick **Delete it** (and **Never send it to Spam**) → *Create filter*.
+Optionally, a vacation responder can tell such senders where to write
+instead.
+
 ## Dashboards
 
 - **Admin and allowed Partners:** "Bills awaiting your amount" for bills sent to them.
@@ -218,6 +279,8 @@ For B Edge bills, "billing manager" means the B Edge billing manager.
   partners. It now appears as "MVC Billing Manager" in Settings → Permissions.
 - **B Edge billing manager** is a new switch on the same page.
 - Admins are always billing managers for both companies.
+- **Billing List** is a switch on the same page: the partner sees the whole
+  Billing List of both companies and can download and email bills.
 - **Can enter amounts** is a switch on the same page. Bills can be sent for the
   amount only to active Admins and to Partners with this switch on. Other
   Partners see billing like executives and consultants. Turning the switch off

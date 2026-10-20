@@ -1,10 +1,10 @@
 import { BillType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { BillingAccess, managesCompany } from "@/lib/billing";
+import { BillingAccess } from "@/lib/billing";
 import { GST_RATE_PERCENT } from "@/lib/billing-constants";
 
-// Everything printed on one bill (PDF or Word). Built only for bills the
-// user manages, so amounts never reach anyone else.
+// Everything printed on one bill (PDF or Word). Built only for bills in a
+// Billing List the user may see, so amounts never reach anyone else.
 export interface BillDocument {
   id: string;
   type: BillType;
@@ -125,7 +125,7 @@ const documentInclude = {
 } satisfies Prisma.BillInclude;
 
 // Loads the printable data for the given bills, in the order asked for.
-// Bills the user does not manage, or that have no number yet, are left out.
+// Bills outside the user's Billing List, or that have no number yet, are left out.
 export async function loadBillDocuments(ids: string[], access: BillingAccess): Promise<BillDocument[]> {
   const [bills, entities] = await Promise.all([
     prisma.bill.findMany({
@@ -137,7 +137,7 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
 
   return ids.flatMap((id) => {
     const bill = bills.find((b) => b.id === id);
-    if (!bill || !bill.type || !bill.billNumber || !bill.billDate || !managesCompany(access, bill.company)) return [];
+    if (!bill || !bill.type || !bill.billNumber || !bill.billDate || !access.listCompanies.includes(bill.company)) return [];
     const entity = entities.find((e) => e.type === bill.type);
     const fee = bill.amount !== null ? Number(bill.amount) : 0;
     const isGst = bill.type === "GST";

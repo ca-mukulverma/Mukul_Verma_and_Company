@@ -4,10 +4,10 @@ import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSeriesOverview } from "@/lib/billing";
-import { financialYearOf } from "@/lib/billing-constants";
+import { BILL_TYPES, BillTypeValue, financialYearOf } from "@/lib/billing-constants";
 
 const updateSchema = z.object({
-  type: z.enum(["GST", "NON_GST", "BEDGE"]),
+  type: z.enum(BILL_TYPES as [BillTypeValue, ...BillTypeValue[]]),
   nextNumber: z.number().int().min(1).max(99999999),
 });
 

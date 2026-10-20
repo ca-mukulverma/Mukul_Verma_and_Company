@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { MVC_BILL_TYPES, MvcBillTypeValue } from "@/lib/billing-constants";
+import { BillTypeSelect } from "./bill-type-select";
 import { ClientOption, ClientPicker } from "./client-picker";
 import { apiErrorMessage, Bill, BillChanges } from "./bill-types";
 
@@ -52,7 +53,9 @@ export function ChangeRequestDialog({
   const [description, setDescription] = useState(bill.description);
   const [workDate, setWorkDate] = useState(format(new Date(bill.workDate), "yyyy-MM-dd"));
   const [client, setClient] = useState<ClientOption | null>(bill.client);
-  const [type, setType] = useState(bill.type === "GST" || bill.type === "NON_GST" ? bill.type : undefined);
+  const [type, setType] = useState(
+    (MVC_BILL_TYPES as readonly string[]).includes(bill.type ?? "") ? (bill.type as MvcBillTypeValue) : undefined
+  );
   const [saving, setSaving] = useState(false);
 
   const changes: BillChanges = {};
@@ -113,14 +116,8 @@ export function ChangeRequestDialog({
                   </div>
                   {bill.company === "MVC" && (
                     <div className="space-y-2">
-                      <Label>Bill type</Label>
-                      <Select value={type} onValueChange={(value) => setType(value as "GST" | "NON_GST")}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="GST">GST – MVC & Company</SelectItem>
-                          <SelectItem value="NON_GST">Non-GST – CA Mukul Verma</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="change-type">Bill type</Label>
+                      <BillTypeSelect id="change-type" value={type} onChange={setType} className="w-full" />
                     </div>
                   )}
                 </>

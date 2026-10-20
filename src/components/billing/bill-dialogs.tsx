@@ -11,7 +11,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { formatRupees, gstAmount, GST_RATE_PERCENT } from "@/lib/billing-constants";
+import {
+  EDITABLE_BILL_STATUSES,
+  formatRupees,
+  gstAmount,
+  GST_RATE_PERCENT,
+  MvcBillTypeValue,
+} from "@/lib/billing-constants";
+import { BillTypeSelect } from "./bill-type-select";
 import { BillTo, BillToPicker, billToPayload, billToValid } from "./client-picker";
 import { apiErrorMessage, Bill, BillAction, BillEvent, billParty, EVENT_LABELS, runBillAction } from "./bill-types";
 
@@ -79,10 +86,14 @@ function BillSummary({ bill }: { bill: Bill }) {
 
 export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
   const [value, setValue] = useState(bill.amount !== null ? String(bill.amount) : "");
+  // The billing manager chooses who an MVC bill is issued by along with the amount
+  const canChooseType =
+    bill.canManage && bill.company === "MVC" && (EDITABLE_BILL_STATUSES as string[]).includes(bill.status);
+  const [type, setType] = useState(bill.type as MvcBillTypeValue | null);
   const { saving, run } = useBillAction({ bill, onDone });
   const amount = Number(value);
-  const valid = value !== "" && Number.isFinite(amount) && amount > 0;
-  const gst = bill.type === "GST" && valid ? gstAmount(amount) : 0;
+  const valid = value !== "" && Number.isFinite(amount) && amount > 0 && !!type;
+  const gst = type === "GST" && valid ? gstAmount(amount) : 0;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -96,9 +107,18 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
           className="space-y-4"
           onSubmit={async (e) => {
             e.preventDefault();
-            if (valid && (await run({ action: "enter_amount", amount }, "Amount saved"))) onClose();
+            if (!valid) return;
+            const action: BillAction =
+              canChooseType && type && type !== bill.type ? { action: "enter_amount", amount, type } : { action: "enter_amount", amount };
+            if (await run(action, "Amount saved")) onClose();
           }}
         >
+          {canChooseType && (
+            <div className="space-y-2">
+              <Label htmlFor="bill-type">Bill type</Label>
+              <BillTypeSelect id="bill-type" value={type} onChange={setType} className="w-full" />
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="bill-amount">Fee (₹)</Label>
             <Input
@@ -112,7 +132,7 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
               onChange={(e) => setValue(e.target.value)}
             />
           </div>
-          {bill.type === "GST" && valid && (
+          {type === "GST" && valid && (
             <div className="text-sm space-y-1 rounded-md border p-3">
               <div className="flex justify-between"><span>Fee</span><span>{formatRupees(amount)}</span></div>
               <div className="flex justify-between"><span>GST @ {GST_RATE_PERCENT}%</span><span>{formatRupees(gst)}</span></div>

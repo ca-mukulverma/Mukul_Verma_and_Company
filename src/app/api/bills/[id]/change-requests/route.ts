@@ -5,6 +5,7 @@ import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { describeBill, getBillingAccess, managesCompany, notifyBillingUsers } from "@/lib/billing";
+import { MVC_BILL_TYPES } from "@/lib/billing-constants";
 
 const changesSchema = z
   .object({
@@ -12,7 +13,7 @@ const changesSchema = z
     description: z.string().trim().min(3).max(2000).optional(),
     workDate: z.string().datetime().optional(),
     clientId: z.string().min(1).optional(),
-    type: z.enum(["GST", "NON_GST"]).optional(),
+    type: z.enum(MVC_BILL_TYPES).optional(),
   })
   .strict();
 

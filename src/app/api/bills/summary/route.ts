@@ -52,6 +52,7 @@ export async function GET() {
 
   return NextResponse.json({
     manages: access.manages,
+    listCompanies: access.listCompanies,
     canEnterAmounts: access.canEnterAmounts,
     isAdmin: access.isAdmin,
     awaitingMyAmount,

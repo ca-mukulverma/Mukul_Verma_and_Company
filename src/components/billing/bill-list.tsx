@@ -18,16 +18,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BillTypeSelect, billTypeShortLabel } from "./bill-type-select";
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import {
   BILL_STATUS_LABELS,
+  BILL_TYPE_LABELS,
   BillStatusValue,
   CompanyValue,
   EDITABLE_BILL_STATUSES,
   formatRupees,
   gstAmount,
+  MvcBillTypeValue,
 } from "@/lib/billing-constants";
 import { CompanyBadge } from "./company-select";
 import {
@@ -132,7 +134,7 @@ export function BillList({
     onChanged?.();
   };
 
-  const setType = async (bill: Bill, type: "GST" | "NON_GST") => {
+  const setType = async (bill: Bill, type: MvcBillTypeValue) => {
     try {
       await runBillAction(bill.id, { action: "set_type", type });
       handleDone();
@@ -294,7 +296,7 @@ function BillCard({
   bill: Bill;
   mode: BillListMode;
   onOpen: (dialog: BillDialog) => void;
-  onSetType: (type: "GST" | "NON_GST") => void;
+  onSetType: (type: MvcBillTypeValue) => void;
   onReopen: () => void;
   onApprove?: () => void;
   approving?: boolean;
@@ -320,7 +322,7 @@ function BillCard({
               <BillStatusBadge status={bill.status} />
               <CompanyBadge company={bill.company} />
               {mode === "final" && bill.type && bill.company === "MVC" && (
-                <Badge variant="outline">{bill.type === "GST" ? "GST" : "Non-GST"}</Badge>
+                <Badge variant="outline">{billTypeShortLabel(bill.type)}</Badge>
               )}
               {bill.billNumber && <Badge variant="secondary">{bill.billNumber}</Badge>}
             </div>
@@ -362,19 +364,15 @@ function BillCard({
         {canManage && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {bill.company === "MVC" && editable && (
-              // "" (not undefined) keeps the choice controlled: it only changes once it is saved
-              <Select value={bill.type ?? ""} onValueChange={(value) => onSetType(value as "GST" | "NON_GST")}>
-                <SelectTrigger className={cn("h-8 w-auto min-w-44", !bill.type && "border-amber-500")}>
-                  <SelectValue placeholder="Choose GST / Non-GST" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="GST">GST – MVC & Company</SelectItem>
-                  <SelectItem value="NON_GST">Non-GST – CA Mukul Verma</SelectItem>
-                </SelectContent>
-              </Select>
+              // Only changes once it is saved
+              <BillTypeSelect
+                value={bill.type as MvcBillTypeValue | null}
+                onChange={onSetType}
+                className="h-8 w-auto min-w-44"
+              />
             )}
             {bill.company === "MVC" && !editable && bill.type && (
-              <Badge variant="outline">{bill.type === "GST" ? "GST – MVC & Company" : "Non-GST – CA Mukul Verma"}</Badge>
+              <Badge variant="outline">{BILL_TYPE_LABELS[bill.type]}</Badge>
             )}
             {editable && !clientName && (
               <Button size="sm" className="bg-amber-600 text-white hover:bg-amber-700" onClick={() => onOpen("details")}>
@@ -382,7 +380,7 @@ function BillCard({
               </Button>
             )}
             {editable && (
-              <Button size="sm" variant="outline" disabled={!bill.type || !clientName} onClick={() => onOpen("amount")}>
+              <Button size="sm" variant="outline" disabled={!clientName} onClick={() => onOpen("amount")}>
                 <IndianRupee className="mr-1 h-3.5 w-3.5" />
                 {bill.amount !== null ? "Change amount" : "Enter amount"}
               </Button>
@@ -439,7 +437,7 @@ function BillCard({
               ? "Choose the client and GST / Non-GST before entering the amount or sending it for the amount."
               : !clientName
                 ? "Choose the client (or Other with the name) before entering the amount or sending it for the amount."
-                : "Choose GST / Non-GST before entering the amount or sending it for the amount."}
+                : "Choose GST / Non-GST (and, for Non-GST, whose name the bill is in) before sending it for the amount. You can also choose it when you enter the amount."}
           </p>
         )}
 

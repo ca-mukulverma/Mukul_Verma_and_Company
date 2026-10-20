@@ -3,11 +3,12 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { BILL_TYPES, BillTypeValue } from "@/lib/billing-constants";
 
 const optional = (max: number) => z.string().trim().max(max).optional().nullable().transform((v) => v || null);
 
 const entitySchema = z.object({
-  type: z.enum(["GST", "NON_GST", "BEDGE"]),
+  type: z.enum(BILL_TYPES as [BillTypeValue, ...BillTypeValue[]]),
   name: z.string().trim().min(2, "Enter the name").max(100),
   address: optional(500),
   phone: optional(30),
@@ -36,14 +37,13 @@ async function requireAdmin() {
   return user?.role === "ADMIN" ? user : null;
 }
 
-// GET /api/billing/entities – the letterhead details of the three bill types (Admin)
+// GET /api/billing/entities – the letterhead details of each bill type (Admin)
 export async function GET() {
   if (!(await requireAdmin())) {
     return NextResponse.json({ error: "Only Admin can manage company profiles" }, { status: 403 });
   }
   const entities = await prisma.billingEntity.findMany();
-  const order = ["GST", "NON_GST", "BEDGE"];
-  return NextResponse.json({ entities: entities.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type)) });
+  return NextResponse.json({ entities: entities.sort((a, b) => BILL_TYPES.indexOf(a.type) - BILL_TYPES.indexOf(b.type)) });
 }
 
 // PUT /api/billing/entities – save one profile (Admin)

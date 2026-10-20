@@ -2,7 +2,7 @@ import { Bill, BillType, Company, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser } from "@/lib/web-push";
-import { EDITABLE_BILL_STATUSES, formatBillNumber, financialYearOf } from "@/lib/billing-constants";
+import { BILL_TYPES, EDITABLE_BILL_STATUSES, formatBillNumber, financialYearOf } from "@/lib/billing-constants";
 
 // What the signed-in user may do in billing. Read from the database on every
 // request (not the session) so a permission removed by Admin applies at once.
@@ -13,12 +13,22 @@ export interface BillingAccess {
   manages: Company[];
   // Admins, and the partners Admin has allowed, can be asked to enter an amount
   canEnterAmounts: boolean;
+  // Companies whose Billing List (numbered bills) the user sees, downloads and
+  // emails: the ones they manage, or both for a partner Admin has allowed
+  listCompanies: Company[];
 }
 
 export async function getBillingAccess(userId: string): Promise<BillingAccess | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, isActive: true, canApproveBilling: true, canManageBedgeBilling: true, canEnterBillAmounts: true },
+    select: {
+      role: true,
+      isActive: true,
+      canApproveBilling: true,
+      canManageBedgeBilling: true,
+      canEnterBillAmounts: true,
+      canViewBillingList: true,
+    },
   });
   if (!user || !user.isActive) return null;
 
@@ -28,11 +38,20 @@ export async function getBillingAccess(userId: string): Promise<BillingAccess | 
   if (isAdmin || (isPartner && user.canApproveBilling)) manages.push("MVC");
   if (isAdmin || (isPartner && user.canManageBedgeBilling)) manages.push("BEDGE");
 
-  return { userId, isAdmin, manages, canEnterAmounts: isAdmin || (isPartner && user.canEnterBillAmounts) };
+  const listCompanies: Company[] = isPartner && user.canViewBillingList ? ["MVC", "BEDGE"] : manages;
+
+  return { userId, isAdmin, manages, canEnterAmounts: isAdmin || (isPartner && user.canEnterBillAmounts), listCompanies };
 }
 
 export function managesCompany(access: BillingAccess, company: Company) {
   return access.manages.includes(company);
+}
+
+export const LISTED_BILL_STATUSES: Bill["status"][] = ["approved", "cancelled"];
+
+// The bill is in the Billing List and the user may see that list
+export function seesInBillingList(bill: Pick<Bill, "company" | "status">, access: BillingAccess) {
+  return access.listCompanies.includes(bill.company) && LISTED_BILL_STATUSES.includes(bill.status);
 }
 
 // The bill was sent to this user, or they entered its amount. Only counts while
@@ -84,7 +103,9 @@ type BillWithRelations = Prisma.BillGetPayload<{ include: typeof billInclude }>;
 // anyone who is not allowed to see them; hiding them in the UI is not enough.
 export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
   const isManager = managesCompany(access, bill.company);
-  const canSeeAmount = isManager || isAmountSetterFor(bill, access);
+  // Partners allowed to see the Billing List see numbered bills in full
+  const canSeeNumber = isManager || seesInBillingList(bill, access);
+  const canSeeAmount = canSeeNumber || isAmountSetterFor(bill, access);
 
   return {
     id: bill.id,
@@ -105,10 +126,12 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     amountEnteredBy: canSeeAmount ? bill.amountEnteredBy : null,
     amountEnteredAt: canSeeAmount ? bill.amountEnteredAt : null,
     amount: canSeeAmount && bill.amount !== null ? Number(bill.amount) : null,
-    billNumber: isManager ? bill.billNumber : null,
-    billDate: isManager ? bill.billDate : null,
-    reissuedFrom: isManager ? bill.reissuedFrom : null,
-    reissuedAs: isManager ? bill.reissuedAs : null,
+    billNumber: canSeeNumber ? bill.billNumber : null,
+    billDate: canSeeNumber ? bill.billDate : null,
+    reissuedFrom: canSeeNumber ? bill.reissuedFrom : null,
+    reissuedAs: canSeeNumber ? bill.reissuedAs : null,
+    emailedAt: canSeeNumber ? bill.emailedAt : null,
+    emailedTo: canSeeNumber ? bill.emailedTo : null,
     pendingChange: isManager ? (bill.changeRequests[0] ?? null) : null,
     tallyExportedAt: isManager ? bill.tallyExportedAt : null,
     tallyNeedsUpdate: isManager ? bill.tallyNeedsUpdate : false,
@@ -118,11 +141,12 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
 
 // Whether the user may open a bill at all
 export function canViewBill(
-  bill: Pick<Bill, "company" | "createdById" | "amountRequestedFromId" | "amountEnteredById">,
+  bill: Pick<Bill, "company" | "status" | "createdById" | "amountRequestedFromId" | "amountEnteredById">,
   access: BillingAccess
 ) {
   return (
     managesCompany(access, bill.company) ||
+    seesInBillingList(bill, access) ||
     bill.createdById === access.userId ||
     isAmountSetterFor(bill, access)
   );
@@ -276,7 +300,7 @@ export function describeBill(bill: {
 export async function getSeriesOverview() {
   const currentYear = financialYearOf();
   const rows = await prisma.billSeries.findMany();
-  return (["GST", "NON_GST", "BEDGE"] as BillType[]).map((type) => {
+  return (BILL_TYPES as BillType[]).map((type) => {
     const row = rows.find((r) => r.type === type);
     // A new financial year starts again at 1
     const nextNumber = row && row.financialYear === currentYear ? row.nextNumber : 1;

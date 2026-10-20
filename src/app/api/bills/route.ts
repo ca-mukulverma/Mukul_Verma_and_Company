@@ -20,8 +20,9 @@ const workEntrySchema = z.object({
 
 // GET /api/bills?view=manage|list|amounts|mine&company=MVC|BEDGE&status=...&search=...&page=1
 //   manage  – bills of the companies the user manages
-//   list    – the Billing List: numbered bills of those companies, filtered by
-//             &type=GST|NON_GST|BEDGE&from=YYYY-MM-DD&to=YYYY-MM-DD (bill date)
+//   list    – the Billing List: numbered bills of those companies (both for a
+//             partner Admin has allowed to see it), filtered by &type=<BillType>
+//             &from=YYYY-MM-DD&to=YYYY-MM-DD (bill date)
 //   amounts – bills sent to the user to enter the amount
 //   mine    – work the user logged or completed
 export async function GET(request: NextRequest) {
@@ -42,8 +43,10 @@ export async function GET(request: NextRequest) {
   const where: Prisma.BillWhereInput = {};
 
   if (view === "manage" || view === "list") {
-    const companies = company ? [company as Company] : access.manages;
-    if (companies.length === 0 || companies.some((c) => !access.manages.includes(c))) {
+    // Partners allowed to see the Billing List see it for both companies
+    const allowed = view === "list" ? access.listCompanies : access.manages;
+    const companies = company ? [company as Company] : allowed;
+    if (companies.length === 0 || companies.some((c) => !allowed.includes(c))) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
     where.company = { in: companies };

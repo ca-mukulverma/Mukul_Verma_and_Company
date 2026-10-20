@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BillList } from "@/components/billing/bill-list";
 import { BillingRegister } from "@/components/billing/billing-register";
 import { ChangeRequests } from "@/components/billing/change-requests";
+import { EmailSettings } from "@/components/billing/email-settings";
 import { EntityProfiles } from "@/components/billing/entity-profiles";
 import { TallyExport } from "@/components/billing/tally-export";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,8 @@ import { CompanyValue } from "@/lib/billing-constants";
 
 export interface BillingSummary {
   manages: CompanyValue[];
+  // Companies whose Billing List the user sees (a partner may see it without managing)
+  listCompanies: CompanyValue[];
   canEnterAmounts: boolean;
   isAdmin: boolean;
   awaitingMyAmountCount: number;
@@ -92,6 +95,7 @@ function BillingPageContent() {
     } catch {
       setSummary({
         manages: [],
+        listCompanies: [],
         canEnterAmounts: false,
         isAdmin: false,
         awaitingMyAmountCount: 0,
@@ -115,15 +119,17 @@ function BillingPageContent() {
   }
 
   const isManager = summary.manages.length > 0;
+  const seesList = summary.listCompanies.length > 0;
   const tabs = [
     ...(summary.isAdmin ? ["final"] : []),
     ...(summary.canEnterAmounts ? ["amounts"] : []),
     ...(summary.manages.includes("MVC") ? ["mvc"] : []),
     ...(summary.manages.includes("BEDGE") ? ["bedge"] : []),
-    ...(isManager ? ["list", "tally", "requests"] : []),
+    ...(seesList ? ["list"] : []),
+    ...(isManager ? ["tally", "requests"] : []),
     "log",
     "mine",
-    ...(summary.isAdmin ? ["series", "profiles"] : []),
+    ...(summary.isAdmin ? ["series", "profiles", "emails"] : []),
   ];
   const defaultTab =
     summary.isAdmin && summary.awaitingFinalCount > 0
@@ -134,7 +140,9 @@ function BillingPageContent() {
         ? "mvc"
         : summary.manages.includes("BEDGE")
           ? "bedge"
-          : "log";
+          : seesList
+            ? "list"
+            : "log";
   const requestedTab = searchParams.get("tab");
   const tab = requestedTab && tabs.includes(requestedTab) ? requestedTab : defaultTab;
 
@@ -168,7 +176,7 @@ function BillingPageContent() {
             {summary.manages.includes("BEDGE") && (
               <TabsTrigger value="bedge">B Edge bills<CountBadge count={pendingCount("BEDGE")} /></TabsTrigger>
             )}
-            {isManager && <TabsTrigger value="list">Billing list</TabsTrigger>}
+            {seesList && <TabsTrigger value="list">Billing list</TabsTrigger>}
             {isManager && <TabsTrigger value="tally">Tally</TabsTrigger>}
             {isManager && (
               <TabsTrigger value="requests">Change requests<CountBadge count={summary.pendingChangeRequests} /></TabsTrigger>
@@ -177,6 +185,7 @@ function BillingPageContent() {
             <TabsTrigger value="mine">My entries</TabsTrigger>
             {summary.isAdmin && <TabsTrigger value="series">Number series</TabsTrigger>}
             {summary.isAdmin && <TabsTrigger value="profiles">Company profiles</TabsTrigger>}
+            {summary.isAdmin && <TabsTrigger value="emails">Bill emails</TabsTrigger>}
           </TabsList>
         </div>
 
@@ -195,9 +204,9 @@ function BillingPageContent() {
         <TabsContent value="bedge" className="mt-4">
           <BillList mode="manage" company="BEDGE" counts={summary.counts.BEDGE} onChanged={loadSummary} />
         </TabsContent>
-        {isManager && (
+        {seesList && (
           <TabsContent value="list" className="mt-4 min-w-0">
-            <BillingRegister manages={summary.manages} onChanged={loadSummary} />
+            <BillingRegister companies={summary.listCompanies} onChanged={loadSummary} />
           </TabsContent>
         )}
         {isManager && (
@@ -229,6 +238,11 @@ function BillingPageContent() {
         {summary.isAdmin && (
           <TabsContent value="profiles" className="mt-4">
             <EntityProfiles />
+          </TabsContent>
+        )}
+        {summary.isAdmin && (
+          <TabsContent value="emails" className="mt-4">
+            <EmailSettings />
           </TabsContent>
         )}
       </Tabs>
