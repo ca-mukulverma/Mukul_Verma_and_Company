@@ -147,8 +147,19 @@ with a reason. Admin approves or rejects the request.
 
 Only one request per bill can wait for Admin at a time.
 
+### Admin edits the amount
+
+Admin can correct the fee directly, without a request, at any stage after
+it is entered: *Amount entered*, *Awaiting final approval* (**Edit amount**
+on the bill) and *Approved* (**Edit amount** in the bill's ⋮ menu in the
+Billing List). A reason is optional. The bill keeps its number and date;
+the history records the old and new amount. The billing managers and the
+person who entered the amount are notified.
+
 If the bill was already exported to Tally, it is flagged **Tally update
-due**, and the next XML export alters or cancels the voucher in Tally.
+due** (highlighted in the Billing List), and the next XML export alters or
+cancels the voucher in Tally. This also applies when Admin edits the amount
+of an exported bill; the notification then says that Tally must be updated.
 
 ## Billing List and exports
 
@@ -314,6 +325,7 @@ Notifications appear in the app and as push notifications.
 | Edit/cancel/reissue requested | ✔ | | |
 | Request approved / rejected | | ✔ | |
 | Month-end reminder (from the 25th) | ✔ | | |
+| Amount changed by Admin | | ✔ | ✔ |
 
 For B Edge bills, "billing manager" means the B Edge billing manager.
 

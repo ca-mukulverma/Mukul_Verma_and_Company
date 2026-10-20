@@ -21,7 +21,13 @@ import {
   seesInBillingList,
   serializeBill,
 } from "@/lib/billing";
-import { BILL_TYPE_LABELS, EDITABLE_BILL_STATUSES, MVC_BILL_TYPES, formatRupees } from "@/lib/billing-constants";
+import {
+  ADMIN_AMOUNT_EDIT_STATUSES,
+  BILL_TYPE_LABELS,
+  EDITABLE_BILL_STATUSES,
+  MVC_BILL_TYPES,
+  formatRupees,
+} from "@/lib/billing-constants";
 import { finalApprove, finalReject, managerApprove } from "@/lib/bill-approvals";
 
 type Params = { params: Promise<{ id: string }> };
@@ -45,6 +51,8 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("manager_approve") }),
   z.object({ action: z.literal("final_approve") }),
   z.object({ action: z.literal("final_reject"), remark: z.string().trim().min(3, "Add a remark").max(1000) }),
+  // Admin corrects the amount after it was entered, including on approved bills
+  z.object({ action: z.literal("edit_amount"), amount: z.number().positive().max(1e10), remark: z.string().trim().max(1000).optional() }),
 ]);
 
 async function loadContext(id: string) {
@@ -305,6 +313,64 @@ export async function POST(request: NextRequest, { params }: Params) {
     case "final_reject": {
       if (!access.isAdmin) return forbidden();
       if (!(await finalReject(bill.id, input.remark, user))) return conflict();
+      break;
+    }
+
+    case "edit_amount": {
+      if (!access.isAdmin) return forbidden();
+      if (bill.amount === null) return NextResponse.json({ error: "No amount has been entered yet" }, { status: 400 });
+      const amount = Math.round(input.amount * 100) / 100;
+      const before = Number(bill.amount);
+      if (amount === before) return NextResponse.json({ error: "The amount is unchanged" }, { status: 400 });
+
+      // Already in Tally: the next export alters the voucher
+      const tallyUpdateDue = bill.status === "approved" && bill.tallyExportedAt !== null;
+      const ok = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.bill.updateMany({
+          where: {
+            id: bill.id,
+            status: { in: ADMIN_AMOUNT_EDIT_STATUSES as BillStatus[] },
+            // Unchanged since it was read, so a concurrent edit isn't overwritten
+            amount: bill.amount,
+          },
+          // Who entered the amount first is kept, so they still see the bill;
+          // the history records the change
+          data: { amount, ...(tallyUpdateDue && { tallyNeedsUpdate: true }) },
+        });
+        if (count === 0) return false;
+        await tx.billEvent.create({
+          data: {
+            billId: bill.id,
+            action: "amount_edited",
+            userId: user.id,
+            remark: [
+              `${formatRupees(before)} → ${formatRupees(amount)}`,
+              input.remark,
+              tallyUpdateDue ? "Already in Tally: Tally update due" : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            details: { before: { amount: before }, after: { amount } },
+          },
+        });
+        return true;
+      });
+      if (!ok) return conflict();
+
+      // The billing managers, and whoever had entered the amount before
+      after(async () => {
+        const managerIds = await getBillingManagerIds(bill.company);
+        const recipients = managerIds.filter((id) => id !== user.id);
+        if (bill.amountEnteredById && bill.amountEnteredById !== user.id) recipients.push(bill.amountEnteredById);
+        const number = bill.billNumber ? `bill ${bill.billNumber}` : "the bill";
+        await notifyBillingUsers(recipients, {
+          title: tallyUpdateDue ? "Bill amount changed: update Tally" : "Bill amount changed",
+          content:
+            `${user.name} changed the amount of ${number} (${billLabel}) from ${formatRupees(before)} to ${formatRupees(amount)}.` +
+            (tallyUpdateDue ? " It was already exported to Tally: export it again from the Tally tab to update the voucher." : ""),
+          sentById: user.id,
+        });
+      });
       break;
     }
 

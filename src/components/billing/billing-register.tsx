@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Ban, Download, FileText, History, Loader2, Mail, MailCheck, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
+import { Ban, Download, FileText, History, IndianRupee, Loader2, Mail, MailCheck, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,7 +29,7 @@ import {
   formatRupees,
   gstAmount,
 } from "@/lib/billing-constants";
-import { HistoryDialog } from "./bill-dialogs";
+import { EditAmountDialog, HistoryDialog } from "./bill-dialogs";
 import { EmailBillsDialog, MAX_EMAIL_BILLS } from "./bill-email-dialog";
 import { billTypeShortLabel } from "./bill-type-select";
 import { EmailStatus } from "./email-status";
@@ -52,7 +52,7 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
   const debouncedSearch = useDebounce(search, 300);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ bills: Bill[]; total: number; totals: { type: BillTypeValue; amount: number }[] } | null>(null);
-  const [open, setOpen] = useState<{ bill: Bill; dialog: ChangeKind | "history" } | null>(null);
+  const [open, setOpen] = useState<{ bill: Bill; dialog: ChangeKind | "history" | "edit_amount" } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
   // Bills being emailed; kept in state so the dialog gets the same list on every render
@@ -339,7 +339,15 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
                       <div className="flex flex-col items-start gap-1">
                         <BillStatusBadge status={bill.status} />
                         {bill.tallyExportedAt && (
-                          <Badge variant="outline" className="whitespace-nowrap">
+                          <Badge
+                            variant="outline"
+                            className={
+                              bill.tallyNeedsUpdate
+                                ? "whitespace-nowrap border-amber-400 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                                : "whitespace-nowrap"
+                            }
+                            title={bill.tallyNeedsUpdate ? "Changed after it was exported: export it again from the Tally tab" : undefined}
+                          >
                             {bill.tallyNeedsUpdate ? "Tally update due" : "In Tally"}
                           </Badge>
                         )}
@@ -378,6 +386,11 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
                           <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "history" })}>
                             <History className="mr-2 h-4 w-4" />History
                           </DropdownMenuItem>
+                          {bill.canEditAmount && bill.status === "approved" && (
+                            <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "edit_amount" })}>
+                              <IndianRupee className="mr-2 h-4 w-4" />Edit amount
+                            </DropdownMenuItem>
+                          )}
                           {bill.canManage && bill.status === "approved" && !bill.pendingChange && (
                             <>
                               <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "edit" })}>
@@ -412,7 +425,17 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
 
       {open?.dialog === "history" && <HistoryDialog bill={open.bill} onClose={() => setOpen(null)} />}
       {emailIds && <EmailBillsDialog billIds={emailIds} onClose={() => setEmailIds(null)} onSent={load} />}
-      {open && open.dialog !== "history" && (
+      {open?.dialog === "edit_amount" && (
+        <EditAmountDialog
+          bill={open.bill}
+          onClose={() => setOpen(null)}
+          onDone={() => {
+            load();
+            onChanged?.();
+          }}
+        />
+      )}
+      {open && open.dialog !== "history" && open.dialog !== "edit_amount" && (
         <ChangeRequestDialog
           bill={open.bill}
           kind={open.dialog}

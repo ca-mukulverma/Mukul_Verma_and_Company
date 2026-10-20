@@ -22,7 +22,15 @@ import { BillTypeSelect } from "./bill-type-select";
 import { BillTo, BillToPicker, billToPayload, billToValid } from "./client-picker";
 import { apiErrorMessage, Bill, BillAction, BillEvent, billParty, EVENT_LABELS, runBillAction } from "./bill-types";
 
-export type BillDialog = "amount" | "request" | "send_back" | "not_billable" | "final_reject" | "details" | "history";
+export type BillDialog =
+  | "amount"
+  | "edit_amount"
+  | "request"
+  | "send_back"
+  | "not_billable"
+  | "final_reject"
+  | "details"
+  | "history";
 
 const REMARK_DIALOGS = {
   send_back: {
@@ -139,6 +147,79 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
               <div className="flex justify-between font-medium border-t pt-1"><span>Total</span><span>{formatRupees(amount + gst)}</span></div>
             </div>
           )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={!valid || saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save amount
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Admin corrects the amount after it was entered, also on an approved bill.
+// A bill already exported to Tally is flagged "Tally update due".
+export function EditAmountDialog({ bill, onClose, onDone }: DialogProps) {
+  const [value, setValue] = useState(bill.amount !== null ? String(bill.amount) : "");
+  const [remark, setRemark] = useState("");
+  const { saving, run } = useBillAction({ bill, onDone });
+  const amount = Number(value);
+  const valid = value !== "" && Number.isFinite(amount) && amount > 0 && amount !== bill.amount;
+  const gst = bill.type === "GST" && valid ? gstAmount(amount) : 0;
+  const inTally = bill.status === "approved" && !!bill.tallyExportedAt;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit amount{bill.billNumber ? ` – ${bill.billNumber}` : ""}</DialogTitle>
+          <DialogDescription>
+            Professional fee before GST. Currently {bill.amount !== null ? formatRupees(bill.amount) : "not entered"}.
+            {bill.billNumber && " The bill keeps its number and date."}
+          </DialogDescription>
+        </DialogHeader>
+        <BillSummary bill={bill} />
+        {inTally && (
+          <p className="rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+            This bill is already in Tally. After the change it is marked <strong>Tally update due</strong>; export it
+            again from the Tally tab so the voucher in Tally is altered.
+          </p>
+        )}
+        <form
+          className="space-y-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!valid) return;
+            const action: BillAction = { action: "edit_amount", amount, remark: remark.trim() || undefined };
+            if (await run(action, inTally ? "Amount changed – Tally update due" : "Amount changed")) onClose();
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="bill-new-amount">New fee (₹)</Label>
+            <Input
+              id="bill-new-amount"
+              type="number"
+              inputMode="decimal"
+              min="0.01"
+              step="0.01"
+              autoFocus
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+          </div>
+          {bill.type === "GST" && valid && (
+            <div className="text-sm space-y-1 rounded-md border p-3">
+              <div className="flex justify-between"><span>Fee</span><span>{formatRupees(amount)}</span></div>
+              <div className="flex justify-between"><span>GST @ {GST_RATE_PERCENT}%</span><span>{formatRupees(gst)}</span></div>
+              <div className="flex justify-between font-medium border-t pt-1"><span>Total</span><span>{formatRupees(amount + gst)}</span></div>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="bill-amount-reason">Reason (optional)</Label>
+            <Textarea id="bill-amount-reason" value={remark} onChange={(e) => setRemark(e.target.value)} />
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" disabled={!valid || saving}>

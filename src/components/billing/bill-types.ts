@@ -36,6 +36,8 @@ export interface Bill {
   emailError: string | null;
   emailStatusAt: string | null;
   canManage: boolean;
+  // Admin: the amount can be corrected directly (also after approval)
+  canEditAmount: boolean;
 }
 
 export interface BillChanges {
@@ -80,7 +82,8 @@ export type BillAction =
   | { action: "reopen" }
   | { action: "manager_approve" }
   | { action: "final_approve" }
-  | { action: "final_reject"; remark: string };
+  | { action: "final_reject"; remark: string }
+  | { action: "edit_amount"; amount: number; remark?: string };
 
 export interface BatchResult {
   done: string[];
@@ -109,6 +112,7 @@ export const EVENT_LABELS: Record<string, string> = {
   type_set: "Bill type set",
   amount_requested: "Sent for amount",
   amount_entered: "Amount entered",
+  amount_edited: "Amount changed by Admin",
   sent_back: "Sent back",
   not_billable: "Marked not billable",
   reopened: "Reopened",

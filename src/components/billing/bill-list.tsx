@@ -35,6 +35,7 @@ import { CompanyBadge } from "./company-select";
 import { EmailStatus } from "./email-status";
 import {
   BillDialog,
+  EditAmountDialog,
   EditDetailsDialog,
   EnterAmountDialog,
   HistoryDialog,
@@ -273,6 +274,7 @@ export function BillList({
       )}
 
       {open?.dialog === "amount" && <EnterAmountDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
+      {open?.dialog === "edit_amount" && <EditAmountDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {open?.dialog === "request" && <RequestAmountDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {(open?.dialog === "send_back" || open?.dialog === "not_billable" || open?.dialog === "final_reject") && (
         <RemarkDialog bill={open.bill} kind={open.dialog} onClose={() => setOpen(null)} onDone={handleDone} />
@@ -387,6 +389,11 @@ function BillCard({
                 {bill.amount !== null ? "Change amount" : "Enter amount"}
               </Button>
             )}
+            {!editable && bill.canEditAmount && (
+              <Button size="sm" variant="outline" onClick={() => onOpen("edit_amount")}>
+                <IndianRupee className="mr-1 h-3.5 w-3.5" />Edit amount
+              </Button>
+            )}
             {bill.status === "amount_entered" && onApprove && (
               <Button size="sm" disabled={approving || !bill.type || !clientName || bill.amount === null} onClick={onApprove}>
                 <CheckCheck className="mr-1 h-3.5 w-3.5" />Approve
@@ -448,6 +455,11 @@ function BillCard({
             <Button size="sm" disabled={approving} onClick={onApprove}>
               <CheckCheck className="mr-1 h-3.5 w-3.5" />Give final approval
             </Button>
+            {bill.canEditAmount && (
+              <Button size="sm" variant="outline" onClick={() => onOpen("edit_amount")}>
+                <IndianRupee className="mr-1 h-3.5 w-3.5" />Edit amount
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={() => onOpen("final_reject")}>
               <Undo2 className="mr-1 h-3.5 w-3.5" />Return
             </Button>

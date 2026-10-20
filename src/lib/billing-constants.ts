@@ -57,6 +57,10 @@ export const BILL_STATUS_LABELS: Record<BillStatusValue, string> = {
 
 export const GST_RATE_PERCENT = 18;
 
+// Statuses in which Admin can still correct the amount directly: from the
+// moment it is entered, through final approval (see docs/BILLING.md)
+export const ADMIN_AMOUNT_EDIT_STATUSES: BillStatusValue[] = ["amount_entered", "manager_approved", "approved"];
+
 // Statuses in which the billing manager can still change the bill freely
 export const EDITABLE_BILL_STATUSES: BillStatusValue[] = [
   "draft",
