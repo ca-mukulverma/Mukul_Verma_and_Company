@@ -11,8 +11,8 @@ import {
   TextRun,
   WidthType,
 } from "docx";
-import { format } from "date-fns";
 import { BillDocument } from "@/lib/bill-document";
+import { formatIndianDate } from "@/lib/billing-constants";
 
 // Word version of the standard bill layout (same content as the PDF), so the
 // firm can adjust a bill by hand when needed.
@@ -108,7 +108,7 @@ function billSection(doc: BillDocument) {
   ];
   const details: [string, string][] = [
     [doc.isGst ? "Invoice no." : "Bill no.", doc.billNumber],
-    ["Date", format(doc.billDate, "dd/MM/yyyy")],
+    ["Date", formatIndianDate(doc.billDate)],
     ...(doc.placeOfSupply ? [["Place of supply", doc.placeOfSupply] as [string, string]] : []),
     ...(doc.reissuedFromNumber ? [["Replaces", doc.reissuedFromNumber] as [string, string]] : []),
   ];
@@ -141,7 +141,7 @@ function billSection(doc: BillDocument) {
     cell(
       [
         ...doc.description.split("\n").map((line) => para(line)),
-        para([text(`Work done on ${format(doc.workDate, "dd/MM/yyyy")}`, { size: 17, color: "6E6E6E" })]),
+        para([text(`Work done on ${formatIndianDate(doc.workDate)}`, { size: 17, color: "6E6E6E" })]),
       ],
       doc.isGst ? 57 : 67
     ),

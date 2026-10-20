@@ -220,7 +220,7 @@ email bills.
 
 ### The billing mailbox
 
-Bills go out from **billing.camkulverma@gmail.com**. To set it up:
+Bills go out from **billing.camukulverma@gmail.com**. To set it up:
 
 1. In that Google account, turn on 2-Step Verification, then create an
    **App password** (Google Account → Security → App passwords).
@@ -245,7 +245,7 @@ A free Gmail account can send about 500 emails a day.
 Gmail cannot refuse mail that a client writes *directly* to the billing
 address. To keep the mailbox empty, add a filter in that Gmail account:
 Settings → *See all settings* → *Filters and blocked addresses* → *Create a
-new filter*, **To:** `billing.camkulverma@gmail.com` → *Create filter* →
+new filter*, **To:** `billing.camukulverma@gmail.com` → *Create filter* →
 tick **Delete it** (and **Never send it to Spam**) → *Create filter*.
 Optionally, a vacation responder can tell such senders where to write
 instead.

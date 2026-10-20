@@ -1,6 +1,6 @@
 import { GState, jsPDF } from "jspdf";
-import { format } from "date-fns";
 import { BillDocument } from "@/lib/bill-document";
+import { formatIndianDate } from "@/lib/billing-constants";
 
 // Standard A4 bill layout, used until the firm's own formats are supplied.
 // The built-in PDF fonts have no ₹ sign, so amounts are printed as "Rs.".
@@ -70,7 +70,7 @@ function drawBill(pdf: jsPDF, doc: BillDocument) {
   let ry = top;
   const details: [string, string][] = [
     [doc.isGst ? "Invoice no." : "Bill no.", doc.billNumber],
-    ["Date", format(doc.billDate, "dd/MM/yyyy")],
+    ["Date", formatIndianDate(doc.billDate)],
     ...(doc.placeOfSupply ? [["Place of supply", doc.placeOfSupply] as [string, string]] : []),
     ...(doc.reissuedFromNumber ? [["Replaces", doc.reissuedFromNumber] as [string, string]] : []),
   ];
@@ -105,7 +105,7 @@ function drawBill(pdf: jsPDF, doc: BillDocument) {
   y += particulars.length * 4.6;
   pdf.setFontSize(8.5);
   pdf.setTextColor(110);
-  pdf.text(`Work done on ${format(doc.workDate, "dd/MM/yyyy")}`, MARGIN + 16, y);
+  pdf.text(`Work done on ${formatIndianDate(doc.workDate)}`, MARGIN + 16, y);
   pdf.setTextColor(0);
   pdf.setFontSize(10);
   y += 6;

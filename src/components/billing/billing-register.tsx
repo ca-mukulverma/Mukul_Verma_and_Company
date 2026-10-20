@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import { format } from "date-fns";
 import { toast } from "sonner";
 import { Ban, Download, FileText, History, Loader2, Mail, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +20,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { useDebounce } from "@/hooks/use-debounce";
-import { BILL_TYPE_LABELS, BillTypeValue, billTypesOf, CompanyValue, formatRupees, gstAmount } from "@/lib/billing-constants";
+import {
+  BILL_TYPE_LABELS,
+  BillTypeValue,
+  billTypesOf,
+  CompanyValue,
+  formatIndianDate,
+  formatRupees,
+  gstAmount,
+} from "@/lib/billing-constants";
 import { HistoryDialog } from "./bill-dialogs";
 import { EmailBillsDialog, MAX_EMAIL_BILLS } from "./bill-email-dialog";
 import { billTypeShortLabel } from "./bill-type-select";
@@ -36,6 +43,8 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
   const types = billTypesOf(companies);
   const [type, setType] = useState<string>("all");
   const [status, setStatus] = useState("all");
+  // all, yes (emailed to the party) or no (not emailed yet)
+  const [emailed, setEmailed] = useState("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [search, setSearch] = useState("");
@@ -82,6 +91,7 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
           view: "list",
           type,
           status,
+          emailed: emailed === "all" ? undefined : emailed,
           from: from || undefined,
           to: to || undefined,
           search: debouncedSearch || undefined,
@@ -94,19 +104,19 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
       toast.error(apiErrorMessage(error, "Could not load the billing list"));
       setData({ bills: [], total: 0, totals: [] });
     }
-  }, [type, status, from, to, debouncedSearch, page]);
+  }, [type, status, emailed, from, to, debouncedSearch, page]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  useEffect(() => setPage(1), [type, status, from, to, debouncedSearch]);
+  useEffect(() => setPage(1), [type, status, emailed, from, to, debouncedSearch]);
 
   const pages = data ? Math.max(Math.ceil(data.total / 50), 1) : 1;
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
         <div className="space-y-1 col-span-2 lg:col-span-1">
           <Label className="text-xs">Series</Label>
           <Select value={type} onValueChange={setType}>
@@ -135,6 +145,17 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
               <SelectItem value="all">Approved and cancelled</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Email</Label>
+          <Select value={emailed} onValueChange={setEmailed}>
+            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Emailed or not</SelectItem>
+              <SelectItem value="yes">Emailed to party</SelectItem>
+              <SelectItem value="no">Not emailed yet</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -223,6 +244,7 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
                 <TableHead className="text-right">GST</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Emailed</TableHead>
                 <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
@@ -247,7 +269,7 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
                       </p>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
-                      {bill.billDate ? format(new Date(bill.billDate), "d MMM yyyy") : "—"}
+                      {bill.billDate ? formatIndianDate(bill.billDate, "medium") : "—"}
                     </TableCell>
                     <TableCell className="min-w-40">
                       {billParty(bill) ?? "—"}
@@ -267,11 +289,6 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
                     <TableCell>
                       <div className="flex flex-col items-start gap-1">
                         <BillStatusBadge status={bill.status} />
-                        {bill.emailedAt && (
-                          <Badge variant="outline" className="whitespace-nowrap" title={bill.emailedTo ? `Emailed to ${bill.emailedTo}` : undefined}>
-                            Emailed {format(new Date(bill.emailedAt), "d MMM")}
-                          </Badge>
-                        )}
                         {bill.tallyExportedAt && (
                           <Badge variant="outline" className="whitespace-nowrap">
                             {bill.tallyNeedsUpdate ? "Tally update due" : "In Tally"}
@@ -283,6 +300,22 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
                           </Badge>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell className="min-w-40 max-w-56 whitespace-normal">
+                      {bill.emailedAt ? (
+                        <>
+                          <p className="whitespace-nowrap text-green-700 dark:text-green-400">
+                            Emailed on {formatIndianDate(bill.emailedAt, "medium")}
+                          </p>
+                          {bill.emailedTo && (
+                            <p className="text-xs text-muted-foreground break-words">to {bill.emailedTo}</p>
+                          )}
+                        </>
+                      ) : cancelled ? (
+                        "—"
+                      ) : (
+                        <span className="whitespace-nowrap text-xs text-amber-700 dark:text-amber-400">Not emailed</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {/* Not modal: these items open dialogs, and a modal menu leaves the page

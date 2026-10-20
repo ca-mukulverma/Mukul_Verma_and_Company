@@ -99,6 +99,18 @@ export function formatBillNumber(
   }
 }
 
+// A date as an Indian calendar day, whatever the server's time zone (Vercel
+// runs in UTC, so a bill approved before 5:30 am IST would otherwise show the
+// previous day): "20/10/2026", or "20 Oct 2026" with style "medium"
+export function formatIndianDate(date: Date | string, style: "short" | "medium" = "short"): string {
+  return new Intl.DateTimeFormat(style === "short" ? "en-GB" : "en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: style === "short" ? "2-digit" : "numeric",
+    month: style === "short" ? "2-digit" : "short",
+    year: "numeric",
+  }).format(new Date(date));
+}
+
 export function gstAmount(amount: number): number {
   return Math.round(amount * GST_RATE_PERCENT) / 100;
 }

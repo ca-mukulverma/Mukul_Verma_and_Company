@@ -5,13 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { BillingAccess } from "@/lib/billing";
 import { BillDocument, billFileName, loadBillDocuments } from "@/lib/bill-document";
 import { renderBillsPdf } from "@/lib/bill-pdf";
-import { formatRupees } from "@/lib/billing-constants";
+import { formatIndianDate, formatRupees } from "@/lib/billing-constants";
 
 // Approved bills are emailed to the party from the firm's billing mailbox, a
 // Gmail account signed in with an App Password (see docs/BILLING.md). Each
 // party gets one email with all of its selected bills attached as PDFs.
 
-export const BILLING_EMAIL_ADDRESS = process.env.BILLING_EMAIL_USER || "billing.camkulverma@gmail.com";
+export const BILLING_EMAIL_ADDRESS = process.env.BILLING_EMAIL_USER || "billing.camukulverma@gmail.com";
 
 export function billingEmailConfigured() {
   return !!process.env.BILLING_EMAIL_PASSWORD;
@@ -96,9 +96,8 @@ export async function loadBillEmailGroups(ids: string[], access: BillingAccess) 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-// Bill dates are Indian calendar days, e.g. "20 Oct 2026"
-const billDateText = (date: Date) =>
-  new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" }).format(date);
+// e.g. "20 Oct 2026"
+const billDateText = (date: Date) => formatIndianDate(date, "medium");
 
 function numberList(docs: BillDocument[]) {
   const numbers = docs.map((d) => d.billNumber);

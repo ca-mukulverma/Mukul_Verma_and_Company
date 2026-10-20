@@ -354,7 +354,7 @@ MV Company implements a sophisticated role-based access control system:
    `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` – see [docs/IPHONE_APP.md](docs/IPHONE_APP.md).
 
    To email bills to clients, set `BILLING_EMAIL_PASSWORD` (and, if the mailbox
-   is not billing.camkulverma@gmail.com, `BILLING_EMAIL_USER`) – see
+   is not billing.camukulverma@gmail.com, `BILLING_EMAIL_USER`) – see
    [docs/BILLING.md](docs/BILLING.md#emailing-bills).
 
 4. **Initialize the database**
