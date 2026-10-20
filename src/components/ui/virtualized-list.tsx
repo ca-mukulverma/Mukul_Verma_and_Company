@@ -37,7 +37,7 @@ export default function VirtualizedList<T>({
   useEffect(() => {
     if (!onEndReached || hasCalledEndReached) return;
 
-    const scrollOffset = virtualizer.scrollOffset;
+    const scrollOffset = virtualizer.scrollOffset ?? 0;
     const scrollTotal = virtualizer.getTotalSize() - (parentRef.current?.clientHeight || 0);
     
     // If we've scrolled past the threshold and there are items, call onEndReached

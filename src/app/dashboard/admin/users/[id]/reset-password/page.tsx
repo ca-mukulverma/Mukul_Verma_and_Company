@@ -34,7 +34,7 @@ const adminResetPasswordSchema = z.object({
 });
 
 export default function AdminResetPasswordPage(props: { 
-  params: { id: string } | Promise<{ id: string }> 
+  params: Promise<{ id: string }>
 }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -54,8 +54,7 @@ export default function AdminResetPasswordPage(props: {
     return null;
   }
 
-  const params = props.params instanceof Promise ? React.use(props.params) : props.params;
-  const userId = params.id;
+  const { id: userId } = React.use(props.params);
 
   // Fix any type
   const onSubmit = async (data: z.infer<typeof adminResetPasswordSchema>) => {

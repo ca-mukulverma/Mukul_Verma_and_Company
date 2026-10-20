@@ -60,13 +60,13 @@ interface UserDetails {
 export default function PartnerUserDetailsPage({
   params,
 }: {
-  params: Promise<UserParams> | UserParams;
+  params: Promise<UserParams>;
 }) {
   const [user, setUser] = useState<UserDetails | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Properly unwrap params using React.use()
-  const unwrappedParams = React.use(params as Promise<UserParams>);
+  const unwrappedParams = React.use(params);
   const userId = unwrappedParams.id;
 
   // Format the user role for display

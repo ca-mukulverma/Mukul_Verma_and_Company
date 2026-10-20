@@ -61,10 +61,10 @@ async function checkTaskPermission(userId: string, taskId: string) {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const resolvedParams = params instanceof Promise ? await params : params;
+    const resolvedParams = await params;
     const taskId = resolvedParams.id;
     const session = await getServerSession(authOptions);
 
@@ -193,10 +193,10 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const resolvedParams = params instanceof Promise ? await params : params;
+    const resolvedParams = await params;
     const taskId = resolvedParams.id;
     const session = await getServerSession(authOptions);
 

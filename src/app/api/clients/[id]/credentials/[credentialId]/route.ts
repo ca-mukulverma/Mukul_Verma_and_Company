@@ -6,10 +6,9 @@ import { authOptions } from "@/lib/auth";
 // DELETE a specific credential
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string; credentialId: string } }
+  { params }: { params: Promise<{ id: string; credentialId: string }> }
 ) {
-  // Fix: Resolve params if it's a Promise
-  const resolvedParams = params instanceof Promise ? await params : params;
+  const resolvedParams = await params;
   const credentialId = resolvedParams.credentialId;
   // If you need clientId, use it from resolvedParams
   // const clientId = resolvedParams.id;

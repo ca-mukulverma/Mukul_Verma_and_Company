@@ -26,7 +26,7 @@ const userUpdateSchema = z.object({
 // Get specific user
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -38,8 +38,7 @@ export async function GET(
 
     const { role } = session.user;
 
-    // Fix: Await the params object before accessing id
-    const { id: userId } = await Promise.resolve(params);
+    const { id: userId } = await params;
 
     // Admins can view any user, partners can only view junior staff
     if (role !== "ADMIN" && role !== "PARTNER") {
@@ -115,7 +114,7 @@ export async function GET(
 // Update user
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -127,8 +126,7 @@ export async function PUT(
 
     const { role } = session.user;
 
-    // Fix: Await the params object before accessing id
-    const { id: userId } = await Promise.resolve(params);
+    const { id: userId } = await params;
 
     // Only admins and partners can update users
     if (role !== "ADMIN" && role !== "PARTNER") {
@@ -285,7 +283,7 @@ export async function PUT(
 // Delete user
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -297,8 +295,7 @@ export async function DELETE(
 
     const { role } = session.user;
 
-    // Fix: Await the params object before accessing id
-    const { id: userId } = await Promise.resolve(params);
+    const { id: userId } = await params;
 
     // Only admins can delete users
     if (role !== "ADMIN") {
@@ -388,7 +385,7 @@ export async function DELETE(
 // Patch user
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -405,7 +402,7 @@ export async function PATCH(
       );
     }
 
-    const id = params.id;
+    const { id } = await params;
     const data = await req.json();
 
     // Validate the incoming data
