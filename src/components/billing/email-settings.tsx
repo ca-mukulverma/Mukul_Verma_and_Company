@@ -12,8 +12,8 @@ import { Switch } from "@/components/ui/switch";
 import { apiErrorMessage } from "./bill-types";
 
 interface EmailSettingsData {
-  sender: string;
-  configured: boolean;
+  mailboxes: { company: string; name: string; address: string; passwordVariable: string; configured: boolean }[];
+  contactAddress: string;
   allowReplies: boolean;
   replyTo: string | null;
   copyTo: string | null;
@@ -63,26 +63,40 @@ export function EmailSettings() {
   if (!settings) {
     return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
   }
+  const addresses = settings.mailboxes.map((m) => m.address).join(" and ");
 
   return (
     <Card className="max-w-2xl">
       <CardHeader>
         <CardTitle>Bill emails</CardTitle>
         <CardDescription>
-          Approved bills are emailed to clients from <span className="font-medium text-foreground">{settings.sender}</span>,
-          with the bills attached as PDFs. Billing managers, Admin and partners allowed to see the Billing List can send them.
+          Approved bills are emailed to clients with the bills attached as PDFs. Billing managers, Admin and partners
+          allowed to see the Billing List can send them.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {!settings.configured && (
-          <div className="flex gap-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-            <p>
-              Not set up yet: add a Gmail app password for {settings.sender} to the server as
-              BILLING_EMAIL_PASSWORD. Until then bills can&apos;t be emailed.
+        <div className="space-y-1 text-sm">
+          {settings.mailboxes.map((m) => (
+            <p key={m.company}>
+              {m.company === "BEDGE" ? "B Edge" : "MVC"} bills: from{" "}
+              <span className="font-medium">{m.name}</span> &lt;{m.address}&gt;
             </p>
-          </div>
-        )}
+          ))}
+        </div>
+        {settings.mailboxes
+          .filter((m) => !m.configured)
+          .map((m) => (
+            <div
+              key={m.company}
+              className="flex gap-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <p>
+                Not set up yet: add a Gmail app password for {m.address} to the server as {m.passwordVariable}. Until
+                then {m.company === "BEDGE" ? "B Edge" : "MVC"} bills can&apos;t be emailed.
+              </p>
+            </div>
+          ))}
 
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
@@ -90,7 +104,7 @@ export function EmailSettings() {
             <p className="text-sm text-muted-foreground">
               {allowReplies
                 ? "Replies go to the address below, or to the billing mailbox if it is empty."
-                : "Off: a reply bounces back to the client and never reaches the billing mailbox. The email asks clients not to reply and gives the firm's phone and email from the company profile instead."}
+                : `Off: the email asks clients not to write to the billing mailbox and to write to ${settings.contactAddress} in case of any problem. A reply goes to ${settings.contactAddress}.`}
             </p>
           </div>
           <Switch id="allow-replies" checked={allowReplies} onCheckedChange={setAllowReplies} />
@@ -102,7 +116,7 @@ export function EmailSettings() {
             <Input
               id="reply-to"
               type="email"
-              placeholder={settings.sender}
+              placeholder="the billing mailbox"
               value={replyTo}
               onChange={(e) => setReplyTo(e.target.value)}
             />
@@ -123,8 +137,8 @@ export function EmailSettings() {
         <div className="space-y-1 rounded-md border p-3 text-sm">
           <p className="font-medium">Delivery check</p>
           <p className="text-muted-foreground">
-            Failed deliveries are read from the billing mailbox&apos;s bounce notices and shown against the bills. This
-            needs IMAP turned on in that Gmail account (Settings → Forwarding and POP/IMAP → Enable IMAP).
+            Failed deliveries are read from the billing mailboxes&apos; bounce notices and shown against the bills. This
+            needs IMAP turned on in each of those Gmail accounts (Settings → Forwarding and POP/IMAP → Enable IMAP).
           </p>
           <p className="text-muted-foreground">
             Last checked:{" "}
@@ -138,7 +152,7 @@ export function EmailSettings() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Clients can still write to {settings.sender} directly. To keep that mailbox empty, add a Gmail filter
+          Clients can still write to {addresses} directly. To keep a mailbox empty, add a Gmail filter
           there that deletes incoming mail, except the bounce notices from mailer-daemon that the delivery check
           reads (see the billing guide).
         </p>

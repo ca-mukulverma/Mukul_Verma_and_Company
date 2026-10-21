@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { BILLING_EMAIL_ADDRESS, billingEmailConfigured, getBillEmailSettings } from "@/lib/bill-email";
+import { BILLING_COMPANIES, BILLING_CONTACT_ADDRESS, BILLING_MAILBOXES, getBillEmailSettings } from "@/lib/bill-email";
 
 const optionalEmail = z
   .string()
@@ -30,8 +30,11 @@ async function requireAdmin() {
 async function respond() {
   const settings = await getBillEmailSettings();
   return NextResponse.json({
-    sender: BILLING_EMAIL_ADDRESS,
-    configured: billingEmailConfigured(),
+    mailboxes: BILLING_COMPANIES.map((company) => {
+      const { name, address, password, passwordVariable } = BILLING_MAILBOXES[company];
+      return { company, name, address, passwordVariable, configured: !!password };
+    }),
+    contactAddress: BILLING_CONTACT_ADDRESS,
     allowReplies: settings.allowReplies,
     replyTo: settings.replyTo,
     copyTo: settings.copyTo,

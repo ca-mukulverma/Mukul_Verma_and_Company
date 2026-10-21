@@ -5,8 +5,9 @@ import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getBillingAccess } from "@/lib/billing";
 import {
-  BILLING_EMAIL_ADDRESS,
+  BILLING_MAILBOXES,
   billingEmailConfigured,
+  mailboxLabel,
   getBillEmailSettings,
   loadBillEmailGroups,
   parseEmailList,
@@ -53,12 +54,15 @@ export async function POST(request: NextRequest) {
   const ids = [...new Set(input.ids)];
   const groups = await loadBillEmailGroups(ids, access);
   const billCount = groups.reduce((sum, g) => sum + g.docs.length, 0);
+  // MVC and B Edge bills go out from their own mailboxes
+  const companies = [...new Set(groups.map((g) => g.company))];
+  const unconfigured = companies.filter((c) => !billingEmailConfigured(c));
 
   if (input.mode === "preview") {
     const settings = await getBillEmailSettings();
     return NextResponse.json({
-      configured: billingEmailConfigured(),
-      sender: BILLING_EMAIL_ADDRESS,
+      configured: unconfigured.length === 0,
+      sender: companies.map((c) => mailboxLabel(BILLING_MAILBOXES[c])).join(" and "),
       allowReplies: settings.allowReplies,
       // Cancelled bills, and bills not found, are not emailed
       skipped: ids.length - billCount,
@@ -72,14 +76,15 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  if (!billingEmailConfigured()) {
-    return NextResponse.json(
-      { error: "Bill emails are not set up yet: the billing mailbox password (BILLING_EMAIL_PASSWORD) is missing" },
-      { status: 503 }
-    );
-  }
   if (groups.length === 0) {
     return NextResponse.json({ error: "None of the selected bills can be emailed (only approved bills can)" }, { status: 400 });
+  }
+  if (unconfigured.length > 0) {
+    const mailbox = BILLING_MAILBOXES[unconfigured[0]];
+    return NextResponse.json(
+      { error: `Bill emails are not set up yet: the password of ${mailbox.address} (${mailbox.passwordVariable}) is missing` },
+      { status: 503 }
+    );
   }
 
   const sends: { group: (typeof groups)[number]; to: string[] }[] = [];

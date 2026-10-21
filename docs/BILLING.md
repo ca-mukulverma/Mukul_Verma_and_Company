@@ -229,35 +229,57 @@ bill's history records it.
 Billing managers, Admin and partners allowed to see the Billing List can
 email bills.
 
-### The billing mailbox
+### The billing mailboxes
 
-Bills go out from **billing.camukulverma@gmail.com**. To set it up:
+Each company sends from its own Gmail account:
+
+| Bills | From (name shown) | Address | Password setting |
+|---|---|---|---|
+| MVC | Billing - CA Mukul Verma | billing.camukulverma@gmail.com | `BILLING_EMAIL_PASSWORD` |
+| B Edge | Billing - B Edge | billing.bedge@gmail.com | `BEDGE_BILLING_EMAIL_PASSWORD` |
+
+To set up each one:
 
 1. In that Google account, turn on 2-Step Verification, then create an
    **App password** (Google Account → Security → App passwords).
-2. On Vercel, add the environment variable `BILLING_EMAIL_PASSWORD` with the
-   app password, and redeploy. If the mailbox is a different address, also
-   set `BILLING_EMAIL_USER`.
+2. On Vercel, add the environment variable from the table with the app
+   password, and redeploy. If the mailbox is a different address, also set
+   `BILLING_EMAIL_USER` (MVC) or `BEDGE_BILLING_EMAIL_USER` (B Edge).
 3. In that Gmail account, turn on IMAP (see *Delivery* below).
 
 A free Gmail account can send about 500 emails a day.
 
 ### Replies (Billing → Bill emails, Admin)
 
-- **Clients can reply: off** (the default). The email's reply address is one
-  that cannot receive mail, so a client who clicks *Reply* gets a bounce
-  and nothing reaches the mailbox. The email says that the mailbox is not
-  monitored and gives the firm's phone and email instead. It also asks mail
-  servers not to send out-of-office replies.
+- **Clients can reply: off** (the default). The email asks the client not
+  to send any email to the billing ID and, in case of any problem, to write
+  to **camukulverma@gmail.com**. Its Reply-To is also camukulverma@gmail.com,
+  so a client who clicks *Reply* reaches that address, not the billing
+  mailbox.
 - **On**: replies go to the address entered there, or to the billing mailbox
   if it is left empty.
 - **Hidden copy**: an address (e.g. the office email) that gets a BCC of
   every bill email.
 
+### Keeping bill emails out of spam
+
+The email is sent under a plain name (*Billing - CA Mukul Verma*) with a
+Reply-To that can receive mail; a Reply-To that cannot receive mail, or a
+company name on a free Gmail address, makes spam filters suspicious. A new
+Gmail account still has no sending history, so for the first weeks:
+
+- send a few bills to the firm's own addresses and to friendly clients, and
+  have them open the email, mark it **Not spam** and add the billing
+  address to their contacts;
+- avoid sending many emails at once from a new mailbox;
+- for the most reliable delivery, use an address on the firm's own domain
+  (e.g. Google Workspace) with SPF, DKIM and DMARC set up.
+
 Gmail cannot refuse mail that a client writes *directly* to the billing
 address. To keep the mailbox empty, add a filter in that Gmail account:
 Settings → *See all settings* → *Filters and blocked addresses* → *Create a
-new filter*, **Has the words:**
+new filter*, **Has the words:** (with billing.bedge@gmail.com in the B Edge
+mailbox)
 
 ```
 deliveredto:billing.camukulverma@gmail.com -from:(mailer-daemon@googlemail.com OR no-reply@accounts.google.com)
@@ -291,13 +313,13 @@ How it works:
 - An email Gmail does not accept at all (wrong app password, daily limit
   reached, Gmail unreachable) is marked *Not delivered* at once.
 - A client's server that refuses the email later makes Gmail send a
-  "Delivery Status Notification" to the billing mailbox. The app reads
+  "Delivery Status Notification" to the billing mailbox that sent it. The app reads
   these over IMAP with the same app password and matches each one to its
   email by the email's Message-ID. It reads them when someone opens the
   Billing List (at most every 3 minutes), with the **Check delivery**
   button, and once a day (`/api/cron/billing-email-delivery` in
   `vercel.json`). It only reads the mailbox; nothing there is changed.
-- **IMAP must be on** in the billing Gmail account: Settings → *See all
+- **IMAP must be on** in each billing Gmail account: Settings → *See all
   settings* → *Forwarding and POP/IMAP* → **Enable IMAP** → *Save Changes*.
   *Billing → Bill emails* shows when the mailbox was last read and any
   error.

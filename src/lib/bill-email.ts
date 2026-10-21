@@ -8,20 +8,51 @@ import { BillDocument, billFileName, loadBillDocuments } from "@/lib/bill-docume
 import { renderBillsPdf } from "@/lib/bill-pdf";
 import { formatIndianDate, formatRupees } from "@/lib/billing-constants";
 
-// Approved bills are emailed to the party from the firm's billing mailbox, a
-// Gmail account signed in with an App Password (see docs/BILLING.md). Each
-// party gets one email with all of its selected bills attached as PDFs.
+// Approved bills are emailed to the party from the company's billing mailbox,
+// a Gmail account signed in with an App Password (see docs/BILLING.md): MVC
+// bills from one mailbox, B Edge bills from another. Each party gets one email
+// with all of its selected bills attached as PDFs.
 
-export const BILLING_EMAIL_ADDRESS = process.env.BILLING_EMAIL_USER || "billing.camukulverma@gmail.com";
-
-export function billingEmailConfigured() {
-  return !!process.env.BILLING_EMAIL_PASSWORD;
+export interface BillingMailbox {
+  company: Company;
+  // The name the email shows as "From"
+  name: string;
+  address: string;
+  password: string | undefined;
+  // The server setting that holds the password
+  passwordVariable: string;
 }
 
-// While replies are off, the email's Reply-To is this address. The .invalid
-// domain is reserved and never receives mail, so a reply bounces back to the
-// sender at once instead of reaching the billing mailbox.
-export const NO_REPLY_ADDRESS = "no-reply@no-reply.invalid";
+export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
+  MVC: {
+    company: "MVC",
+    name: "Billing - CA Mukul Verma",
+    address: process.env.BILLING_EMAIL_USER || "billing.camukulverma@gmail.com",
+    password: process.env.BILLING_EMAIL_PASSWORD,
+    passwordVariable: "BILLING_EMAIL_PASSWORD",
+  },
+  BEDGE: {
+    company: "BEDGE",
+    name: "Billing - B Edge",
+    address: process.env.BEDGE_BILLING_EMAIL_USER || "billing.bedge@gmail.com",
+    password: process.env.BEDGE_BILLING_EMAIL_PASSWORD,
+    passwordVariable: "BEDGE_BILLING_EMAIL_PASSWORD",
+  },
+};
+
+export const BILLING_COMPANIES: Company[] = ["MVC", "BEDGE"];
+
+// "Billing - CA Mukul Verma <billing.camukulverma@gmail.com>"
+export const mailboxLabel = (mailbox: BillingMailbox) => `${mailbox.name} <${mailbox.address}>`;
+
+export function billingEmailConfigured(company: Company) {
+  return !!BILLING_MAILBOXES[company].password;
+}
+
+// Where clients should write instead of the billing mailbox. While replies
+// are off, it is also the email's Reply-To (a Reply-To that cannot receive
+// mail makes Gmail and other providers treat the email as spam).
+export const BILLING_CONTACT_ADDRESS = "camukulverma@gmail.com";
 
 // The brand an email goes out under when its bills come from more than one
 // entity of the same company
@@ -29,8 +60,8 @@ const COMPANY_SENDERS: Record<Company, string> = { MVC: "MVC & Company", BEDGE: 
 
 // Every bill email gets a Message-ID of this form, so a bounce can be matched
 // to it: "<uuid>.bills@gmail.com"
-export function newBillEmailMessageId(uuid: string) {
-  return `${uuid}.bills@${BILLING_EMAIL_ADDRESS.split("@")[1]}`;
+export function newBillEmailMessageId(uuid: string, mailbox: BillingMailbox) {
+  return `${uuid}.bills@${mailbox.address.split("@")[1]}`;
 }
 // Reason for an email Gmail did not accept at all while sending
 export function sendFailureReason(error: unknown): string {
@@ -124,7 +155,6 @@ function numberList(docs: BillDocument[]) {
 }
 
 export interface BillEmailContent {
-  from: string;
   subject: string;
   html: string;
   text: string;
@@ -154,9 +184,10 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
     ? `Please find attached our ${first.isGst ? "tax invoice" : "bill"} no. ${first.billNumber} dated ${billDateText(first.billDate)} for the professional services rendered to ${group.partyName}.`
     : `Please find attached our ${docs.length} bills for the professional services rendered to ${group.partyName}. The details are given below.`;
   const paymentLine = `Kindly arrange the payment at your earliest convenience and quote the bill ${single ? "number" : "numbers"} when making the payment.`;
+  const mailbox = BILLING_MAILBOXES[group.company];
   const replyLine = options.allowReplies
     ? "For any query about this bill, please reply to this email."
-    : `This email has been sent from an unattended mailbox. Please do not reply to it, as replies are not received.${contact ? ` For any query about this bill, please contact us (${contact}).` : ""}`;
+    : `Please do not send any email to this ID (${mailbox.address}), as it is used only for sending bills. In case of any problem, you may send the mail to ${BILLING_CONTACT_ADDRESS}.`;
   const note = options.note?.trim() || null;
   const bankLines = bank
     ? [
@@ -214,12 +245,12 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
             .join("")}</table>`
         : ""
     }
+    <p style="margin:0 0 14px;padding:10px 12px;background:#f3f5f8;border-radius:4px;">${escapeHtml(replyLine)}</p>
     ${paragraph("We thank you for your continued trust and look forward to serving you.")}
     <p style="margin:18px 0 0;">Warm regards,<br>Accounts Team<br><strong>${escapeHtml(sender)}</strong>${
       contact ? `<br><span style="color:#52606d;font-size:13px;">${escapeHtml(contact)}</span>` : ""
     }</p>
   </div>
-  <p style="margin:14px 4px 0;font-size:12px;color:#7b8794;">${escapeHtml(replyLine)}</p>
 </div>
 </body></html>`;
 
@@ -237,18 +268,17 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
     paymentLine,
     ...(bankLines.length > 0 ? ["", ...bankLines.map(([label, value]) => `${label}: ${value}`)] : []),
     "",
+    replyLine,
+    "",
     "We thank you for your continued trust and look forward to serving you.",
     "",
     "Warm regards,",
     "Accounts Team",
     sender,
     ...(contact ? [contact] : []),
-    "",
-    "--",
-    replyLine,
   ].join("\n");
 
-  return { from: sender, subject, html, text };
+  return { subject, html, text };
 }
 
 export interface BillEmailResult {
@@ -266,32 +296,42 @@ export async function sendBillEmails(
   options: { note?: string | null; userId: string }
 ): Promise<BillEmailResult[]> {
   const settings = await getBillEmailSettings();
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    pool: true,
-    auth: { user: BILLING_EMAIL_ADDRESS, pass: process.env.BILLING_EMAIL_PASSWORD },
-  });
+  // One connection per company's mailbox, opened when first needed
+  const transporters = new Map<Company, ReturnType<typeof nodemailer.createTransport>>();
+  const transporterFor = (mailbox: BillingMailbox) => {
+    let transporter = transporters.get(mailbox.company);
+    if (!transporter) {
+      transporter = nodemailer.createTransport({
+        service: "gmail",
+        pool: true,
+        auth: { user: mailbox.address, pass: mailbox.password },
+      });
+      transporters.set(mailbox.company, transporter);
+    }
+    return transporter;
+  };
 
   const results: BillEmailResult[] = [];
   try {
     for (const { group, to } of sends) {
+      const mailbox = BILLING_MAILBOXES[group.company];
       const content = buildBillEmail(group, { allowReplies: settings.allowReplies, note: options.note });
       const billIds = group.docs.map((d) => d.id);
       const emailedTo = to.join(", ").slice(0, 400);
-      const messageId = newBillEmailMessageId(randomUUID());
+      const messageId = newBillEmailMessageId(randomUUID(), mailbox);
       try {
-        await transporter.sendMail({
+        await transporterFor(mailbox).sendMail({
           messageId: `<${messageId}>`,
-          from: { name: content.from, address: BILLING_EMAIL_ADDRESS },
+          from: { name: mailbox.name, address: mailbox.address },
           to,
           ...(settings.copyTo && { bcc: settings.copyTo }),
-          // Replies off: they bounce. On: to the reply address, or the billing mailbox
-          replyTo: settings.allowReplies ? settings.replyTo || BILLING_EMAIL_ADDRESS : NO_REPLY_ADDRESS,
+          // Replies off: to the firm's contact address. On: to the reply address, or the billing mailbox
+          replyTo: settings.allowReplies ? settings.replyTo || mailbox.address : BILLING_CONTACT_ADDRESS,
           subject: content.subject,
           html: content.html,
           text: content.text,
-          // Tells mail servers not to send out-of-office and other automatic replies
-          headers: { "Auto-Submitted": "auto-generated", "X-Auto-Response-Suppress": "All" },
+          // Tells Exchange/Outlook servers not to send out-of-office replies
+          headers: { "X-Auto-Response-Suppress": "All" },
           attachments: group.docs.map((doc) => ({
             filename: billFileName(doc, "pdf"),
             content: renderBillsPdf([doc]),
@@ -336,7 +376,7 @@ export async function sendBillEmails(
       results.push({ key: group.key, partyName: group.partyName, to, ok: true });
     }
   } finally {
-    transporter.close();
+    for (const transporter of transporters.values()) transporter.close();
   }
   return results;
 }

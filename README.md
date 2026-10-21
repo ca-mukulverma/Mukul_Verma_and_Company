@@ -353,8 +353,10 @@ MV Company implements a sophisticated role-based access control system:
    For iPhone/Android push notifications, also set `NEXT_PUBLIC_VAPID_PUBLIC_KEY`,
    `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` – see [docs/IPHONE_APP.md](docs/IPHONE_APP.md).
 
-   To email bills to clients, set `BILLING_EMAIL_PASSWORD` (and, if the mailbox
-   is not billing.camukulverma@gmail.com, `BILLING_EMAIL_USER`) – see
+   To email bills to clients, set `BILLING_EMAIL_PASSWORD` for MVC bills
+   (billing.camukulverma@gmail.com) and `BEDGE_BILLING_EMAIL_PASSWORD` for
+   B Edge bills (billing.bedge@gmail.com); `BILLING_EMAIL_USER` and
+   `BEDGE_BILLING_EMAIL_USER` change the addresses – see
    [docs/BILLING.md](docs/BILLING.md#emailing-bills).
 
 4. **Initialize the database**
