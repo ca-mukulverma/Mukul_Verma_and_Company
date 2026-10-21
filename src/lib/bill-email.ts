@@ -30,7 +30,7 @@ export interface BillingMailbox {
 export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
   MVC: {
     company: "MVC",
-    name: "Billing - CA Mukul Verma",
+    name: "Billing-CA Mukul Verma",
     address: process.env.BILLING_EMAIL_USER || "billing.camukulverma@gmail.com",
     password: process.env.BILLING_EMAIL_PASSWORD,
     passwordVariable: "BILLING_EMAIL_PASSWORD",
@@ -38,7 +38,7 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
   },
   BEDGE: {
     company: "BEDGE",
-    name: "Billing - B Edge",
+    name: "Billing-B Edge",
     address: process.env.BEDGE_BILLING_EMAIL_USER || "billing.bedge@gmail.com",
     password: process.env.BEDGE_BILLING_EMAIL_PASSWORD,
     passwordVariable: "BEDGE_BILLING_EMAIL_PASSWORD",
@@ -48,16 +48,12 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
 
 export const BILLING_COMPANIES: Company[] = ["MVC", "BEDGE"];
 
-// "Billing - CA Mukul Verma <billing.camukulverma@gmail.com>"
+// "Billing-CA Mukul Verma <billing.camukulverma@gmail.com>"
 export const mailboxLabel = (mailbox: BillingMailbox) => `${mailbox.name} <${mailbox.address}>`;
 
 export function billingEmailConfigured(company: Company) {
   return !!BILLING_MAILBOXES[company].password;
 }
-
-// The brand an email goes out under when its bills come from more than one
-// entity of the same company
-const COMPANY_SENDERS: Record<Company, string> = { MVC: "MVC & Company", BEDGE: "B Edge" };
 
 // Every bill email gets a Message-ID of this form, so a bounce can be matched
 // to it: "<uuid>.bills@gmail.com"
@@ -166,7 +162,10 @@ export interface BillEmailContent {
 export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: boolean; note?: string | null }): BillEmailContent {
   const { docs } = group;
   const entities = [...new Set(docs.map((d) => d.entity.name).filter(Boolean))];
-  const sender = entities.length === 1 ? entities[0] : COMPANY_SENDERS[group.company];
+  // The email goes out under the mailbox's name everywhere (From, subject,
+  // heading, sign-off); the attached bills show the entity that issued them
+  const mailbox = BILLING_MAILBOXES[group.company];
+  const sender = mailbox.name;
   // Payment details only when every bill is paid into the same account
   const bank = entities.length === 1 && docs[0].entity.bankAccount ? docs[0].entity : null;
   const contactEntity = docs.find((d) => d.entity.phone || d.entity.email)?.entity;
@@ -185,7 +184,6 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
     ? `Please find attached our ${first.isGst ? "tax invoice" : "bill"} no. ${first.billNumber} dated ${billDateText(first.billDate)} for the professional services rendered to ${group.partyName}.`
     : `Please find attached our ${docs.length} bills for the professional services rendered to ${group.partyName}. The details are given below.`;
   const paymentLine = `Kindly arrange the payment at your earliest convenience and quote the bill ${single ? "number" : "numbers"} when making the payment.`;
-  const mailbox = BILLING_MAILBOXES[group.company];
   const replyLine = options.allowReplies
     ? "For any query about this bill, please reply to this email."
     : `Please do not send any email to this ID (${mailbox.address}), as it is used only for sending bills. In case of any problem, you may send the mail to ${mailbox.contactAddress}.`;
@@ -219,7 +217,7 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
   <div style="background:#ffffff;border:1px solid #e3e6ea;border-radius:6px;padding:28px 24px;">
     <p style="margin:0 0 18px;font-size:18px;font-weight:600;color:#12324f;">${escapeHtml(sender)}</p>
     ${paragraph(greeting)}
-    ${paragraph(`Greetings from ${sender}.`)}
+    ${paragraph("Greetings of the day.")}
     ${paragraph(intro)}
     ${note ? `<p style="margin:0 0 14px;white-space:pre-line;">${escapeHtml(note)}</p>` : ""}
     <table role="presentation" style="border-collapse:collapse;width:100%;margin:4px 0 18px;">
@@ -248,7 +246,7 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
     }
     <p style="margin:0 0 14px;padding:10px 12px;background:#f3f5f8;border-radius:4px;">${escapeHtml(replyLine)}</p>
     ${paragraph("We thank you for your continued trust and look forward to serving you.")}
-    <p style="margin:18px 0 0;">Warm regards,<br>Accounts Team<br><strong>${escapeHtml(sender)}</strong>${
+    <p style="margin:18px 0 0;">Warm regards,<br><strong>${escapeHtml(sender)}</strong>${
       contact ? `<br><span style="color:#52606d;font-size:13px;">${escapeHtml(contact)}</span>` : ""
     }</p>
   </div>
@@ -258,7 +256,7 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
   const text = [
     greeting,
     "",
-    `Greetings from ${sender}.`,
+    "Greetings of the day.",
     "",
     intro,
     ...(note ? ["", note] : []),
@@ -274,7 +272,6 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
     "We thank you for your continued trust and look forward to serving you.",
     "",
     "Warm regards,",
-    "Accounts Team",
     sender,
     ...(contact ? [contact] : []),
   ].join("\n");
