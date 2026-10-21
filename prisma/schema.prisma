@@ -496,14 +496,16 @@ model BillingEntity {
 // Billing → Bill emails
 model BillingEmailSetting {
   id           Int      @id @default(1)
-  // Off: clients can't reply; replies go to an address that does not exist
+  // Off: the email asks clients to write to the firm's contact address, and
+  // replies go there
   allowReplies Boolean  @default(false)
   // Where replies go when they are allowed
   replyTo      String?  @db.VarChar(75)
   // Gets a hidden copy (BCC) of every bill email
   copyTo       String?  @db.VarChar(75)
-  // Reading bounce notices from the billing mailbox: when it was last read,
-  // how far ("<uidValidity>:<last uid>"), and why the last read failed
+  // Reading bounce notices from the billing mailboxes: when they were last
+  // read, how far ("MVC=<uidValidity>:<last uid>;BEDGE=…"), and why the last
+  // read failed
   bounceCheckedAt  DateTime?
   bounceCheckpoint String?   @db.VarChar(60)
   bounceCheckError String?   @db.Text

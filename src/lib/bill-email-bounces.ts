@@ -1,13 +1,14 @@
 import { ImapFlow } from "imapflow";
-import { BillEmailStatus } from "@prisma/client";
+import { BillEmailStatus, Company } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getBillingManagerIds, notifyBillingUsers } from "@/lib/billing";
-import { BILLING_EMAIL_ADDRESS, billingEmailConfigured } from "@/lib/bill-email";
+import { BILLING_COMPANIES, BILLING_MAILBOXES, BillingMailbox, billingEmailConfigured } from "@/lib/bill-email";
 
 // Bill emails have Message-IDs like "<uuid>.bills@gmail.com" (newBillEmailMessageId)
 
 // When a client's mail server refuses a bill email, Gmail sends a "Delivery
-// Status Notification" from mailer-daemon to the billing mailbox, often minutes
+// Status Notification" from mailer-daemon to the billing mailbox (MVC's or
+// B Edge's, whichever sent it), often minutes
 // or hours after the email was accepted. These are read from the mailbox (IMAP,
 // same app password), matched to the email by its Message-ID, and the reason
 // is recorded on its bills (see docs/BILLING.md).
@@ -167,11 +168,21 @@ export interface DeliveryCheckResult {
   error?: string;
 }
 
-// Reads new bounce notices from the billing mailbox. Runs at most once every
-// `minIntervalSeconds`, so opening the Billing List repeatedly does not log in
-// to Gmail each time.
+// How far each mailbox has been read: "MVC=<uidValidity>:<last uid>;BEDGE=…".
+// A plain "<uidValidity>:<last uid>" (from before B Edge had its own mailbox)
+// is MVC's.
+function parseCheckpoints(saved: string | null): Partial<Record<Company, string>> {
+  if (!saved) return {};
+  if (!saved.includes("=")) return { MVC: saved };
+  return Object.fromEntries(saved.split(";").map((part) => part.split("=") as [Company, string]));
+}
+
+// Reads new bounce notices from the billing mailboxes. Runs at most once
+// every `minIntervalSeconds`, so opening the Billing List repeatedly does not
+// log in to Gmail each time.
 export async function checkBillEmailDelivery(minIntervalSeconds: number): Promise<DeliveryCheckResult> {
-  if (!billingEmailConfigured()) return { configured: false, checked: false, updated: 0 };
+  const mailboxes = BILLING_COMPANIES.filter(billingEmailConfigured).map((c) => BILLING_MAILBOXES[c]);
+  if (mailboxes.length === 0) return { configured: false, checked: false, updated: 0 };
 
   // Claims the check; a second request at the same moment gets count 0
   const now = new Date();
@@ -184,12 +195,39 @@ export async function checkBillEmailDelivery(minIntervalSeconds: number): Promis
   });
   if (count === 0) return { configured: true, checked: false, updated: 0 };
   const settings = await prisma.billingEmailSetting.findUniqueOrThrow({ where: { id: 1 } });
+  const checkpoints = parseCheckpoints(settings.bounceCheckpoint);
 
+  let updated = 0;
+  const errors: string[] = [];
+  for (const mailbox of mailboxes) {
+    const result = await checkMailbox(mailbox, checkpoints[mailbox.company] ?? null, now);
+    updated += result.updated;
+    if (result.checkpoint) checkpoints[mailbox.company] = result.checkpoint;
+    if (result.error) errors.push(result.error);
+  }
+
+  const error = errors.join(" ") || null;
+  await prisma.billingEmailSetting.update({
+    where: { id: 1 },
+    data: {
+      bounceCheckpoint: Object.entries(checkpoints).map(([company, checkpoint]) => `${company}=${checkpoint}`).join(";"),
+      bounceCheckError: error,
+    },
+  });
+  return { configured: true, checked: true, updated, ...(error && { error }) };
+}
+
+// Reads one mailbox's bounce notices after `checkpoint`. Returns how far it got.
+async function checkMailbox(
+  mailbox: BillingMailbox,
+  checkpoint: string | null,
+  now: Date
+): Promise<{ updated: number; checkpoint?: string; error?: string }> {
   const client = new ImapFlow({
     host: "imap.gmail.com",
     port: 993,
     secure: true,
-    auth: { user: BILLING_EMAIL_ADDRESS, pass: process.env.BILLING_EMAIL_PASSWORD! },
+    auth: { user: mailbox.address, pass: mailbox.password! },
     logger: false,
     connectionTimeout: 15000,
     greetingTimeout: 10000,
@@ -200,14 +238,14 @@ export async function checkBillEmailDelivery(minIntervalSeconds: number): Promis
   try {
     await client.connect();
     // "All Mail" also holds notices that were archived out of the inbox
-    const mailboxes = await client.list();
-    const path = mailboxes.find((m) => m.specialUse === "\\All")?.path ?? "INBOX";
+    const folders = await client.list();
+    const path = folders.find((m) => m.specialUse === "\\All")?.path ?? "INBOX";
     const lock = await client.getMailboxLock(path, { readOnly: true });
     try {
-      const mailbox = client.mailbox;
-      if (!mailbox) throw new Error("Could not open the mailbox");
-      const validity = String(mailbox.uidValidity);
-      const [savedValidity, savedUid] = (settings.bounceCheckpoint ?? "").split(":");
+      const folder = client.mailbox;
+      if (!folder) throw new Error("Could not open the mailbox");
+      const validity = String(folder.uidValidity);
+      const [savedValidity, savedUid] = (checkpoint ?? "").split(":");
       const lastUid = savedValidity === validity ? Number(savedUid) || 0 : null;
 
       // First run (or the mailbox was rebuilt): the last 7 days only
@@ -237,23 +275,18 @@ export async function checkBillEmailDelivery(minIntervalSeconds: number): Promis
       }
 
       // Everything up to here has been read, unless only a first batch was
-      const lastRead = uids.length > batch.length ? batch[batch.length - 1] : Math.max(lastUid ?? 0, mailbox.uidNext - 1);
-      await prisma.billingEmailSetting.update({
-        where: { id: 1 },
-        data: { bounceCheckpoint: `${validity}:${lastRead}`, bounceCheckError: null },
-      });
+      const lastRead = uids.length > batch.length ? batch[batch.length - 1] : Math.max(lastUid ?? 0, folder.uidNext - 1);
+      return { updated, checkpoint: `${validity}:${lastRead}` };
     } finally {
       lock.release();
     }
-    return { configured: true, checked: true, updated };
   } catch (error) {
-    console.error("Failed to check bill email delivery:", error);
+    console.error(`Failed to check bill email delivery (${mailbox.address}):`, error);
     const e = error as { authenticationFailed?: boolean; code?: string };
     const message = e.authenticationFailed
-      ? "Gmail refused the login to the billing mailbox. Check that IMAP is on in its Gmail settings and that the app password is correct."
-      : "Could not read the billing mailbox to check delivery. It will be tried again.";
-    await prisma.billingEmailSetting.update({ where: { id: 1 }, data: { bounceCheckError: message } });
-    return { configured: true, checked: true, updated, error: message };
+      ? `Gmail refused the login to ${mailbox.address}. Check that IMAP is on in its Gmail settings and that the app password is correct.`
+      : `Could not read ${mailbox.address} to check delivery. It will be tried again.`;
+    return { updated, error: message };
   } finally {
     await client.logout().catch(() => client.close());
   }
