@@ -215,9 +215,10 @@ Approved bills are emailed to the party from the **Billing List**:
 Each party gets **one email** with all of its selected bills attached as PDFs,
 whichever entity issued them. MVC and B Edge bills always go in separate
 emails. The email is a short covering letter: the bills with their dates and
-amounts, the total payable, the bank details (when all the bills are paid
-into the same account), and the firm's phone and email from the company
-profile. Cancelled bills are never emailed.
+amounts, the total payable, and the firm's phone and email from the
+company profile. The bank details are only on the attached bills, not in
+the email itself (see *Keeping bill emails out of spam*). Cancelled bills
+are never emailed.
 
 Before sending, the window shows each party with the client's saved email
 address. Several addresses can be given, separated by commas. For an "Other"
@@ -265,9 +266,11 @@ A free Gmail account can send about 500 emails a day.
 ### Keeping bill emails out of spam
 
 The email is sent under a plain name (*Billing-CA Mukul Verma*) with a
-Reply-To that can receive mail; a Reply-To that cannot receive mail, or a
-company name on a free Gmail address, makes spam filters suspicious. A new
-Gmail account still has no sending history, so for the first weeks:
+Reply-To that can receive mail, and without bank account numbers in the
+body; a Reply-To that cannot receive mail, a company name on a free Gmail
+address, or bank details in an invoice email from a little-known sender all
+make spam filters suspicious. A new Gmail account still has no sending
+history, so for the first weeks:
 
 - send a few bills to the firm's own addresses and to friendly clients, and
   have them open the email, mark it **Not spam** and add the billing
