@@ -158,16 +158,13 @@ export interface BillEmailContent {
 }
 
 // The email for one party: a short covering letter, a table of the bills and
-// the total, payment details, and who to contact
+// the total, and who to contact
 export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: boolean; note?: string | null }): BillEmailContent {
   const { docs } = group;
-  const entities = [...new Set(docs.map((d) => d.entity.name).filter(Boolean))];
   // The email goes out under the mailbox's name everywhere (From, subject,
   // heading, sign-off); the attached bills show the entity that issued them
   const mailbox = BILLING_MAILBOXES[group.company];
   const sender = mailbox.name;
-  // Payment details only when every bill is paid into the same account
-  const bank = entities.length === 1 && docs[0].entity.bankAccount ? docs[0].entity : null;
   const contactEntity = docs.find((d) => d.entity.phone || d.entity.email)?.entity;
   const contact = [contactEntity?.phone && `Phone: ${contactEntity.phone}`, contactEntity?.email && `Email: ${contactEntity.email}`]
     .filter(Boolean)
@@ -183,19 +180,13 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
   const intro = single
     ? `Please find attached our ${first.isGst ? "tax invoice" : "bill"} no. ${first.billNumber} dated ${billDateText(first.billDate)} for the professional services rendered to ${group.partyName}.`
     : `Please find attached our ${docs.length} bills for the professional services rendered to ${group.partyName}. The details are given below.`;
-  const paymentLine = `Kindly arrange the payment at your earliest convenience and quote the bill ${single ? "number" : "numbers"} when making the payment.`;
+  // Bank details are on the attached bills only: account numbers in the body
+  // of an email from a little-known sender look like invoice fraud to spam filters
+  const paymentLine = `Kindly arrange the payment at your earliest convenience as per the bank details given on the ${single ? "bill" : "bills"}, and quote the bill ${single ? "number" : "numbers"} when making the payment.`;
   const replyLine = options.allowReplies
     ? "For any query about this bill, please reply to this email."
     : `Please do not send any email to this ID (${mailbox.address}), as it is used only for sending bills. In case of any problem, you may send the mail to ${mailbox.contactAddress}.`;
   const note = options.note?.trim() || null;
-  const bankLines = bank
-    ? [
-        ["Account name", bank.name],
-        ["Bank", [bank.bankName, bank.bankBranch].filter(Boolean).join(", ")],
-        ["Account no.", bank.bankAccount],
-        ["IFSC", bank.bankIfsc],
-      ].filter((row): row is [string, string] => !!row[1])
-    : [];
 
   const cell = "padding:8px 10px;border:1px solid #d9dde3;font-size:13px;";
   const head = `${cell}background:#f3f5f8;text-align:left;font-weight:600;`;
@@ -234,16 +225,6 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
       </tr></tfoot>
     </table>
     ${paragraph(paymentLine)}
-    ${
-      bankLines.length > 0
-        ? `<table role="presentation" style="border-collapse:collapse;margin:0 0 18px;font-size:13px;">${bankLines
-            .map(
-              ([label, value]) =>
-                `<tr><td style="padding:2px 16px 2px 0;color:#52606d;">${escapeHtml(label)}</td><td style="padding:2px 0;">${escapeHtml(value)}</td></tr>`
-            )
-            .join("")}</table>`
-        : ""
-    }
     <p style="margin:0 0 14px;padding:10px 12px;background:#f3f5f8;border-radius:4px;">${escapeHtml(replyLine)}</p>
     ${paragraph("We thank you for your continued trust and look forward to serving you.")}
     <p style="margin:18px 0 0;">Warm regards,<br><strong>${escapeHtml(sender)}</strong>${
@@ -265,7 +246,6 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
     `Total amount payable: ${formatRupees(total)}`,
     "",
     paymentLine,
-    ...(bankLines.length > 0 ? ["", ...bankLines.map(([label, value]) => `${label}: ${value}`)] : []),
     "",
     replyLine,
     "",
