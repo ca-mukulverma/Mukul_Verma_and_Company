@@ -21,6 +21,10 @@ export interface BillingMailbox {
   password: string | undefined;
   // The server setting that holds the password
   passwordVariable: string;
+  // Where clients should write instead of the billing mailbox. While replies
+  // are off, it is also the email's Reply-To (a Reply-To that cannot receive
+  // mail makes Gmail and other providers treat the email as spam).
+  contactAddress: string;
 }
 
 export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
@@ -30,6 +34,7 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
     address: process.env.BILLING_EMAIL_USER || "billing.camukulverma@gmail.com",
     password: process.env.BILLING_EMAIL_PASSWORD,
     passwordVariable: "BILLING_EMAIL_PASSWORD",
+    contactAddress: "camukulverma@gmail.com",
   },
   BEDGE: {
     company: "BEDGE",
@@ -37,6 +42,7 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
     address: process.env.BEDGE_BILLING_EMAIL_USER || "billing.bedge@gmail.com",
     password: process.env.BEDGE_BILLING_EMAIL_PASSWORD,
     passwordVariable: "BEDGE_BILLING_EMAIL_PASSWORD",
+    contactAddress: "bedgebusinessconsultants@gmail.com",
   },
 };
 
@@ -48,11 +54,6 @@ export const mailboxLabel = (mailbox: BillingMailbox) => `${mailbox.name} <${mai
 export function billingEmailConfigured(company: Company) {
   return !!BILLING_MAILBOXES[company].password;
 }
-
-// Where clients should write instead of the billing mailbox. While replies
-// are off, it is also the email's Reply-To (a Reply-To that cannot receive
-// mail makes Gmail and other providers treat the email as spam).
-export const BILLING_CONTACT_ADDRESS = "camukulverma@gmail.com";
 
 // The brand an email goes out under when its bills come from more than one
 // entity of the same company
@@ -187,7 +188,7 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
   const mailbox = BILLING_MAILBOXES[group.company];
   const replyLine = options.allowReplies
     ? "For any query about this bill, please reply to this email."
-    : `Please do not send any email to this ID (${mailbox.address}), as it is used only for sending bills. In case of any problem, you may send the mail to ${BILLING_CONTACT_ADDRESS}.`;
+    : `Please do not send any email to this ID (${mailbox.address}), as it is used only for sending bills. In case of any problem, you may send the mail to ${mailbox.contactAddress}.`;
   const note = options.note?.trim() || null;
   const bankLines = bank
     ? [
@@ -325,8 +326,8 @@ export async function sendBillEmails(
           from: { name: mailbox.name, address: mailbox.address },
           to,
           ...(settings.copyTo && { bcc: settings.copyTo }),
-          // Replies off: to the firm's contact address. On: to the reply address, or the billing mailbox
-          replyTo: settings.allowReplies ? settings.replyTo || mailbox.address : BILLING_CONTACT_ADDRESS,
+          // Replies off: to the company's contact address. On: to the reply address, or the billing mailbox
+          replyTo: settings.allowReplies ? settings.replyTo || mailbox.address : mailbox.contactAddress,
           subject: content.subject,
           html: content.html,
           text: content.text,

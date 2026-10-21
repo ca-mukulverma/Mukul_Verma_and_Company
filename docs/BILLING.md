@@ -233,10 +233,10 @@ email bills.
 
 Each company sends from its own Gmail account:
 
-| Bills | From (name shown) | Address | Password setting |
-|---|---|---|---|
-| MVC | Billing - CA Mukul Verma | billing.camukulverma@gmail.com | `BILLING_EMAIL_PASSWORD` |
-| B Edge | Billing - B Edge | billing.bedge@gmail.com | `BEDGE_BILLING_EMAIL_PASSWORD` |
+| Bills | From (name shown) | Address | Password setting | Clients write to |
+|---|---|---|---|---|
+| MVC | Billing - CA Mukul Verma | billing.camukulverma@gmail.com | `BILLING_EMAIL_PASSWORD` | camukulverma@gmail.com |
+| B Edge | Billing - B Edge | billing.bedge@gmail.com | `BEDGE_BILLING_EMAIL_PASSWORD` | bedgebusinessconsultants@gmail.com |
 
 To set up each one:
 
@@ -253,9 +253,10 @@ A free Gmail account can send about 500 emails a day.
 
 - **Clients can reply: off** (the default). The email asks the client not
   to send any email to the billing ID and, in case of any problem, to write
-  to **camukulverma@gmail.com**. Its Reply-To is also camukulverma@gmail.com,
-  so a client who clicks *Reply* reaches that address, not the billing
-  mailbox.
+  to the company's contact address (*Clients write to* in the table above:
+  camukulverma@gmail.com for MVC, bedgebusinessconsultants@gmail.com for
+  B Edge). Its Reply-To is also that address, so a client who clicks *Reply*
+  reaches it, not the billing mailbox.
 - **On**: replies go to the address entered there, or to the billing mailbox
   if it is left empty.
 - **Hidden copy**: an address (e.g. the office email) that gets a BCC of

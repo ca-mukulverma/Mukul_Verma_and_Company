@@ -12,8 +12,14 @@ import { Switch } from "@/components/ui/switch";
 import { apiErrorMessage } from "./bill-types";
 
 interface EmailSettingsData {
-  mailboxes: { company: string; name: string; address: string; passwordVariable: string; configured: boolean }[];
-  contactAddress: string;
+  mailboxes: {
+    company: string;
+    name: string;
+    address: string;
+    passwordVariable: string;
+    contactAddress: string;
+    configured: boolean;
+  }[];
   allowReplies: boolean;
   replyTo: string | null;
   copyTo: string | null;
@@ -79,7 +85,7 @@ export function EmailSettings() {
           {settings.mailboxes.map((m) => (
             <p key={m.company}>
               {m.company === "BEDGE" ? "B Edge" : "MVC"} bills: from{" "}
-              <span className="font-medium">{m.name}</span> &lt;{m.address}&gt;
+              <span className="font-medium">{m.name}</span> &lt;{m.address}&gt;; clients write to {m.contactAddress}
             </p>
           ))}
         </div>
@@ -104,7 +110,7 @@ export function EmailSettings() {
             <p className="text-sm text-muted-foreground">
               {allowReplies
                 ? "Replies go to the address below, or to the billing mailbox if it is empty."
-                : `Off: the email asks clients not to write to the billing mailbox and to write to ${settings.contactAddress} in case of any problem. A reply goes to ${settings.contactAddress}.`}
+                : "Off: the email asks clients not to write to the billing mailbox and, in case of any problem, to write to the company's contact address above. A reply goes to that address."}
             </p>
           </div>
           <Switch id="allow-replies" checked={allowReplies} onCheckedChange={setAllowReplies} />
