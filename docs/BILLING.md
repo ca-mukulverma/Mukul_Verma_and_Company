@@ -235,8 +235,8 @@ Each company sends from its own Gmail account:
 
 | Bills | From (name shown) | Address | Password setting | Clients write to |
 |---|---|---|---|---|
-| MVC | Billing - CA Mukul Verma | billing.camukulverma@gmail.com | `BILLING_EMAIL_PASSWORD` | camukulverma@gmail.com |
-| B Edge | Billing - B Edge | billing.bedge@gmail.com | `BEDGE_BILLING_EMAIL_PASSWORD` | bedgebusinessconsultants@gmail.com |
+| MVC | Billing-CA Mukul Verma | billing.camukulverma@gmail.com | `BILLING_EMAIL_PASSWORD` | camukulverma@gmail.com |
+| B Edge | Billing-B Edge | billing.bedge@gmail.com | `BEDGE_BILLING_EMAIL_PASSWORD` | bedgebusinessconsultants@gmail.com |
 
 To set up each one:
 
@@ -264,7 +264,7 @@ A free Gmail account can send about 500 emails a day.
 
 ### Keeping bill emails out of spam
 
-The email is sent under a plain name (*Billing - CA Mukul Verma*) with a
+The email is sent under a plain name (*Billing-CA Mukul Verma*) with a
 Reply-To that can receive mail; a Reply-To that cannot receive mail, or a
 company name on a free Gmail address, makes spam filters suspicious. A new
 Gmail account still has no sending history, so for the first weeks:
