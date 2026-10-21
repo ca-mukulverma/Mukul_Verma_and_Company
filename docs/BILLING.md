@@ -214,8 +214,11 @@ Approved bills are emailed to the party from the **Billing List**:
 
 Each party gets **one email** with all of its selected bills attached as PDFs,
 whichever entity issued them. MVC and B Edge bills always go in separate
-emails. The email is a short covering letter: the bills with their dates and
-amounts, the total payable, and the firm's phone and email from the
+emails. The email is a short, plain note, like one a person would type: the
+subject names the bill number and the party, the body gives the bills with
+their dates and amounts (and the total when there are several), asks to
+quote the bill number when paying, and is signed *CA Mukul Verma* (MVC) or
+*B Edge Business Consultants* (B Edge) with the phone number from the
 company profile. The bank details are only on the attached bills, not in
 the email itself (see *Keeping bill emails out of spam*). Cancelled bills
 are never emailed.
@@ -269,8 +272,12 @@ The email is sent under a plain name (*Billing-CA Mukul Verma*) with a
 Reply-To that can receive mail, and without bank account numbers in the
 body; a Reply-To that cannot receive mail, a company name on a free Gmail
 address, or bank details in an invoice email from a little-known sender all
-make spam filters suspicious. A new Gmail account still has no sending
-history, so for the first weeks:
+make spam filters suspicious. So does the usual invoice-email template (a
+"Tax Invoice No. …" subject, a letterhead-style layout with a styled table):
+fake-invoice spam looks the same, and Gmail files such emails as spam with
+"This message is similar to messages that were identified as spam in the
+past". Bill emails are therefore plain text-like notes. A new Gmail account
+still has no sending history, so for the first weeks:
 
 - send a few bills to the firm's own addresses and to friendly clients, and
   have them open the email, mark it **Not spam** and add the billing

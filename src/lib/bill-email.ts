@@ -25,6 +25,8 @@ export interface BillingMailbox {
   // are off, it is also the email's Reply-To (a Reply-To that cannot receive
   // mail makes Gmail and other providers treat the email as spam).
   contactAddress: string;
+  // Who signs the email
+  signature: string;
 }
 
 export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
@@ -35,6 +37,7 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
     password: process.env.BILLING_EMAIL_PASSWORD,
     passwordVariable: "BILLING_EMAIL_PASSWORD",
     contactAddress: "camukulverma@gmail.com",
+    signature: "CA Mukul Verma",
   },
   BEDGE: {
     company: "BEDGE",
@@ -43,6 +46,7 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
     password: process.env.BEDGE_BILLING_EMAIL_PASSWORD,
     passwordVariable: "BEDGE_BILLING_EMAIL_PASSWORD",
     contactAddress: "bedgebusinessconsultants@gmail.com",
+    signature: "B Edge Business Consultants",
   },
 };
 
@@ -157,103 +161,66 @@ export interface BillEmailContent {
   text: string;
 }
 
-// The email for one party: a short covering letter, a table of the bills and
-// the total, and who to contact
+// The email for one party: a short, plain note with the bills attached. It is
+// kept like an email a person would type (no letterhead layout, styled tables
+// or bank details), because the usual invoice-email template is what fake
+// invoice spam looks like, and Gmail files emails similar to spam as spam.
 export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: boolean; note?: string | null }): BillEmailContent {
   const { docs } = group;
-  // The email goes out under the mailbox's name everywhere (From, subject,
-  // heading, sign-off); the attached bills show the entity that issued them
   const mailbox = BILLING_MAILBOXES[group.company];
-  const sender = mailbox.name;
-  const contactEntity = docs.find((d) => d.entity.phone || d.entity.email)?.entity;
-  const contact = [contactEntity?.phone && `Phone: ${contactEntity.phone}`, contactEntity?.email && `Email: ${contactEntity.email}`]
-    .filter(Boolean)
-    .join(" | ");
+  const contactEntity = docs.find((d) => d.entity.phone)?.entity;
   const total = Math.round(docs.reduce((sum, d) => sum + d.total, 0) * 100) / 100;
   const single = docs.length === 1;
   const first = docs[0];
 
   const subject = single
-    ? `${first.isGst ? "Tax Invoice" : "Bill"} No. ${first.billNumber} dated ${billDateText(first.billDate)} – ${sender}`
-    : `${docs.length} bills from ${sender} – Nos. ${numberList(docs)}`;
+    ? `Bill no. ${first.billNumber} – ${group.partyName}`
+    : `Bills for ${group.partyName} – Nos. ${numberList(docs)}`;
+  const work = first.description.split("\n")[0].trim().replace(/\.$/, "");
   const greeting = `Dear ${group.contactPerson || "Sir/Madam"},`;
   const intro = single
-    ? `Please find attached our ${first.isGst ? "tax invoice" : "bill"} no. ${first.billNumber} dated ${billDateText(first.billDate)} for the professional services rendered to ${group.partyName}.`
-    : `Please find attached our ${docs.length} bills for the professional services rendered to ${group.partyName}. The details are given below.`;
-  // Bank details are on the attached bills only: account numbers in the body
-  // of an email from a little-known sender look like invoice fraud to spam filters
-  const paymentLine = `Kindly arrange the payment at your earliest convenience as per the bank details given on the ${single ? "bill" : "bills"}, and quote the bill ${single ? "number" : "numbers"} when making the payment.`;
+    ? `Please find attached bill no. ${first.billNumber} dated ${billDateText(first.billDate)} for ${formatRupees(first.total)}${work ? `, for ${work}` : ""}.`
+    : `Please find attached ${docs.length} bills for ${group.partyName}, totalling ${formatRupees(total)}:`;
+  const billLines = single
+    ? []
+    : docs.map((d) => `Bill no. ${d.billNumber} dated ${billDateText(d.billDate)} – ${formatRupees(d.total)}`);
+  const paymentLine = `The bank details for payment are given on the ${single ? "bill" : "bills"}. Please mention the bill ${single ? "number" : "numbers"} when you make the payment.`;
   const replyLine = options.allowReplies
     ? "For any query about this bill, please reply to this email."
     : `Please do not send any email to this ID (${mailbox.address}), as it is used only for sending bills. In case of any problem, you may send the mail to ${mailbox.contactAddress}.`;
   const note = options.note?.trim() || null;
+  const signature = [mailbox.signature, ...(contactEntity?.phone ? [`Phone: ${contactEntity.phone}`] : [])];
 
-  const cell = "padding:8px 10px;border:1px solid #d9dde3;font-size:13px;";
-  const head = `${cell}background:#f3f5f8;text-align:left;font-weight:600;`;
-  const rows = docs
-    .map(
-      (d) => `<tr>
-        <td style="${cell}white-space:nowrap;">${escapeHtml(d.billNumber)}</td>
-        <td style="${cell}white-space:nowrap;">${billDateText(d.billDate)}</td>
-        <td style="${cell}">${escapeHtml(d.description.split("\n")[0])}</td>
-        <td style="${cell}text-align:right;white-space:nowrap;">${formatRupees(d.total)}</td>
-      </tr>`
-    )
-    .join("");
-  const paragraph = (text: string) => `<p style="margin:0 0 14px;">${escapeHtml(text)}</p>`;
-
+  const lines = (items: string[]) => items.map(escapeHtml).join("<br>");
+  const paragraph = (html: string) => `<p>${html}</p>`;
   const html = `<!doctype html>
-<html><body style="margin:0;padding:0;background:#f6f7f9;">
-<div style="max-width:640px;margin:0 auto;padding:24px 16px;font-family:Arial,Helvetica,sans-serif;color:#1f2933;font-size:14px;line-height:1.55;">
-  <div style="background:#ffffff;border:1px solid #e3e6ea;border-radius:6px;padding:28px 24px;">
-    <p style="margin:0 0 18px;font-size:18px;font-weight:600;color:#12324f;">${escapeHtml(sender)}</p>
-    ${paragraph(greeting)}
-    ${paragraph("Greetings of the day.")}
-    ${paragraph(intro)}
-    ${note ? `<p style="margin:0 0 14px;white-space:pre-line;">${escapeHtml(note)}</p>` : ""}
-    <table role="presentation" style="border-collapse:collapse;width:100%;margin:4px 0 18px;">
-      <thead><tr>
-        <th style="${head}">Bill no.</th>
-        <th style="${head}">Date</th>
-        <th style="${head}">Particulars</th>
-        <th style="${head}text-align:right;">Amount</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr>
-        <td colspan="3" style="${cell}font-weight:600;">Total amount payable</td>
-        <td style="${cell}text-align:right;font-weight:600;white-space:nowrap;">${formatRupees(total)}</td>
-      </tr></tfoot>
-    </table>
-    ${paragraph(paymentLine)}
-    <p style="margin:0 0 14px;padding:10px 12px;background:#f3f5f8;border-radius:4px;">${escapeHtml(replyLine)}</p>
-    ${paragraph("We thank you for your continued trust and look forward to serving you.")}
-    <p style="margin:18px 0 0;">Warm regards,<br><strong>${escapeHtml(sender)}</strong>${
-      contact ? `<br><span style="color:#52606d;font-size:13px;">${escapeHtml(contact)}</span>` : ""
-    }</p>
-  </div>
+<html><body>
+<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">
+${paragraph(escapeHtml(greeting))}
+${paragraph(escapeHtml(intro) + (billLines.length > 0 ? `<br>${lines(billLines)}` : ""))}
+${note ? paragraph(lines(note.split("\n"))) : ""}
+${paragraph(escapeHtml(paymentLine))}
+${paragraph(escapeHtml(replyLine))}
+${paragraph("Thank you.")}
+${paragraph(`Regards,<br>${lines(signature)}`)}
 </div>
 </body></html>`;
 
   const text = [
     greeting,
     "",
-    "Greetings of the day.",
-    "",
     intro,
+    ...billLines,
     ...(note ? ["", note] : []),
-    "",
-    ...docs.map((d) => `Bill no. ${d.billNumber} dated ${billDateText(d.billDate)}: ${formatRupees(d.total)}`),
-    `Total amount payable: ${formatRupees(total)}`,
     "",
     paymentLine,
     "",
     replyLine,
     "",
-    "We thank you for your continued trust and look forward to serving you.",
+    "Thank you.",
     "",
-    "Warm regards,",
-    sender,
-    ...(contact ? [contact] : []),
+    "Regards,",
+    ...signature,
   ].join("\n");
 
   return { subject, html, text };
@@ -308,8 +275,6 @@ export async function sendBillEmails(
           subject: content.subject,
           html: content.html,
           text: content.text,
-          // Tells Exchange/Outlook servers not to send out-of-office replies
-          headers: { "X-Auto-Response-Suppress": "All" },
           attachments: group.docs.map((doc) => ({
             filename: billFileName(doc, "pdf"),
             content: renderBillsPdf([doc]),
