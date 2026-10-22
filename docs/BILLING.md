@@ -91,13 +91,14 @@ example on a bill from a task created without a client.
 - In Tally, the party ledger is that name, and it must exist in Tally.
 - The name is kept on the bill only; no client record is created.
 
-**Tasks that are not billed.** On a task's page, Admins, partners and the
-person who created the task can choose **Completed – no billing** in the
-status list (with an optional reason). No bill is made: the task is
-completed and deleted with its comments, and any draft bill it already had
-is deleted too (only while the bill has no number). The client's history
-keeps a line that the work was done without billing, and the Admins, the
-task's creator and its assignees are notified.
+**Tasks that are not billed.** When a completed task's bill reaches the
+billing manager, the bill shows **No billing** (in Drafts, Awaiting
+amount, Amount entered and Not billable). The billing manager or Admin
+gives an optional reason, and the task and its bill are deleted
+completely, with the task's comments. The client's history keeps a line
+that the work was done without billing, and the Admins, the task's
+creator and its assignees are notified. For task bills, No billing
+replaces *Not billable*; work logged directly keeps *Not billable*.
 
 Each task or work entry becomes **one bill**. Bills are never combined.
 

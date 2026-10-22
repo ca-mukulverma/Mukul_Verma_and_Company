@@ -39,6 +39,7 @@ import {
   EditDetailsDialog,
   EnterAmountDialog,
   HistoryDialog,
+  NoBillingDialog,
   RemarkDialog,
   RequestAmountDialog,
 } from "./bill-dialogs";
@@ -281,6 +282,7 @@ export function BillList({
       )}
       {open?.dialog === "details" && <EditDetailsDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {open?.dialog === "history" && <HistoryDialog bill={open.bill} onClose={() => setOpen(null)} />}
+      {open?.dialog === "no_billing" && <NoBillingDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
     </div>
   );
 }
@@ -410,6 +412,11 @@ function BillCard({
                 <RotateCcw className="mr-1 h-3.5 w-3.5" />Reopen
               </Button>
             )}
+            {bill.task && (editable || bill.status === "not_billable") && (
+              <Button size="sm" variant="outline" className="text-destructive" onClick={() => onOpen("no_billing")}>
+                <Ban className="mr-1 h-3.5 w-3.5" />No billing
+              </Button>
+            )}
             {/* Not modal: these items open dialogs, and a modal menu leaves the page
                 unclickable (pointer-events: none) after the dialog closes */}
             <DropdownMenu modal={false}>
@@ -427,7 +434,7 @@ function BillCard({
                 <DropdownMenuItem onClick={() => onOpen("history")}>
                   <History className="mr-2 h-4 w-4" />History
                 </DropdownMenuItem>
-                {editable && (
+                {editable && !bill.task && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive" onClick={() => onOpen("not_billable")}>
