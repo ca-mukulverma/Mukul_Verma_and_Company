@@ -29,6 +29,7 @@ const entitySchema = z.object({
   tallyCgstLedger: optional(100),
   tallySgstLedger: optional(100),
   tallyIgstLedger: optional(100),
+  tallyRoundOffLedger: optional(100),
 });
 
 async function requireAdmin() {

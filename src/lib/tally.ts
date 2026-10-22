@@ -1,6 +1,6 @@
 import { BillingEntity, BillType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { GST_STATES, gstLines } from "@/lib/bill-document";
+import { GST_STATES, billTotals } from "@/lib/bill-document";
 import { MVC_GST_STATE_CODE } from "@/lib/bill-formats";
 import { BillingAccess } from "@/lib/billing";
 import { billTypesOf } from "@/lib/billing-constants";
@@ -20,6 +20,7 @@ export const TALLY_DEFAULTS = {
   cgstLedger: "Output CGST",
   sgstLedger: "Output SGST",
   igstLedger: "Output IGST",
+  roundOffLedger: "Round Off",
 };
 
 export interface TallyLedgers {
@@ -29,6 +30,7 @@ export interface TallyLedgers {
   cgstLedger: string;
   sgstLedger: string;
   igstLedger: string;
+  roundOffLedger: string;
 }
 
 export function tallyLedgers(entity: BillingEntity | null, fallbackName: string): TallyLedgers {
@@ -39,6 +41,7 @@ export function tallyLedgers(entity: BillingEntity | null, fallbackName: string)
     cgstLedger: entity?.tallyCgstLedger || TALLY_DEFAULTS.cgstLedger,
     sgstLedger: entity?.tallySgstLedger || TALLY_DEFAULTS.sgstLedger,
     igstLedger: entity?.tallyIgstLedger || TALLY_DEFAULTS.igstLedger,
+    roundOffLedger: entity?.tallyRoundOffLedger || TALLY_DEFAULTS.roundOffLedger,
   };
 }
 
@@ -125,13 +128,14 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
     ].join("");
   }
 
+  // The same GST, round off and total as on the bill
+  const gstin = partyGstin(bill);
+  // Every bill in a Tally series has its type
+  const { taxLines, roundOff, total } = billTotals(bill.type as BillType, fee, entity?.stateCode || null, gstin || null);
   const entries: string[] = [];
-  let total = fee;
   let gstTags: string[] = [];
   if (bill.type === "GST") {
-    const gstin = partyGstin(bill);
-    const tax = gstLines(fee, entity?.stateCode || MVC_GST_STATE_CODE, gstin || null);
-    for (const line of tax.lines) {
+    for (const line of taxLines) {
       const ledger = line.label.startsWith("CGST")
         ? ledgers.cgstLedger
         : line.label.startsWith("SGST")
@@ -140,7 +144,6 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
             ? ledgers.igstLedger
             : ledgers.igstLedger;
       entries.push(ledgerEntry(ledger, line.amount, false));
-      total += line.amount;
     }
     const clientState = gstin?.slice(0, 2);
     const stateName = (clientState && GST_STATES[clientState]) || GST_STATES[entity?.stateCode || MVC_GST_STATE_CODE] || null;
@@ -149,7 +152,8 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
       ...(stateName ? [tag("STATENAME", stateName), tag("PLACEOFSUPPLY", stateName)] : []),
     ];
   }
-  total = Math.round(total * 100) / 100;
+  // Rounding up is credited to the round off ledger, rounding down debited
+  if (roundOff) entries.push(ledgerEntry(ledgers.roundOffLedger, Math.abs(roundOff), roundOff < 0));
 
   return [
     head,

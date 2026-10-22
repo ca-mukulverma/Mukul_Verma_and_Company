@@ -2,210 +2,292 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  HeightRule,
+  ImageRun,
   Packer,
   Paragraph,
-  ShadingType,
   Table,
   TableCell,
   TableRow,
   TextRun,
+  UnderlineType,
   WidthType,
 } from "docx";
 import { BillDocument } from "@/lib/bill-document";
+import { BILL_FORMATS, BillFormat, BillImage, billTotalRows, formatAmount } from "@/lib/bill-formats";
+import * as assets from "@/lib/bill-format-assets";
 import { formatIndianDate } from "@/lib/billing-constants";
 
-// Word version of the standard bill layout (same content as the PDF), so the
-// firm can adjust a bill by hand when needed.
+// Word version of the firm's bill formats (the same layout as the PDF), so a
+// bill can be adjusted by hand when needed. One framed table per bill: the
+// letterhead, bill to, particulars, totals and footer rows.
 
-function money(amount: number) {
-  return `₹ ${new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
-}
+type RGB = [number, number, number];
 
-// A4 width minus the 850-twip side margins; column widths must be fixed
+// A4 width minus 15 mm side margins (850 twips); column widths must be fixed
 // (Word and LibreOffice ignore percentage widths)
-const CONTENT_WIDTH = 11906 - 850 * 2;
+const MARGIN = 850;
+const CONTENT_WIDTH = 11906 - MARGIN * 2;
+const MM = 56.7; // twips per mm
 
-const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
-const NO_BORDERS = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER, insideHorizontal: NO_BORDER, insideVertical: NO_BORDER };
-const LINE = { style: BorderStyle.SINGLE, size: 4, color: "999999" };
+const NONE = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+const THIN = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
+const THICK = { style: BorderStyle.SINGLE, size: 12, color: "000000" };
+const NO_BORDERS = { top: NONE, bottom: NONE, left: NONE, right: NONE, insideHorizontal: NONE, insideVertical: NONE };
+const NO_MARGINS = { top: 0, bottom: 0, left: 0, right: 0 };
+const PADDING = { top: 50, bottom: 50, left: 90, right: 90 };
 
-function text(value: string, options: { bold?: boolean; size?: number; color?: string } = {}) {
-  return new TextRun({ text: value, bold: options.bold, size: options.size ?? 20, color: options.color });
-}
+const hex = (rgb: RGB) => rgb.map((c) => c.toString(16).padStart(2, "0")).join("").toUpperCase();
+const BLACK = "000000";
 
-function para(
-  runs: TextRun[] | string,
-  options: { align?: (typeof AlignmentType)[keyof typeof AlignmentType]; after?: number; before?: number } = {}
-) {
-  return new Paragraph({
-    children: typeof runs === "string" ? [text(runs)] : runs,
-    alignment: options.align,
-    spacing: { after: options.after ?? 40, before: options.before ?? 0 },
+type Align = (typeof AlignmentType)[keyof typeof AlignmentType];
+
+function run(value: string, options: { size?: number; color?: string; bold?: boolean; underline?: boolean } = {}) {
+  return new TextRun({
+    text: value,
+    bold: options.bold ?? true,
+    size: Math.round((options.size ?? 10.5) * 2),
+    color: options.color ?? BLACK,
+    underline: options.underline ? { type: UnderlineType.SINGLE } : undefined,
   });
 }
 
-// Each line of a multi-line value (e.g. an address) as its own paragraph
-function lines(value: string, options: Parameters<typeof para>[1] = {}) {
-  return value.split("\n").map((line) => para(line, options));
+function para(children: (TextRun | ImageRun)[], options: { align?: Align; before?: number; after?: number; bottomBorder?: boolean } = {}) {
+  return new Paragraph({
+    children,
+    alignment: options.align,
+    spacing: { before: options.before ?? 0, after: options.after ?? 0 },
+    border: options.bottomBorder ? { bottom: { ...THIN, space: 2 } } : undefined,
+  });
 }
 
-function widths(percentages: number[]) {
-  return percentages.map((pct) => Math.round((CONTENT_WIDTH * pct) / 100));
+function picture(name: BillImage, widthMm: number, heightMm: number) {
+  // ImageRun sizes are in pixels at 96 dpi
+  return new ImageRun({
+    type: "png",
+    data: Buffer.from(assets[name], "base64"),
+    transformation: { width: Math.round((widthMm * 96) / 25.4), height: Math.round((heightMm * 96) / 25.4) },
+  });
 }
 
-function table(percentages: number[], rows: TableRow[], borders: object) {
+function cell(children: (Paragraph | Table)[], width: number, options: { borders?: object; margins?: object } = {}) {
+  return new TableCell({
+    children,
+    width: { size: width, type: WidthType.DXA },
+    borders: options.borders,
+    margins: options.margins ?? PADDING,
+  });
+}
+
+// Column widths in twips from fractions of `total` (the last one takes the rest)
+function columns(total: number, fractions: number[]) {
+  const widths = fractions.slice(0, -1).map((f) => Math.round(total * f));
+  return [...widths, total - widths.reduce((a, b) => a + b, 0)];
+}
+
+function table(widths: number[], rows: TableRow[], borders: object = NO_BORDERS) {
   return new Table({
-    width: { size: CONTENT_WIDTH, type: WidthType.DXA },
-    columnWidths: widths(percentages),
+    width: { size: widths.reduce((a, b) => a + b, 0), type: WidthType.DXA },
+    columnWidths: widths,
     borders,
     rows,
   });
 }
 
-function cell(children: Paragraph[], widthPct: number, shaded = false) {
-  return new TableCell({
-    children,
-    width: { size: Math.round((CONTENT_WIDTH * widthPct) / 100), type: WidthType.DXA },
-    shading: shaded ? { type: ShadingType.CLEAR, color: "auto", fill: "EEEEEE" } : undefined,
-    margins: { top: 60, bottom: 60, left: 80, right: 80 },
-  });
+// Label / value lines without borders, e.g. the bank details
+function pairs(items: [string, string][], width: number, labelFraction: number, labelColor: string, size = 10.5, valueBold = true) {
+  const widths = columns(width, [labelFraction, 1 - labelFraction]);
+  return table(
+    widths,
+    items.map(
+      ([label, value]) =>
+        new TableRow({
+          children: [
+            cell([para([run(label, { color: labelColor, size })])], widths[0], { margins: NO_MARGINS }),
+            cell([para([run(value, { size, bold: valueBold })])], widths[1], { margins: NO_MARGINS }),
+          ],
+        })
+    )
+  );
+}
+
+function letterhead(format: BillFormat, width: number) {
+  const widths = columns(width, [0.6, 0.4]);
+  const text = hex(format.text);
+  const left = [
+    para([run(format.name, { size: 15, color: hex(format.nameColor), underline: format.nameUnderline })], { after: 40 }),
+    para([run(format.subtitle, { size: 11, color: hex(format.subtitleColor) })], { after: 60 }),
+    ...format.lines.map((line) => para([run(line, { size: 10, color: text })], { after: 30 })),
+    para([run(format.email, { size: 10, color: text, underline: true })]),
+  ];
+  const right = [
+    para([run("INVOICE", { size: 21, color: hex(format.titleColor) })], { align: AlignmentType.CENTER, after: 80 }),
+    para([picture(format.logo.image, format.logo.width, format.logo.height)], { align: AlignmentType.CENTER }),
+  ];
+  return table(widths, [new TableRow({ children: [cell(left, widths[0]), cell(right, widths[1])] })]);
+}
+
+function billTo(doc: BillDocument, format: BillFormat, width: number) {
+  const widths = columns(width, [109 / 180, 35 / 180, 36 / 180]);
+  const text = hex(format.text);
+  const { client } = doc;
+  const field = (label: string, value: string | null) =>
+    [label, value ?? ""] as [string, string];
+  const top = [field("Name", client.name), field("Add.", client.address)];
+  const bottom = [
+    field("Contact:", client.contactPerson !== client.name ? client.contactPerson : null),
+    field("Email:", client.email),
+    field("GST No.:", client.gstin),
+  ];
+  const fieldRows = (items: [string, string][]) =>
+    items.flatMap(([label, value]) => {
+      const valueLines = value.split("\n");
+      return valueLines.map((line, index) => [index === 0 ? label : "", line.trim()] as [string, string]);
+    });
+  const details = [
+    pairs(fieldRows(top), widths[0] - 180, 0.15, text, 10, false),
+    para([run("")], { before: 300 }),
+    pairs(fieldRows(bottom), widths[0] - 180, 0.15, text, 10, false),
+  ];
+  const head = (label: string, w: number) => cell([para([run(label, { color: text })], { align: AlignmentType.CENTER })], w);
+  const value = (label: string, w: number) =>
+    cell([para([run(label, { size: 10 })], { align: AlignmentType.CENTER })], w, {
+      borders: { bottom: THIN, left: THIN, right: NONE, top: NONE },
+    });
+  return table(
+    widths,
+    [
+      new TableRow({
+        children: [cell([para([run("BILL TO", { color: text })], { before: 0 })], widths[0]), head(format.numberLabel, widths[1]), head("INVOICE DATE", widths[2])],
+      }),
+      new TableRow({
+        children: [
+          cell(details, widths[0]),
+          value(doc.billNumber, widths[1]),
+          value(formatIndianDate(doc.billDate, "medium"), widths[2]),
+        ],
+      }),
+    ],
+    { top: NONE, bottom: NONE, left: NONE, right: NONE, insideHorizontal: THIN, insideVertical: THIN }
+  );
+}
+
+function particulars(doc: BillDocument, format: BillFormat, width: number) {
+  const widths = columns(width, [14 / 180, 136 / 180, 30 / 180]);
+  const text = hex(format.text);
+  const description = [
+    ...doc.description.split("\n"),
+    ...(doc.reissuedFromNumber ? ["", `(Replaces bill no. ${doc.reissuedFromNumber})`] : []),
+  ];
+  return table(
+    widths,
+    [
+      new TableRow({
+        children: [
+          cell([para([run("S. NO.", { color: text })])], widths[0]),
+          cell([para([run("DESCRIPTION", { color: text })])], widths[1]),
+          cell([para([run("AMOUNT (Rs.)", { color: text })], { align: AlignmentType.RIGHT })], widths[2]),
+        ],
+      }),
+      new TableRow({
+        height: { value: Math.round(66 * MM), rule: HeightRule.ATLEAST },
+        children: [
+          cell([para([run("1", { bold: false })], { align: AlignmentType.CENTER, before: 80 })], widths[0]),
+          cell(description.map((line, index) => para([run(line, { bold: false })], { before: index === 0 ? 80 : 0 })), widths[1]),
+          cell([para([run(formatAmount(doc.fee), { bold: false })], { align: AlignmentType.RIGHT, before: 80 })], widths[2]),
+        ],
+      }),
+    ],
+    { top: NONE, bottom: NONE, left: NONE, right: NONE, insideHorizontal: THIN, insideVertical: THIN }
+  );
+}
+
+function totals(doc: BillDocument, format: BillFormat, width: number) {
+  const widths = columns(width, [108 / 180, 72 / 180]);
+  const text = hex(format.text);
+  const rowsWidth = widths[1] - 180;
+  const rowWidths = columns(rowsWidth, [0.62, 0.38]);
+  const rows = table(
+    rowWidths,
+    billTotalRows(doc).map(
+      ([label, value]) =>
+        new TableRow({
+          children: [
+            cell([para([run(label, { color: text })], { align: AlignmentType.RIGHT })], rowWidths[0], { margins: NO_MARGINS }),
+            cell([para([run(value)], { align: AlignmentType.RIGHT })], rowWidths[1], { margins: NO_MARGINS }),
+          ],
+        })
+    )
+  );
+  return table(
+    widths,
+    [
+      new TableRow({
+        children: [
+          cell(
+            [
+              para([run("Amount in Words (Rs.)", { color: text })], { bottomBorder: true, after: 160 }),
+              para([run(doc.totalInWords)]),
+            ],
+            widths[0]
+          ),
+          cell([rows], widths[1]),
+        ],
+      }),
+    ],
+    { top: NONE, bottom: NONE, left: NONE, right: NONE, insideHorizontal: NONE, insideVertical: THIN }
+  );
+}
+
+function footer(format: BillFormat, width: number) {
+  const widths = columns(width, [64 / 180, 36 / 180, 80 / 180]);
+  const text = hex(format.text);
+  const signature = [
+    para([run(format.forLine ?? "", { color: text })], { after: 0 }),
+    para([run("")], { before: (7 - format.signLines.length) * 280 }),
+    ...format.signLines.map((line) => para([run(line, { color: text })])),
+  ];
+  const qr = [
+    para([run("Scan & Pay", { size: 9, color: text })], { align: AlignmentType.CENTER, after: 40 }),
+    para([picture(format.qr.image, 30, 30)], { align: AlignmentType.CENTER, after: 40 }),
+    para([run(`UPI: ${format.qr.upiId}`, { size: 8.5, bold: false })], { align: AlignmentType.CENTER }),
+  ];
+  const bankWidth = widths[2] - 180;
+  const bank = [
+    para([run("Bank A/c Details", { color: text })], { after: 60 }),
+    pairs(format.bank, bankWidth, 0.34, text),
+    ...(format.pay.length ? [para([run("")], { after: 60 }), pairs(format.pay, bankWidth, 0.38, text, 10)] : []),
+  ];
+  return table(widths, [
+    new TableRow({ children: [cell(signature, widths[0]), cell(qr, widths[1]), cell(bank, widths[2])] }),
+  ]);
 }
 
 function billSection(doc: BillDocument) {
-  const { entity } = doc;
-  const children: (Paragraph | Table)[] = [];
-
-  if (doc.cancelled) {
-    children.push(para([text("CANCELLED", { bold: true, size: 36, color: "DC3C3C" })], { align: AlignmentType.CENTER, after: 120 }));
-  }
-
-  // Letterhead
-  children.push(para([text(entity.name, { bold: true, size: 36 })], { align: AlignmentType.CENTER, after: 60 }));
-  const letterhead = [
-    entity.address,
-    [entity.phone && `Phone: ${entity.phone}`, entity.email && `Email: ${entity.email}`].filter(Boolean).join("   "),
-    [entity.pan && `PAN: ${entity.pan}`, doc.isGst && entity.gstin && `GSTIN: ${entity.gstin}`].filter(Boolean).join("   "),
-  ].filter(Boolean) as string[];
-  for (const line of letterhead.flatMap((l) => l.split("\n"))) {
-    children.push(para([text(line, { size: 18 })], { align: AlignmentType.CENTER, after: 20 }));
-  }
-  children.push(
-    new Paragraph({
-      children: [],
-      border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: "000000", space: 1 } },
-      spacing: { after: 200 },
-    })
+  const format = BILL_FORMATS[doc.type];
+  const inner = CONTENT_WIDTH;
+  const row = (content: Table) =>
+    new TableRow({ children: [cell([content], inner, { margins: NO_MARGINS })] });
+  const frame = table(
+    [inner],
+    [
+      row(letterhead(format, inner)),
+      row(billTo(doc, format, inner)),
+      row(particulars(doc, format, inner)),
+      row(totals(doc, format, inner)),
+      row(footer(format, inner)),
+    ],
+    { top: THICK, bottom: THICK, left: THICK, right: THICK, insideHorizontal: THIN, insideVertical: NONE }
   );
-  children.push(para([text(doc.title, { bold: true, size: 26 })], { align: AlignmentType.CENTER, after: 200 }));
-
-  // Bill to | bill details
-  const billTo = [
-    para([text("Bill to", { bold: true })]),
-    para([text(doc.client.name)]),
-    ...(doc.client.contactPerson !== doc.client.name ? [para(`Attn: ${doc.client.contactPerson}`)] : []),
-    ...(doc.client.address ? lines(doc.client.address) : []),
-    ...(doc.isGst && doc.client.gstin ? [para(`GSTIN: ${doc.client.gstin}`)] : []),
-  ];
-  const details: [string, string][] = [
-    [doc.isGst ? "Invoice no." : "Bill no.", doc.billNumber],
-    ["Date", formatIndianDate(doc.billDate)],
-    ...(doc.placeOfSupply ? [["Place of supply", doc.placeOfSupply] as [string, string]] : []),
-    ...(doc.reissuedFromNumber ? [["Replaces", doc.reissuedFromNumber] as [string, string]] : []),
-  ];
-  children.push(
-    table(
-      [58, 42],
-      [
-        new TableRow({
-          children: [
-            cell(billTo, 58),
-            cell(details.map(([label, value]) => para([text(`${label}: `, { bold: true }), text(value)])), 42),
-          ],
-        }),
-      ],
-      NO_BORDERS
-    ),
-    para("", { after: 200 })
-  );
-
-  // Particulars
-  const columns = doc.isGst ? [8, 57, 10, 25] : [8, 67, 25];
-  const header = [
-    cell([para([text("S.No.", { bold: true })])], 8, true),
-    cell([para([text("Particulars", { bold: true })])], doc.isGst ? 57 : 67, true),
-    ...(doc.isGst ? [cell([para([text("SAC", { bold: true })])], 10, true)] : []),
-    cell([para([text("Amount", { bold: true })], { align: AlignmentType.RIGHT })], 25, true),
-  ];
-  const row = [
-    cell([para("1")], 8),
-    cell(
-      [
-        ...doc.description.split("\n").map((line) => para(line)),
-        para([text(`Work done on ${formatIndianDate(doc.workDate)}`, { size: 17, color: "6E6E6E" })]),
-      ],
-      doc.isGst ? 57 : 67
-    ),
-    ...(doc.isGst ? [cell([para(entity.sacCode || "")], 10)] : []),
-    cell([para(money(doc.fee), { align: AlignmentType.RIGHT })], 25),
-  ];
-  children.push(
-    table(
-      columns,
-      [new TableRow({ children: header, tableHeader: true }), new TableRow({ children: row })],
-      { top: LINE, bottom: LINE, left: LINE, right: LINE, insideHorizontal: LINE, insideVertical: LINE }
-    ),
-    para("", { after: 120 })
-  );
-
-  // Totals
-  const totals: [string, string, boolean][] = [
-    ...(doc.taxLines.length ? [["Professional fee", money(doc.fee), false] as [string, string, boolean]] : []),
-    ...doc.taxLines.map((line) => [line.label, money(line.amount), false] as [string, string, boolean]),
-    ...(doc.roundOff ? [["Round off", money(doc.roundOff), false] as [string, string, boolean]] : []),
-    ["Total", money(doc.total), true],
-  ];
-  children.push(
-    table(
-      [75, 25],
-      totals.map(
-        ([label, value, bold]) =>
-          new TableRow({
-            children: [
-              cell([para([text(label, { bold })], { align: AlignmentType.RIGHT })], 75),
-              cell([para([text(value, { bold })], { align: AlignmentType.RIGHT })], 25),
-            ],
-          })
-      ),
-      NO_BORDERS
-    ),
-    para([text("Amount in words: ", { bold: true }), text(doc.totalInWords)], { before: 160, after: 240 })
-  );
-
-  // Bank details
-  const bank = [
-    entity.bankName && `Bank: ${entity.bankName}`,
-    entity.bankAccount && `Account no.: ${entity.bankAccount}`,
-    entity.bankIfsc && `IFSC: ${entity.bankIfsc}`,
-    entity.bankBranch && `Branch: ${entity.bankBranch}`,
-  ].filter(Boolean) as string[];
-  if (bank.length) {
-    children.push(para([text("Bank details", { bold: true })]));
-    for (const line of bank) children.push(para(line));
-  }
-
-  // Signature
-  children.push(
-    para([text(`For ${entity.name}`, { bold: true })], { align: AlignmentType.RIGHT, before: 480, after: 600 }),
-    ...(entity.signatory ? [para(entity.signatory, { align: AlignmentType.RIGHT })] : []),
-    para("Authorised Signatory", { align: AlignmentType.RIGHT })
-  );
-  if (entity.footerNote) {
-    children.push(para([text(entity.footerNote, { size: 17, color: "6E6E6E" })], { align: AlignmentType.CENTER, before: 400 }));
-  }
 
   return {
-    properties: { page: { margin: { top: 850, bottom: 850, left: 850, right: 850 } } },
-    children,
+    properties: { page: { margin: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN } } },
+    children: [
+      ...(doc.cancelled
+        ? [para([run("CANCELLED", { size: 18, color: "DC3C3C" })], { align: AlignmentType.CENTER, after: 120 })]
+        : []),
+      frame,
+    ],
   };
 }
 
@@ -213,7 +295,7 @@ function billSection(doc: BillDocument) {
 export async function renderBillsDocx(docs: BillDocument[]): Promise<Buffer> {
   const document = new Document({
     title: docs.length === 1 ? `Bill ${docs[0].billNumber}` : `${docs.length} bills`,
-    styles: { default: { document: { run: { font: "Arial" } } } },
+    styles: { default: { document: { run: { font: "Calibri" } } } },
     sections: docs.map(billSection),
   });
   return Packer.toBuffer(document);

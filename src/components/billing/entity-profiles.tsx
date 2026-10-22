@@ -34,6 +34,7 @@ interface Entity {
   tallyCgstLedger: string | null;
   tallySgstLedger: string | null;
   tallyIgstLedger: string | null;
+  tallyRoundOffLedger: string | null;
 }
 
 type Field = Exclude<keyof Entity, "type">;
@@ -60,6 +61,7 @@ const FIELDS: { key: Field; label: string; placeholder?: string; gstOnly?: boole
   { key: "tallyCgstLedger", label: "CGST ledger", placeholder: "Output CGST", gstOnly: true, tally: true },
   { key: "tallySgstLedger", label: "SGST ledger", placeholder: "Output SGST", gstOnly: true, tally: true },
   { key: "tallyIgstLedger", label: "IGST ledger", placeholder: "Output IGST", gstOnly: true, tally: true },
+  { key: "tallyRoundOffLedger", label: "Round off ledger", placeholder: "Round Off", tally: true },
 ];
 
 // Admin edits the letterhead and bank details printed on each type of bill

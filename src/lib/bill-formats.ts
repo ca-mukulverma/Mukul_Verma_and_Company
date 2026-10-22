@@ -1,3 +1,4 @@
+import type { BillDocument } from "@/lib/bill-document";
 import { BillTypeValue } from "@/lib/billing-constants";
 
 // The firm's bill formats, one per bill type, as approved by the firm: the
@@ -144,3 +145,32 @@ export const BILL_FORMATS: Record<BillTypeValue, BillFormat> = {
     qr: { image: "qrBedge", upiId: "43471559687@sbi" },
   },
 };
+
+// Amounts as printed under the "(Rs.)" headings, e.g. "2,360.00"
+export const formatAmount = (n: number) =>
+  new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+// The rows beside "Amount in Words": label and value, the same on the PDF and the Word file
+export function billTotalRows(doc: BillDocument): [string, string][] {
+  if (BILL_FORMATS[doc.type].totalsStyle === "chargesDiscount") {
+    return [
+      ["Sub Total (Rs.)", formatAmount(doc.fee)],
+      ["Other Charges (Rs.)", "-"],
+      ["Discount (Rs.)", "-"],
+      ["Total (Rs.)", formatAmount(doc.total)],
+    ];
+  }
+  const tax = (prefix: string) => doc.taxLines.find((line) => line.label.startsWith(prefix));
+  return [
+    ["Sub Total (Rs.)", formatAmount(doc.fee)],
+    // GST bills show all three; the ones not charged as "-"
+    ...(doc.isGst
+      ? ["CGST @ 9%", "SGST @ 9%", "IGST @ 18%"].map((label): [string, string] => {
+          const line = tax(label.slice(0, 4));
+          return [label, line ? formatAmount(line.amount) : "-"];
+        })
+      : []),
+    ["Round Off", doc.roundOff ? formatAmount(doc.roundOff) : "-"],
+    ["Total (Rs.)", formatAmount(doc.total)],
+  ];
+}
