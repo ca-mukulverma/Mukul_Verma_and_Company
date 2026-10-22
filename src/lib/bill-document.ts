@@ -122,6 +122,17 @@ export function rupeesInWords(amount: number) {
   return `Rupees ${integerInWords(rupees)}${paise ? ` and ${belowHundred(paise)} Paise` : ""} Only`;
 }
 
+// GST, round off and total of a bill: the same on the PDF, the Word file and
+// the Tally voucher. GST bills charge CGST + SGST or IGST from MVC's state
+// (Madhya Pradesh unless Company profiles has another); all bills but B Edge
+// round the total to whole rupees.
+export function billTotals(type: BillType, fee: number, stateCode: string | null, clientGstin: string | null) {
+  const tax = type === "GST" ? gstLines(fee, stateCode || MVC_GST_STATE_CODE, clientGstin) : null;
+  const exact = round2(fee + (tax?.lines.reduce((sum, line) => sum + line.amount, 0) ?? 0));
+  const total = BILL_FORMATS[type].totalsStyle === "roundOff" ? Math.round(exact) : exact;
+  return { taxLines: tax?.lines ?? [], placeOfSupply: tax?.placeOfSupply ?? null, roundOff: round2(total - exact), total };
+}
+
 const documentInclude = {
   client: { select: { contactPerson: true, companyName: true, address: true, gstin: true, email: true } },
   reissuedFrom: { select: { billNumber: true } },
@@ -154,9 +165,7 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
           email: bill.client.email?.trim() || null,
         }
       : { name: bill.billToName || "", contactPerson: bill.billToName || "", address: bill.billToAddress, gstin: bill.billToGstin, email: null };
-    const tax = isGst ? gstLines(fee, entity?.stateCode || MVC_GST_STATE_CODE, party.gstin) : null;
-    const exact = round2(fee + (tax?.lines.reduce((sum, line) => sum + line.amount, 0) ?? 0));
-    const total = BILL_FORMATS[bill.type].totalsStyle === "roundOff" ? Math.round(exact) : exact;
+    const { taxLines, placeOfSupply, roundOff, total } = billTotals(bill.type, fee, entity?.stateCode || null, party.gstin);
 
     return [
       {
@@ -170,11 +179,11 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
         description: bill.description,
         workDate: bill.workDate,
         fee,
-        taxLines: tax?.lines ?? [],
-        roundOff: round2(total - exact),
+        taxLines,
+        roundOff,
         total,
         totalInWords: rupeesInWords(total),
-        placeOfSupply: tax?.placeOfSupply ?? null,
+        placeOfSupply,
         client: party,
         entity: {
           name: entity?.name || "",

@@ -1,6 +1,6 @@
 import { GState, jsPDF } from "jspdf";
 import { BillDocument } from "@/lib/bill-document";
-import { BILL_FORMATS, BillFormat, BillImage } from "@/lib/bill-formats";
+import { BILL_FORMATS, BillImage, billTotalRows, formatAmount } from "@/lib/bill-formats";
 import * as assets from "@/lib/bill-format-assets";
 import { formatIndianDate } from "@/lib/billing-constants";
 
@@ -30,32 +30,7 @@ const Y_FOOT = 233;
 const BANK_X = 118;
 const QR_SIZE = 30;
 
-const amount = (n: number) => new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 const image = (name: BillImage) => `data:image/png;base64,${assets[name]}`;
-
-// The rows under "Amount in Words": label and value
-function totalRows(doc: BillDocument, format: BillFormat): [string, string][] {
-  if (format.totalsStyle === "chargesDiscount") {
-    return [
-      ["Sub Total (Rs.)", amount(doc.fee)],
-      ["Other Charges (Rs.)", "-"],
-      ["Discount (Rs.)", "-"],
-      ["Total (Rs.)", amount(doc.total)],
-    ];
-  }
-  const tax = (prefix: string) => doc.taxLines.find((line) => line.label.startsWith(prefix));
-  return [
-    ["Sub Total (Rs.)", amount(doc.fee)],
-    ...(doc.isGst
-      ? (["CGST @ 9%", "SGST @ 9%", "IGST @ 18%"].map((label) => {
-          const line = tax(label.slice(0, 4));
-          return [label, line ? amount(line.amount) : "-"];
-        }) as [string, string][])
-      : []),
-    ["Round Off", doc.roundOff ? amount(doc.roundOff) : "-"],
-    ["Total (Rs.)", amount(doc.total)],
-  ];
-}
 
 // Draws one bill on the current page of `pdf`
 function drawBill(pdf: jsPDF, doc: BillDocument) {
@@ -141,7 +116,7 @@ function drawBill(pdf: jsPDF, doc: BillDocument) {
   pdf.text("AMOUNT (Rs.)", R - 2, Y_TABLE + 4.3, { align: "right" });
   set(10.5, BLACK, "normal");
   pdf.text("1", (L + NO_COL) / 2, Y_TABLE_HEAD + 8, { align: "center" });
-  pdf.text(amount(doc.fee), R - 2, Y_TABLE_HEAD + 8, { align: "right" });
+  pdf.text(formatAmount(doc.fee), R - 2, Y_TABLE_HEAD + 8, { align: "right" });
   const description = [
     ...doc.description.split("\n"),
     ...(doc.reissuedFromNumber ? ["", `(Replaces bill no. ${doc.reissuedFromNumber})`] : []),
@@ -166,7 +141,7 @@ function drawBill(pdf: jsPDF, doc: BillDocument) {
   set(10.5, BLACK);
   pdf.text(pdf.splitTextToSize(doc.totalInWords, COL1 - L - 6) as string[], L + 2, Y_WORDS + 13);
   let ty = Y_WORDS + 5;
-  for (const [label, value] of totalRows(doc, format)) {
+  for (const [label, value] of billTotalRows(doc)) {
     set(10.5);
     pdf.text(label, AMT_COL + 5, ty, { align: "right" });
     set(10.5, BLACK);

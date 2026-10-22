@@ -5,8 +5,8 @@ process: work is posted in the WhatsApp billing group, copied into a Google
 Sheet and then entered in Tally. In the new process, the app holds every bill
 from the moment the work is done until it is exported to Tally.
 
-PDF bills use the firm's approved formats (see *Bill formats* below). The
-Word layout and Tally ledger names are still placeholders.
+PDF and Word bills use the firm's approved formats (see *Bill formats*
+below).
 
 ## Companies and billing entities
 
@@ -39,8 +39,8 @@ amount* window while entering the fee. B Edge bills are always non-GST.
 Admin edits each entity's profile in **Billing → Company profiles**: name,
 address, phone, email, PAN, bank details, signatory and a note for the bottom
 of the bill. MVC & Company also has GSTIN, GST state code and SAC code. The
-profiles start with only the names above. They are used on Word bills and in
-Tally; PDF bills print the approved formats instead.
+profiles start with only the names above. They are used in Tally; PDF and
+Word bills print the approved formats instead.
 
 GST on a GST bill:
 - **CGST 9% + SGST 9%** when the client's GSTIN is from the firm's state.
@@ -173,9 +173,9 @@ with the fee totals for each series.
   several selected bills as a ZIP of PDFs, a ZIP of Word files, or one
   combined PDF for printing.
 - Cancelled bills carry a "CANCELLED" stamp.
-- PDFs print amounts under "(Rs.)" headings; Word files use ₹.
+- Amounts are printed under "(Rs.)" headings.
 
-### Bill formats (PDF)
+### Bill formats (PDF and Word)
 
 Each bill type has the firm's approved format (`src/lib/bill-formats.ts`;
 logos, QR codes and font in `assets/bills`): letterhead and logo, "INVOICE",
@@ -196,6 +196,8 @@ a "Scan & Pay" UPI QR code and the bank details.
   registered in another state (from the first two digits of its GSTIN).
 - All bills except B Edge round the total to whole rupees with a Round Off
   row. B Edge bills show Other Charges and Discount rows ("-").
+- The Word file has the same layout as the PDF, in one framed table, so a
+  bill can be adjusted by hand.
 - To change a format, edit `src/lib/bill-formats.ts`; to change a logo or QR
   code, replace the file in `assets/bills` and run
   `node scripts/build-bill-assets.mjs`.
@@ -205,6 +207,11 @@ a "Scan & Pay" UPI QR code and the bank details.
   - Each bill becomes a sales voucher. The party ledger is debited with the
     total, and the fee ledger and the GST ledgers are credited. GST vouchers
     also carry the party GSTIN and place of supply.
+  - When the bill's total was rounded to whole rupees, the difference goes
+    to the **Round Off** ledger (credited when rounded up, debited when
+    rounded down), so the voucher total equals the bill. Create that ledger
+    in each Tally company (e.g. under *Indirect Expenses*), or enter its
+    name in *Company profiles*.
   - A voucher's REMOTEID is the bill's id, so Tally recognises it again
     later:
     - a bill not sent before goes as *Create*;
@@ -217,10 +224,11 @@ a "Scan & Pay" UPI QR code and the bank details.
     repeated. Two people exporting at the same moment cannot both send the
     same bills.
   - **Ledger names:**
-    - The Tally company name, voucher type, fee ledger and CGST/SGST/IGST
-      ledgers are set per entity in *Company profiles*. Until they're set,
-      the defaults are used: the entity's name, "Sales", "Professional
-      Fees", "Output CGST/SGST/IGST".
+    - The Tally company name, voucher type, fee ledger, CGST/SGST/IGST
+      ledgers and round off ledger are set per entity in *Company
+      profiles*. Until they're set, the defaults are used: the entity's
+      name, "Sales", "Professional Fees", "Output CGST/SGST/IGST", "Round
+      Off".
     - Each client's party ledger defaults to the client's name. A billing
       manager can change it on the Tally tab when the name in Tally
       differs. Client ledgers must already exist in Tally.

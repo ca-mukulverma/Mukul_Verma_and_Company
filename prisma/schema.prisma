@@ -489,6 +489,7 @@ model BillingEntity {
   tallyCgstLedger  String? @db.VarChar(100)
   tallySgstLedger  String? @db.VarChar(100)
   tallyIgstLedger  String? @db.VarChar(100)
+  tallyRoundOffLedger String? @db.VarChar(100)
   updatedAt   DateTime @updatedAt
 }
 
