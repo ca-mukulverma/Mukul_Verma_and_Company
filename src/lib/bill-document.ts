@@ -2,6 +2,7 @@ import { BillType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { BillingAccess } from "@/lib/billing";
 import { GST_RATE_PERCENT } from "@/lib/billing-constants";
+import { BILL_FORMATS, MVC_GST_STATE_CODE } from "@/lib/bill-formats";
 
 // Everything printed on one bill (PDF or Word). Built only for bills in a
 // Billing List the user may see, so amounts never reach anyone else.
@@ -17,10 +18,12 @@ export interface BillDocument {
   workDate: Date;
   fee: number;
   taxLines: { label: string; amount: number }[];
+  // Added to reach the total in whole rupees (bills with a Round Off row)
+  roundOff: number;
   total: number;
   totalInWords: string;
   placeOfSupply: string | null;
-  client: { name: string; contactPerson: string; address: string | null; gstin: string | null };
+  client: { name: string; contactPerson: string; address: string | null; gstin: string | null; email: string | null };
   entity: {
     name: string;
     address: string | null;
@@ -120,7 +123,7 @@ export function rupeesInWords(amount: number) {
 }
 
 const documentInclude = {
-  client: { select: { contactPerson: true, companyName: true, address: true, gstin: true } },
+  client: { select: { contactPerson: true, companyName: true, address: true, gstin: true, email: true } },
   reissuedFrom: { select: { billNumber: true } },
 } satisfies Prisma.BillInclude;
 
@@ -148,10 +151,12 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
           contactPerson: bill.client.contactPerson,
           address: bill.client.address || null,
           gstin: bill.client.gstin || null,
+          email: bill.client.email?.trim() || null,
         }
-      : { name: bill.billToName || "", contactPerson: bill.billToName || "", address: bill.billToAddress, gstin: bill.billToGstin };
-    const tax = isGst ? gstLines(fee, entity?.stateCode || null, party.gstin) : null;
-    const total = round2(fee + (tax?.lines.reduce((sum, line) => sum + line.amount, 0) ?? 0));
+      : { name: bill.billToName || "", contactPerson: bill.billToName || "", address: bill.billToAddress, gstin: bill.billToGstin, email: null };
+    const tax = isGst ? gstLines(fee, entity?.stateCode || MVC_GST_STATE_CODE, party.gstin) : null;
+    const exact = round2(fee + (tax?.lines.reduce((sum, line) => sum + line.amount, 0) ?? 0));
+    const total = BILL_FORMATS[bill.type].totalsStyle === "roundOff" ? Math.round(exact) : exact;
 
     return [
       {
@@ -166,6 +171,7 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
         workDate: bill.workDate,
         fee,
         taxLines: tax?.lines ?? [],
+        roundOff: round2(total - exact),
         total,
         totalInWords: rupeesInWords(total),
         placeOfSupply: tax?.placeOfSupply ?? null,
