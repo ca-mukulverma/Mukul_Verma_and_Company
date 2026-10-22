@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { sendTaskStatusUpdateNotification, sendTaskAssignedNotification, sendTaskUpdatedNotificationToAdmins } from "@/lib/notifications";
+import { sendTaskStatusUpdateNotification, sendTaskAllotmentNotifications, sendTaskUpdatedNotificationToAdmins } from "@/lib/notifications";
 import { v2 as cloudinary } from "cloudinary";
 import { z } from "zod";
 import { syncTaskAssignments } from "@/lib/task-assignment";
@@ -278,21 +278,34 @@ export async function PATCH(
       },
     });
 
-    // Work out who was newly assigned by comparing with the assignees loaded
+    // Work out whether the assignees changed by comparing with the ones loaded
     // before the update (re-reading them now would already include the new ones)
     const previousAssigneeIds = task.assignees.map((a) => a.userId);
+    const assignmentRequested = Array.isArray(body.assignedToIds) || !!body.assignedToId;
     const requestedAssigneeIds: string[] = Array.isArray(body.assignedToIds)
       ? body.assignedToIds
       : (body.assignedToId ? [body.assignedToId] : []);
-    const newAssigneeIds = requestedAssigneeIds.filter(
-      (id) => !previousAssigneeIds.includes(id) && id !== currentUser.id
-    );
+    const assigneesChanged =
+      assignmentRequested &&
+      (requestedAssigneeIds.some((id) => !previousAssigneeIds.includes(id)) ||
+        previousAssigneeIds.some((id) => !requestedAssigneeIds.includes(id)));
     const statusChanged = body.status && body.status !== originalTask.status;
 
     // Send notifications after the response so the user isn't kept waiting
     after(() =>
       Promise.all([
-        sendTaskUpdatedNotificationToAdmins(task.id, task.title, currentUser.id),
+        // A change of assignees tells the Admins itself, along with everyone concerned
+        assigneesChanged
+          ? sendTaskAllotmentNotifications({
+              taskId: originalTask.id,
+              taskTitle: originalTask.title,
+              actor: currentUser,
+              creatorId: originalTask.assignedById,
+              previousAssigneeIds,
+              newAssigneeIds: requestedAssigneeIds,
+              note: body.note || undefined,
+            })
+          : sendTaskUpdatedNotificationToAdmins(task.id, task.title, currentUser.id),
         statusChanged
           ? sendTaskStatusUpdateNotification(
               originalTask.id,
@@ -303,16 +316,6 @@ export async function PATCH(
               body.status
             )
           : Promise.resolve(),
-        ...newAssigneeIds.map((newAssigneeId) =>
-          sendTaskAssignedNotification(
-            originalTask.id,
-            originalTask.title,
-            currentUser.id,
-            newAssigneeId,
-            body.note || undefined,
-            originalTask.dueDate || undefined
-          )
-        ),
       ])
     );
 

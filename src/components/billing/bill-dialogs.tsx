@@ -108,7 +108,10 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Enter amount</DialogTitle>
-          <DialogDescription>Professional fee for this work, before GST.</DialogDescription>
+          <DialogDescription>
+            Professional fee for this work, before GST.
+            {bill.canManage && " Saving it approves the bill and sends it to Admin for final approval."}
+          </DialogDescription>
         </DialogHeader>
         <BillSummary bill={bill} />
         <form
@@ -118,7 +121,7 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
             if (!valid) return;
             const action: BillAction =
               canChooseType && type && type !== bill.type ? { action: "enter_amount", amount, type } : { action: "enter_amount", amount };
-            if (await run(action, "Amount saved")) onClose();
+            if (await run(action, bill.canManage ? "Amount saved and sent for final approval" : "Amount saved")) onClose();
           }}
         >
           {canChooseType && (

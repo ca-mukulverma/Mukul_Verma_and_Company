@@ -1,10 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
-import { BillStatus, BillType, Company, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { billInclude, billToData, getBillingAccess, otherPartySchema, serializeBill } from "@/lib/billing";
+import {
+  billInclude,
+  billToData,
+  describeBill,
+  getBillingAccess,
+  getBillingManagerIds,
+  notifyBillingUsers,
+  otherPartySchema,
+  serializeBill,
+} from "@/lib/billing";
+import { COMPANY_LABELS } from "@/lib/billing-constants";
+import { billListWhere } from "@/lib/bill-list-query";
 
 const PAGE_SIZE = 50;
 
@@ -16,16 +26,11 @@ const workEntrySchema = z.object({
   description: z.string().trim().min(3, "Describe the work done").max(2000),
   workDate: z.string().datetime(),
   remark: z.string().trim().max(1000).optional().nullable(),
+  // Partners chosen on the form to be told about the work
+  notifyPartnerIds: z.array(z.string().min(1)).max(50).optional(),
 });
 
-// GET /api/bills?view=manage|list|amounts|mine&company=MVC|BEDGE&status=...&search=...&page=1
-//   manage  – bills of the companies the user manages
-//   list    – the Billing List: numbered bills of those companies (both for a
-//             partner Admin has allowed to see it), filtered by &type=<BillType>
-//             &from=YYYY-MM-DD&to=YYYY-MM-DD (bill date)
-//             &emailed=yes (delivered, as far as is known) | failed | no (never emailed)
-//   amounts – bills sent to the user to enter the amount
-//   mine    – work the user logged or completed
+// GET /api/bills – a page of bills; the filters are described in lib/bill-list-query.ts
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
   const user = getSessionUser(session);
@@ -36,69 +41,11 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const view = searchParams.get("view") || "mine";
-  const company = searchParams.get("company");
-  const status = searchParams.get("status");
-  const search = searchParams.get("search")?.trim();
   const page = Math.max(parseInt(searchParams.get("page") || "1") || 1, 1);
 
-  const where: Prisma.BillWhereInput = {};
-
-  if (view === "manage" || view === "list") {
-    // Partners allowed to see the Billing List see it for both companies
-    const allowed = view === "list" ? access.listCompanies : access.manages;
-    const companies = company ? [company as Company] : allowed;
-    if (companies.length === 0 || companies.some((c) => !allowed.includes(c))) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
-    }
-    where.company = { in: companies };
-
-    if (view === "list") {
-      const type = searchParams.get("type");
-      const from = searchParams.get("from");
-      const to = searchParams.get("to");
-      if (type && type !== "all") {
-        if (!(type in BillType)) return NextResponse.json({ error: "Invalid type" }, { status: 400 });
-        where.type = type as BillType;
-      }
-      if (from || to) {
-        where.billDate = {
-          // Dates are Indian calendar days
-          ...(from && { gte: new Date(`${from}T00:00:00+05:30`) }),
-          ...(to && { lte: new Date(`${to}T23:59:59.999+05:30`) }),
-        };
-      }
-      if (!status || status === "all") where.status = { in: ["approved", "cancelled"] };
-      const emailed = searchParams.get("emailed");
-      if (emailed === "yes") where.emailStatus = { in: ["sent", "delayed"] };
-      if (emailed === "failed") where.emailStatus = "failed";
-      if (emailed === "no") where.emailStatus = null;
-    }
-  } else if (view === "amounts") {
-    if (!access.canEnterAmounts) return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
-    where.amountRequestedFromId = user.id;
-    if (!status) where.status = "awaiting_amount";
-  } else {
-    where.createdById = user.id;
-  }
-
-  if (status && status !== "all") {
-    if (view === "list" && status !== "approved" && status !== "cancelled") {
-      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
-    }
-    if (!(status in BillStatus)) {
-      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
-    }
-    where.status = status as BillStatus;
-  }
-
-  if (search) {
-    where.OR = [
-      { description: { contains: search, mode: "insensitive" } },
-      { client: { contactPerson: { contains: search, mode: "insensitive" } } },
-      { client: { companyName: { contains: search, mode: "insensitive" } } },
-      { billToName: { contains: search, mode: "insensitive" } },
-    ];
-  }
+  const filter = billListWhere(searchParams, access);
+  if ("error" in filter) return NextResponse.json({ error: filter.error }, { status: filter.status });
+  const { where } = filter;
 
   const [bills, total, sums] = await Promise.all([
     prisma.bill.findMany({
@@ -168,6 +115,24 @@ export async function POST(request: NextRequest) {
       events: { create: { action: "created", userId: user.id, remark: "Work logged directly" } },
     },
     include: billInclude,
+  });
+
+  // Admins, the company's billing managers and the partners chosen on the form
+  after(async () => {
+    const [managerIds, partners] = await Promise.all([
+      getBillingManagerIds(bill.company),
+      data.notifyPartnerIds?.length
+        ? prisma.user.findMany({
+            where: { id: { in: data.notifyPartnerIds }, role: "PARTNER", isActive: true },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    await notifyBillingUsers([...managerIds, ...partners.map((p) => p.id)].filter((id) => id !== user.id), {
+      title: "Work logged for billing",
+      content: `${user.name} logged ${COMPANY_LABELS[bill.company]} work: ${describeBill(bill)}`,
+      sentById: user.id,
+    });
   });
 
   return NextResponse.json(serializeBill(bill, access), { status: 201 });
