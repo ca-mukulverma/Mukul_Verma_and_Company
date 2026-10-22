@@ -22,8 +22,8 @@ export interface BillingMailbox {
   // The server setting that holds the password
   passwordVariable: string;
   // Where clients should write instead of the billing mailbox (named in the
-  // email's body)
-  contactAddress: string;
+  // email's body); null when clients can reply to the mailbox itself
+  contactAddress: string | null;
   // Who signs the email
   signature: string;
 }
@@ -32,10 +32,12 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
   MVC: {
     company: "MVC",
     name: "Billing-CA Mukul Verma",
-    address: process.env.BILLING_EMAIL_USER || "billing.camukulverma@gmail.com",
+    // The firm's own, long-used mailbox: mail from an established address is
+    // far less likely to be filed as spam than mail from a new one
+    address: process.env.BILLING_EMAIL_USER || "camukulverma.bhopal@gmail.com",
     password: process.env.BILLING_EMAIL_PASSWORD,
     passwordVariable: "BILLING_EMAIL_PASSWORD",
-    contactAddress: "camukulverma@gmail.com",
+    contactAddress: null,
     signature: "CA Mukul Verma",
   },
   BEDGE: {
@@ -51,7 +53,7 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
 
 export const BILLING_COMPANIES: Company[] = ["MVC", "BEDGE"];
 
-// "Billing-CA Mukul Verma <billing.camukulverma@gmail.com>"
+// "Billing-CA Mukul Verma <camukulverma.bhopal@gmail.com>"
 export const mailboxLabel = (mailbox: BillingMailbox) => `${mailbox.name} <${mailbox.address}>`;
 
 export function billingEmailConfigured(company: Company) {
@@ -160,10 +162,10 @@ export interface BillEmailContent {
   text: string;
 }
 
-// The email for one party: a short, plain note with the bills attached. It is
-// kept like an email a person would type (no letterhead layout, styled tables
-// or bank details), because the usual invoice-email template is what fake
-// invoice spam looks like, and Gmail files emails similar to spam as spam.
+// The email for one party: a short note with a table of the attached bills.
+// It is kept plain (no letterhead layout or bank details), because the usual
+// invoice-email template is what fake invoice spam looks like, and Gmail files
+// emails similar to spam as spam.
 export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: boolean; note?: string | null }): BillEmailContent {
   const { docs } = group;
   const mailbox = BILLING_MAILBOXES[group.company];
@@ -173,30 +175,46 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
   const first = docs[0];
 
   const subject = single
-    ? `Bill no. ${first.billNumber} – ${group.partyName}`
-    : `Bills for ${group.partyName} – Nos. ${numberList(docs)}`;
-  const work = first.description.split("\n")[0].trim().replace(/\.$/, "");
+    ? `Billing – Bill no. ${first.billNumber} for ${group.partyName}`
+    : `Billing – ${docs.length} bills for ${group.partyName} (Nos. ${numberList(docs)})`;
   const greeting = `Dear ${group.contactPerson || "Sir/Madam"},`;
   const intro = single
-    ? `Please find attached bill no. ${first.billNumber} dated ${billDateText(first.billDate)} for ${formatRupees(first.total)}${work ? `, for ${work}` : ""}.`
-    : `Please find attached ${docs.length} bills for ${group.partyName}, totalling ${formatRupees(total)}:`;
-  const billLines = single
-    ? []
-    : docs.map((d) => `Bill no. ${d.billNumber} dated ${billDateText(d.billDate)} – ${formatRupees(d.total)}`);
+    ? `Please find attached our bill for ${group.partyName}. Its details are given below.`
+    : `Please find attached our ${docs.length} bills for ${group.partyName}. Their details are given below.`;
+  const rows = docs.map((d) => ({
+    number: d.billNumber,
+    date: billDateText(d.billDate),
+    work: d.description.split("\n")[0].trim(),
+    amount: formatRupees(d.total),
+  }));
   const paymentLine = `The bank details for payment are given on the ${single ? "bill" : "bills"}. Please mention the bill ${single ? "number" : "numbers"} when you make the payment.`;
-  const replyLine = options.allowReplies
-    ? "For any query about this bill, please reply to this email."
-    : `Please do not send any email to this ID (${mailbox.address}), as it is used only for sending bills. In case of any problem, you may send the mail to ${mailbox.contactAddress}.`;
+  // Replies reach the mailbox when it takes them, or when Admin allows them
+  const replyLine =
+    !mailbox.contactAddress || options.allowReplies
+      ? `For any query about ${single ? "this bill" : "these bills"}, please reply to this email.`
+      : `Please do not send any email to this ID (${mailbox.address}), as it is used only for sending bills. In case of any problem, you may send the mail to ${mailbox.contactAddress}.`;
   const note = options.note?.trim() || null;
   const signature = [mailbox.signature, ...(contactEntity?.phone ? [`Phone: ${contactEntity.phone}`] : [])];
 
   const lines = (items: string[]) => items.map(escapeHtml).join("<br>");
   const paragraph = (html: string) => `<p>${html}</p>`;
+  const cell = "border:1px solid #cccccc;padding:6px 8px;";
+  const table = `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
+<tr><th style="${cell}text-align:left;">Bill no.</th><th style="${cell}text-align:left;">Date</th><th style="${cell}text-align:left;">Particulars</th><th style="${cell}text-align:right;">Amount</th></tr>
+${rows
+  .map(
+    (r) =>
+      `<tr><td style="${cell}">${escapeHtml(r.number)}</td><td style="${cell}">${escapeHtml(r.date)}</td><td style="${cell}">${escapeHtml(r.work)}</td><td style="${cell}text-align:right;">${escapeHtml(r.amount)}</td></tr>`
+  )
+  .join("\n")}
+<tr><td colspan="3" style="${cell}"><b>Total</b></td><td style="${cell}text-align:right;"><b>${escapeHtml(formatRupees(total))}</b></td></tr>
+</table>`;
   const html = `<!doctype html>
 <html><body>
 <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;">
 ${paragraph(escapeHtml(greeting))}
-${paragraph(escapeHtml(intro) + (billLines.length > 0 ? `<br>${lines(billLines)}` : ""))}
+${paragraph(escapeHtml(intro))}
+${table}
 ${note ? paragraph(lines(note.split("\n"))) : ""}
 ${paragraph(escapeHtml(paymentLine))}
 ${paragraph(escapeHtml(replyLine))}
@@ -209,7 +227,9 @@ ${paragraph(`Regards,<br>${lines(signature)}`)}
     greeting,
     "",
     intro,
-    ...billLines,
+    "",
+    ...rows.map((r) => `Bill no. ${r.number} | ${r.date} | ${r.work} | ${r.amount}`),
+    `Total: ${formatRupees(total)}`,
     ...(note ? ["", note] : []),
     "",
     paymentLine,
@@ -269,10 +289,9 @@ export async function sendBillEmails(
           from: { name: mailbox.name, address: mailbox.address },
           to,
           ...(settings.copyTo && { bcc: settings.copyTo }),
-          // Replies go to the billing mailbox unless Admin set a reply address. No
+          // Replies go to the sending mailbox unless Admin set a reply address. No
           // Reply-To otherwise: a Reply-To at a different free-mail address than
-          // the From is a spam signal (SpamAssassin FREEMAIL_REPLYTO); the body
-          // gives the contact address instead
+          // the From is a spam signal (SpamAssassin FREEMAIL_REPLYTO)
           ...(settings.allowReplies && settings.replyTo && { replyTo: settings.replyTo }),
           subject: content.subject,
           html: content.html,

@@ -17,7 +17,7 @@ interface EmailSettingsData {
     name: string;
     address: string;
     passwordVariable: string;
-    contactAddress: string;
+    contactAddress: string | null;
     configured: boolean;
   }[];
   allowReplies: boolean;
@@ -85,7 +85,8 @@ export function EmailSettings() {
           {settings.mailboxes.map((m) => (
             <p key={m.company}>
               {m.company === "BEDGE" ? "B Edge" : "MVC"} bills: from{" "}
-              <span className="font-medium">{m.name}</span> &lt;{m.address}&gt;; clients write to {m.contactAddress}
+              <span className="font-medium">{m.name}</span> &lt;{m.address}&gt;;{" "}
+              {m.contactAddress ? `clients write to ${m.contactAddress}` : "clients can reply to it"}
             </p>
           ))}
         </div>
@@ -106,7 +107,7 @@ export function EmailSettings() {
 
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <Label htmlFor="allow-replies">Clients can reply</Label>
+            <Label htmlFor="allow-replies">Clients can reply to the B Edge mailbox</Label>
             <p className="text-sm text-muted-foreground">
               {allowReplies
                 ? "Replies go to the address below, or to the billing mailbox if it is empty."
