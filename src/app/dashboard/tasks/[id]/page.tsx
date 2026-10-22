@@ -48,6 +48,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { CompanyBadge } from "@/components/billing/company-select";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+
+// Status dropdown value for "Completed – no billing"
+const NO_BILLING = "completed_no_billing";
 
 // Add the missing getInitials function
 // Add null safety to the getInitials function
@@ -195,6 +208,9 @@ export default function TaskDetailPage({
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [newStatus, setNewStatus] = useState<string | null>(null);
+  // "Completed – no billing": asks to confirm, then the task is removed
+  const [confirmNoBilling, setConfirmNoBilling] = useState(false);
+  const [noBillingRemark, setNoBillingRemark] = useState("");
 
   // Add a state variable to track billing status changes
   const [currentBillingStatus, setCurrentBillingStatus] = useState(
@@ -261,7 +277,29 @@ export default function TaskDetailPage({
     [task?.status]
   );
 
+  const closeWithoutBilling = async () => {
+    try {
+      setUpdating(true);
+      await axios.post(`/api/tasks/${taskId}/no-billing`, { remark: noBillingRemark.trim() || undefined });
+      toast.success("Task completed without billing and removed");
+      setConfirmNoBilling(false);
+      router.push(getTaskListUrl());
+    } catch (error) {
+      toast.error(
+        axios.isAxiosError(error) && typeof error.response?.data?.error === "string"
+          ? error.response.data.error
+          : "Could not close the task"
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const updateTaskStatus = async () => {
+    if (newStatus === NO_BILLING) {
+      setConfirmNoBilling(true);
+      return;
+    }
     if (!newStatus || newStatus === task?.status) return;
   
     try {
@@ -311,6 +349,12 @@ export default function TaskDetailPage({
         : false,
     [task, currentBillingStatus, session?.user]
   );
+
+  // Admins, partners and the task's creator can close a task without billing
+  const canCloseWithoutBilling =
+    !!task &&
+    !!session?.user &&
+    (session.user.role === "ADMIN" || session.user.role === "PARTNER" || task.assignedBy?.id === session.user.id);
 
   if (loading) {
     return <TaskDetailSkeleton />;
@@ -517,10 +561,20 @@ export default function TaskDetailPage({
                     <SelectItem value="in_progress">In Progress</SelectItem>
                     <SelectItem value="review">Review</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
+                    {canCloseWithoutBilling && (
+                      <SelectItem value={NO_BILLING}>Completed – no billing</SelectItem>
+                    )}
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {newStatus === NO_BILLING && (
+                <p className="text-xs text-muted-foreground">
+                  No bill is made. The task is completed and removed from the task list; the client&apos;s history
+                  keeps a note of the work.
+                </p>
+              )}
 
               <Button
                 onClick={updateTaskStatus}
@@ -653,6 +707,35 @@ export default function TaskDetailPage({
             </CardContent>
           </Card>
         </div>
+
+        <AlertDialog open={confirmNoBilling} onOpenChange={(open) => !updating && setConfirmNoBilling(open)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Complete without billing?</AlertDialogTitle>
+              <AlertDialogDescription>
+                &quot;{task.title}&quot; will be marked completed with no bill and deleted from the task list,
+                with its comments{currentBillingStatus === "pending_billing" ? " and its draft bill" : ""}. This
+                can&apos;t be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="no-billing-remark">Reason (optional)</Label>
+              <Textarea
+                id="no-billing-remark"
+                maxLength={500}
+                placeholder="e.g. Covered by the annual retainer"
+                value={noBillingRemark}
+                onChange={(e) => setNoBillingRemark(e.target.value)}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={updating}>Cancel</AlertDialogCancel>
+              <Button variant="destructive" disabled={updating} onClick={closeWithoutBilling}>
+                {updating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Complete and delete
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Comments section - Full width */}
         <div className="lg:col-span-3">
