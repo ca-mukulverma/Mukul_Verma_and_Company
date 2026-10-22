@@ -259,8 +259,10 @@ A free Gmail account can send about 500 emails a day.
   to send any email to the billing ID and, in case of any problem, to write
   to the company's contact address (*Clients write to* in the table above:
   camukulverma@gmail.com for MVC, bedgebusinessconsultants@gmail.com for
-  B Edge). Its Reply-To is also that address, so a client who clicks *Reply*
-  reaches it, not the billing mailbox.
+  B Edge). The email has no separate Reply-To: one at a different Gmail
+  address than the sender is a spam signal. A client who still clicks
+  *Reply* reaches the billing mailbox; the filter below forwards it to the
+  contact address.
 - **On**: replies go to the address entered there, or to the billing mailbox
   if it is left empty.
 - **Hidden copy**: an address (e.g. the office email) that gets a BCC of
@@ -269,8 +271,8 @@ A free Gmail account can send about 500 emails a day.
 ### Keeping bill emails out of spam
 
 The email is sent under a plain name (*Billing-CA Mukul Verma*) with a
-Reply-To that can receive mail, and without bank account numbers in the
-body; a Reply-To that cannot receive mail, a company name on a free Gmail
+no Reply-To, and without bank account numbers in the body; a Reply-To
+that cannot receive mail or is a different Gmail address, a company name on a free Gmail
 address, or bank details in an invoice email from a little-known sender all
 make spam filters suspicious. So does the usual invoice-email template (a
 "Tax Invoice No. …" subject, a letterhead-style layout with a styled table):
@@ -296,8 +298,10 @@ mailbox)
 deliveredto:billing.camukulverma@gmail.com -from:(mailer-daemon@googlemail.com OR no-reply@accounts.google.com)
 ```
 
-→ *Create filter* → tick **Delete it** and **Never send it to Spam** →
-*Create filter*. The `-from:` part keeps Gmail's bounce notices, which the
+→ *Create filter* → tick **Forward it to** the contact address
+(camukulverma@gmail.com, or bedgebusinessconsultants@gmail.com for B Edge;
+it must first be added under *Forwarding and POP/IMAP*), **Delete it** and
+**Never send it to Spam** → *Create filter*. The `-from:` part keeps Gmail's bounce notices, which the
 delivery check below reads, and Google's security alerts. To answer such
 senders automatically, also tick **Send template** with a saved Gmail
 template ("This mailbox is not monitored, please write to …").

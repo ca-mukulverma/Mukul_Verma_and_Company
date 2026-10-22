@@ -21,9 +21,8 @@ export interface BillingMailbox {
   password: string | undefined;
   // The server setting that holds the password
   passwordVariable: string;
-  // Where clients should write instead of the billing mailbox. While replies
-  // are off, it is also the email's Reply-To (a Reply-To that cannot receive
-  // mail makes Gmail and other providers treat the email as spam).
+  // Where clients should write instead of the billing mailbox (named in the
+  // email's body)
   contactAddress: string;
   // Who signs the email
   signature: string;
@@ -270,8 +269,11 @@ export async function sendBillEmails(
           from: { name: mailbox.name, address: mailbox.address },
           to,
           ...(settings.copyTo && { bcc: settings.copyTo }),
-          // Replies off: to the company's contact address. On: to the reply address, or the billing mailbox
-          replyTo: settings.allowReplies ? settings.replyTo || mailbox.address : mailbox.contactAddress,
+          // Replies go to the billing mailbox unless Admin set a reply address. No
+          // Reply-To otherwise: a Reply-To at a different free-mail address than
+          // the From is a spam signal (SpamAssassin FREEMAIL_REPLYTO); the body
+          // gives the contact address instead
+          ...(settings.allowReplies && settings.replyTo && { replyTo: settings.replyTo }),
           subject: content.subject,
           html: content.html,
           text: content.text,

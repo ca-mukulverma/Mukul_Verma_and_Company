@@ -110,7 +110,7 @@ export function EmailSettings() {
             <p className="text-sm text-muted-foreground">
               {allowReplies
                 ? "Replies go to the address below, or to the billing mailbox if it is empty."
-                : "Off: the email asks clients not to write to the billing mailbox and, in case of any problem, to write to the company's contact address above. A reply goes to that address."}
+                : "Off: the email asks clients not to write to the billing mailbox and, in case of any problem, to write to the company's contact address above. A client who still clicks Reply reaches the billing mailbox, so forward that mailbox to the contact address in Gmail."}
             </p>
           </div>
           <Switch id="allow-replies" checked={allowReplies} onCheckedChange={setAllowReplies} />
