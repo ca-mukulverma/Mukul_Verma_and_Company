@@ -235,11 +235,13 @@ email bills.
 
 ### The billing mailboxes
 
-Each company sends from its own Gmail account:
+Each company sends from its own Gmail account. MVC bills go from the firm's
+own long-used mailbox, which clients can reply to; mail from an established
+address is far less likely to be filed as spam than mail from a new one.
 
 | Bills | From (name shown) | Address | Password setting | Clients write to |
 |---|---|---|---|---|
-| MVC | Billing-CA Mukul Verma | billing.camukulverma@gmail.com | `BILLING_EMAIL_PASSWORD` | camukulverma@gmail.com |
+| MVC | Billing-CA Mukul Verma | camukulverma.bhopal@gmail.com | `BILLING_EMAIL_PASSWORD` | replies to the email |
 | B Edge | Billing-B Edge | billing.bedge@gmail.com | `BEDGE_BILLING_EMAIL_PASSWORD` | bedgebusinessconsultants@gmail.com |
 
 To set up each one:
@@ -255,14 +257,14 @@ A free Gmail account can send about 500 emails a day.
 
 ### Replies (Billing → Bill emails, Admin)
 
-- **Clients can reply: off** (the default). The email asks the client not
-  to send any email to the billing ID and, in case of any problem, to write
-  to the company's contact address (*Clients write to* in the table above:
-  camukulverma@gmail.com for MVC, bedgebusinessconsultants@gmail.com for
-  B Edge). The email has no separate Reply-To: one at a different Gmail
-  address than the sender is a spam signal. A client who still clicks
-  *Reply* reaches the billing mailbox; the filter below forwards it to the
-  contact address.
+- **MVC** emails always say "For any query …, please reply to this email";
+  replies arrive in camukulverma.bhopal@gmail.com.
+- **B Edge, clients can reply: off** (the default). The email asks the
+  client not to send any email to the billing ID and, in case of any
+  problem, to write to bedgebusinessconsultants@gmail.com. The email has no
+  separate Reply-To: one at a different Gmail address than the sender is a
+  spam signal. A client who still clicks *Reply* reaches the billing
+  mailbox; the filter below forwards it to the contact address.
 - **On**: replies go to the address entered there, or to the billing mailbox
   if it is left empty.
 - **Hidden copy**: an address (e.g. the office email) that gets a BCC of
@@ -270,16 +272,18 @@ A free Gmail account can send about 500 emails a day.
 
 ### Keeping bill emails out of spam
 
-The email is sent under a plain name (*Billing-CA Mukul Verma*) with a
-no Reply-To, and without bank account numbers in the body; a Reply-To
+The email is sent under a plain name (*Billing-CA Mukul Verma*) with no
+separate Reply-To, and without bank account numbers in the body; a Reply-To
 that cannot receive mail or is a different Gmail address, a company name on a free Gmail
 address, or bank details in an invoice email from a little-known sender all
 make spam filters suspicious. So does the usual invoice-email template (a
 "Tax Invoice No. …" subject, a letterhead-style layout with a styled table):
 fake-invoice spam looks the same, and Gmail files such emails as spam with
 "This message is similar to messages that were identified as spam in the
-past". Bill emails are therefore plain text-like notes. A new Gmail account
-still has no sending history, so for the first weeks:
+past". Bill emails are therefore plain notes: a "Billing – Bill no. …"
+subject, a simple table of the attached bills, and the bank details only on
+the bills. A new Gmail account (such as the B Edge billing mailbox) has no
+sending history, so for the first weeks:
 
 - send a few bills to the firm's own addresses and to friendly clients, and
   have them open the email, mark it **Not spam** and add the billing
@@ -288,19 +292,18 @@ still has no sending history, so for the first weeks:
 - for the most reliable delivery, use an address on the firm's own domain
   (e.g. Google Workspace) with SPF, DKIM and DMARC set up.
 
-Gmail cannot refuse mail that a client writes *directly* to the billing
-address. To keep the mailbox empty, add a filter in that Gmail account:
+Gmail cannot refuse mail that a client writes *directly* to the B Edge
+billing address. To keep that mailbox empty, add a filter in it (never in
+camukulverma.bhopal@gmail.com, where client replies are wanted):
 Settings → *See all settings* → *Filters and blocked addresses* → *Create a
-new filter*, **Has the words:** (with billing.bedge@gmail.com in the B Edge
-mailbox)
+new filter*, **Has the words:**
 
 ```
-deliveredto:billing.camukulverma@gmail.com -from:(mailer-daemon@googlemail.com OR no-reply@accounts.google.com)
+deliveredto:billing.bedge@gmail.com -from:(mailer-daemon@googlemail.com OR no-reply@accounts.google.com)
 ```
 
-→ *Create filter* → tick **Forward it to** the contact address
-(camukulverma@gmail.com, or bedgebusinessconsultants@gmail.com for B Edge;
-it must first be added under *Forwarding and POP/IMAP*), **Delete it** and
+→ *Create filter* → tick **Forward it to** bedgebusinessconsultants@gmail.com
+(it must first be added under *Forwarding and POP/IMAP*), **Delete it** and
 **Never send it to Spam** → *Create filter*. The `-from:` part keeps Gmail's bounce notices, which the
 delivery check below reads, and Google's security alerts. To answer such
 senders automatically, also tick **Send template** with a saved Gmail

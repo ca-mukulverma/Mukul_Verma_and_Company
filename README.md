@@ -354,7 +354,7 @@ MV Company implements a sophisticated role-based access control system:
    `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` – see [docs/IPHONE_APP.md](docs/IPHONE_APP.md).
 
    To email bills to clients, set `BILLING_EMAIL_PASSWORD` for MVC bills
-   (billing.camukulverma@gmail.com) and `BEDGE_BILLING_EMAIL_PASSWORD` for
+   (camukulverma.bhopal@gmail.com) and `BEDGE_BILLING_EMAIL_PASSWORD` for
    B Edge bills (billing.bedge@gmail.com); `BILLING_EMAIL_USER` and
    `BEDGE_BILLING_EMAIL_USER` change the addresses – see
    [docs/BILLING.md](docs/BILLING.md#emailing-bills).
