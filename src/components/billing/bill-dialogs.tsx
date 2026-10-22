@@ -30,7 +30,8 @@ export type BillDialog =
   | "not_billable"
   | "final_reject"
   | "details"
-  | "history";
+  | "history"
+  | "no_billing";
 
 const REMARK_DIALOGS = {
   send_back: {
@@ -321,6 +322,60 @@ export function RemarkDialog({ bill, onClose, onDone, kind }: DialogProps & { ki
           >
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {config.button}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// A completed task that is not to be billed: the task and its bill are deleted
+export function NoBillingDialog({ bill, onClose, onDone }: DialogProps) {
+  const [remark, setRemark] = useState("");
+  const [saving, setSaving] = useState(false);
+  if (!bill.task) return null;
+  const taskId = bill.task.id;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await axios.post(`/api/tasks/${taskId}/no-billing`, { remark: remark.trim() || undefined });
+      toast.success("No billing: the task and its bill have been removed");
+      onDone(bill);
+      onClose();
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>No billing</DialogTitle>
+          <DialogDescription>
+            No bill is made for this work. The task &quot;{bill.task.title}&quot; and this bill are deleted
+            completely; the client&apos;s history keeps a note that the work was done. This can&apos;t be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <BillSummary bill={bill} />
+        <div className="space-y-2">
+          <Label htmlFor="no-billing-remark">Reason (optional)</Label>
+          <Textarea
+            id="no-billing-remark"
+            maxLength={500}
+            placeholder="e.g. Covered by the annual retainer"
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            autoFocus
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={saving} onClick={onClose}>Cancel</Button>
+          <Button variant="destructive" disabled={saving} onClick={save}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}No billing – delete task
           </Button>
         </DialogFooter>
       </DialogContent>

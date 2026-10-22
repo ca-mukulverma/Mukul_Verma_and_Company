@@ -5,15 +5,16 @@ import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import cloudinary from "@/lib/cloudinary";
 import { sendInAppNotification } from "@/lib/notifications";
+import { getBillingAccess, isEditableStatus, managesCompany } from "@/lib/billing";
 import { dashboardCache, taskCache } from "@/lib/cache";
 
 const requestSchema = z.object({
   remark: z.string().trim().max(500).optional(),
 });
 
-// POST /api/tasks/:id/no-billing – the work is done but nothing is to be
-// billed: the task is completed and removed completely, with any bill not yet
-// numbered. The client's history keeps a line that the work was done.
+// POST /api/tasks/:id/no-billing – the billing manager decides that a
+// completed task's bill is not to be made: the task is removed completely,
+// with its bill. The client's history keeps a line that the work was done.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: taskId } = await params;
   const session = await getServerSession(authOptions);
@@ -34,13 +35,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   });
   if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
-  // Admins, partners and the person who created the task decide that it is not billed
-  if (currentUser.role !== "ADMIN" && currentUser.role !== "PARTNER" && task.assignedById !== currentUser.id) {
-    return NextResponse.json({ error: "Only Admin, a partner or the task's creator can close it without billing" }, { status: 403 });
+  // Only once the task is completed and its bill is with the billing manager
+  if (task.status !== "completed" || !task.bill) {
+    return NextResponse.json({ error: "No billing can be chosen once the task is completed and its bill is with the billing manager" }, { status: 400 });
   }
-  // A numbered bill is never deleted (docs/BILLING.md)
-  if (task.bill && (task.bill.status === "approved" || task.bill.status === "cancelled")) {
-    return NextResponse.json({ error: "This task's bill is already approved" }, { status: 400 });
+  const bill = task.bill;
+  // The billing managers of the task's company (and Admin) decide
+  const access = await getBillingAccess(currentUser.id);
+  if (!access || !managesCompany(access, task.company)) {
+    return NextResponse.json({ error: "Only the billing manager or Admin can choose no billing" }, { status: 403 });
+  }
+  // Before final approval only; a numbered bill is never deleted (docs/BILLING.md)
+  if (!isEditableStatus(bill.status) && bill.status !== "not_billable") {
+    return NextResponse.json({ error: "This bill is already past the billing manager" }, { status: 400 });
   }
 
   const now = new Date();
@@ -61,13 +68,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           },
         });
       }
-      if (task.bill) {
-        // Only if still unnumbered; otherwise someone approved it meanwhile
-        const { count } = await tx.bill.deleteMany({
-          where: { id: task.bill.id, status: { notIn: ["approved", "cancelled"] } },
-        });
-        if (count === 0) throw new Error("bill_approved");
-      }
+      // Only if still with the billing manager; otherwise it moved on meanwhile
+      const { count } = await tx.bill.deleteMany({
+        where: { id: bill.id, status: { in: ["draft", "awaiting_amount", "amount_entered", "not_billable"] } },
+      });
+      if (count === 0) throw new Error("bill_moved");
       // Comments and assignments go with the task
       await tx.task.delete({ where: { id: task.id } });
       await tx.activity.create({
@@ -75,14 +80,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           type: "task",
           action: "completed_no_billing",
           target: task.title,
-          details: { taskId: task.id, clientId: task.clientId, remark, billRemoved: !!task.bill },
+          details: { taskId: task.id, clientId: task.clientId, billId: bill.id, remark },
           userId: currentUser.id,
         },
       });
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "bill_approved") {
-      return NextResponse.json({ error: "This task's bill is already approved" }, { status: 409 });
+    if (error instanceof Error && error.message === "bill_moved") {
+      return NextResponse.json({ error: "This bill was changed by someone else. Refresh and try again." }, { status: 409 });
     }
     // Deleted by someone else at the same moment
     const exists = await prisma.task.findUnique({ where: { id: taskId }, select: { id: true } });
@@ -114,7 +119,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         sendInAppNotification({
           title: "Task closed without billing",
           content:
-            `${currentUser.name} completed "${task.title}" with no billing; the task has been removed.` +
+            `${currentUser.name} chose no billing for "${task.title}"; the task and its bill have been removed.` +
             (remark ? ` Remark: ${remark}` : ""),
           sentById: currentUser.id,
           sentToId,
