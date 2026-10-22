@@ -161,6 +161,7 @@ function billSection(doc: BillDocument) {
   const totals: [string, string, boolean][] = [
     ...(doc.taxLines.length ? [["Professional fee", money(doc.fee), false] as [string, string, boolean]] : []),
     ...doc.taxLines.map((line) => [line.label, money(line.amount), false] as [string, string, boolean]),
+    ...(doc.roundOff ? [["Round off", money(doc.roundOff), false] as [string, string, boolean]] : []),
     ["Total", money(doc.total), true],
   ];
   children.push(

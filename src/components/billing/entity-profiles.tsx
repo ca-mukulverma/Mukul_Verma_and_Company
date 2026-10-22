@@ -113,8 +113,9 @@ function EntityForm({ entity }: { entity: Entity }) {
         <CardTitle>{BILL_TYPE_LABELS[entity.type]}</CardTitle>
         <CardDescription>
           {isGst
-            ? "Printed on GST tax invoices. The state code decides CGST + SGST or IGST."
-            : "Printed on these bills. No GST is charged."}
+            ? "Used on the Word file of GST tax invoices and in Tally. The state code decides CGST + SGST or IGST (Madhya Pradesh if empty)."
+            : "Used on the Word file of these bills and in Tally. No GST is charged."}{" "}
+          The PDF bill has the firm&apos;s approved format, with its letterhead, bank details and UPI QR code fixed in the app.
         </CardDescription>
       </CardHeader>
       <CardContent>

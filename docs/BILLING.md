@@ -5,8 +5,8 @@ process: work is posted in the WhatsApp billing group, copied into a Google
 Sheet and then entered in Tally. In the new process, the app holds every bill
 from the moment the work is done until it is exported to Tally.
 
-Bill layouts (PDF/Word) and Tally ledger names are placeholders for now and
-will be replaced with the firm's own formats later.
+PDF bills use the firm's approved formats (see *Bill formats* below). The
+Word layout and Tally ledger names are still placeholders.
 
 ## Companies and billing entities
 
@@ -39,7 +39,8 @@ amount* window while entering the fee. B Edge bills are always non-GST.
 Admin edits each entity's profile in **Billing → Company profiles**: name,
 address, phone, email, PAN, bank details, signatory and a note for the bottom
 of the bill. MVC & Company also has GSTIN, GST state code and SAC code. The
-profiles start with only the names above.
+profiles start with only the names above. They are used on Word bills and in
+Tally; PDF bills print the approved formats instead.
 
 GST on a GST bill:
 - **CGST 9% + SGST 9%** when the client's GSTIN is from the firm's state.
@@ -171,14 +172,33 @@ with the fee totals for each series.
 - **PDF and Word** (`.docx`) bills, one at a time from a bill's ⋮ menu, or
   several selected bills as a ZIP of PDFs, a ZIP of Word files, or one
   combined PDF for printing.
-- Bills use a standard layout until the firm's own formats are supplied:
-  - letterhead, then "TAX INVOICE" (GST) or "BILL";
-  - bill to, then bill no., date and place of supply;
-  - the work done, the fee and the GST lines;
-  - the total in words (lakh/crore), bank details and the signature block.
 - Cancelled bills carry a "CANCELLED" stamp.
-- The standard PDF fonts have no ₹ sign, so PDFs print amounts as "Rs.".
-  Word files use ₹.
+- PDFs print amounts under "(Rs.)" headings; Word files use ₹.
+
+### Bill formats (PDF)
+
+Each bill type has the firm's approved format (`src/lib/bill-formats.ts`;
+logos, QR codes and font in `assets/bills`): letterhead and logo, "INVOICE",
+bill to (name, address, contact person, email, GSTIN), document number and
+date, the work done and fee, amount in words and totals, then the signature,
+a "Scan & Pay" UPI QR code and the bank details.
+
+| Bill type | Heading and logo | Bank account | QR code (UPI) |
+|---|---|---|---|
+| GST | M V C & Company, CA logo, PAN and GSTIN | SBI 44402937256 | 44402937256@sbi |
+| Non-GST – CA Mukul Verma | CA Mukul Verma, CA logo; UPI, GPay and PhonePe lines | HDFC 50200049069462 | 9165544594@hdfc |
+| Non-GST – CA Harsh Verma | CA Harsh Verma, CA logo | AU Bank 2602 2484 1290 8029 | 7000774130@ybl |
+| Non-GST – Verma Law Associates | Verma Law Associates, advocate logo | SBI 44404382030 | 8962197740@sbi |
+| B Edge | B-Edge Business Consultants LLP format and logo | SBI 43471559687 | 43471559687@sbi |
+
+- GST bills always show CGST @ 9%, SGST @ 9% and IGST @ 18% rows: CGST +
+  SGST for a client in Madhya Pradesh or without a GSTIN, IGST for a client
+  registered in another state (from the first two digits of its GSTIN).
+- All bills except B Edge round the total to whole rupees with a Round Off
+  row. B Edge bills show Other Charges and Discount rows ("-").
+- To change a format, edit `src/lib/bill-formats.ts`; to change a logo or QR
+  code, replace the file in `assets/bills` and run
+  `node scripts/build-bill-assets.mjs`.
 - **Tally XML**: one file per billing entity, from the **Tally** tab, because
   each entity is a separate company in Tally. In TallyPrime, use
   *Import → Vouchers*.

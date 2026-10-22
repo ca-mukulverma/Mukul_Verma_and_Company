@@ -1,6 +1,7 @@
 import { BillingEntity, BillType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { GST_STATES, gstLines } from "@/lib/bill-document";
+import { MVC_GST_STATE_CODE } from "@/lib/bill-formats";
 import { BillingAccess } from "@/lib/billing";
 import { billTypesOf } from "@/lib/billing-constants";
 
@@ -129,7 +130,7 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
   let gstTags: string[] = [];
   if (bill.type === "GST") {
     const gstin = partyGstin(bill);
-    const tax = gstLines(fee, entity?.stateCode || null, gstin || null);
+    const tax = gstLines(fee, entity?.stateCode || MVC_GST_STATE_CODE, gstin || null);
     for (const line of tax.lines) {
       const ledger = line.label.startsWith("CGST")
         ? ledgers.cgstLedger
@@ -142,7 +143,7 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
       total += line.amount;
     }
     const clientState = gstin?.slice(0, 2);
-    const stateName = (clientState && GST_STATES[clientState]) || (entity?.stateCode && GST_STATES[entity.stateCode]) || null;
+    const stateName = (clientState && GST_STATES[clientState]) || GST_STATES[entity?.stateCode || MVC_GST_STATE_CODE] || null;
     gstTags = [
       ...(gstin ? [tag("PARTYGSTIN", gstin)] : []),
       ...(stateName ? [tag("STATENAME", stateName), tag("PLACEOFSUPPLY", stateName)] : []),
