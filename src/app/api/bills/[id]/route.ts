@@ -231,21 +231,51 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (!type) return NextResponse.json({ error: "Choose GST or Non-GST first" }, { status: 400 });
       if (!hasBillTo(bill)) return NextResponse.json({ error: "Select the client or enter the name to bill first" }, { status: 400 });
 
+      // A billing manager or Admin entering the amount approves it in the same
+      // step: the bill goes straight to Admin's final approval. An amount
+      // entered by anyone else waits for billing manager approval.
+      const nextStatus: BillStatus = isManager ? "manager_approved" : "amount_entered";
       const amount = Math.round(input.amount * 100) / 100;
-      const ok = await updateIfStatus(
-        bill.id,
-        allowedStatuses,
-        { status: "amount_entered", type, amount, amountEnteredById: user.id, amountEnteredAt: new Date() },
-        {
-          action: "amount_entered",
-          userId: user.id,
-          remark: changesType ? `${formatRupees(amount)} (${BILL_TYPE_LABELS[type]})` : formatRupees(amount),
+      const ok = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.bill.updateMany({
+          where: { id: bill.id, status: { in: allowedStatuses } },
+          data: { status: nextStatus, type, amount, amountEnteredById: user.id, amountEnteredAt: new Date() },
+        });
+        if (count === 0) return false;
+        await tx.billEvent.create({
+          data: {
+            billId: bill.id,
+            action: "amount_entered",
+            userId: user.id,
+            remark: changesType ? `${formatRupees(amount)} (${BILL_TYPE_LABELS[type]})` : formatRupees(amount),
+          },
+        });
+        if (isManager) {
+          await tx.billEvent.create({ data: { billId: bill.id, action: "manager_approved", userId: user.id } });
         }
-      );
+        return true;
+      });
       if (!ok) return conflict();
 
-      // Admin, the billing managers and the partner the bill was sent to
       after(async () => {
+        if (isManager) {
+          // Admins (for final approval), and the partner the bill was sent to
+          const admins = await prisma.user.findMany({
+            where: { role: "ADMIN", isActive: true, id: { not: user.id } },
+            select: { id: true },
+          });
+          const recipients = admins.map((a) => a.id);
+          if (bill.amountRequestedFromId && bill.amountRequestedFromId !== user.id) {
+            recipients.push(bill.amountRequestedFromId);
+          }
+          await notifyBillingUsers(recipients, {
+            title: "Bill awaiting final approval",
+            content: `${user.name} entered the amount for: ${billLabel}. It is waiting for Admin's final approval.`,
+            sentById: user.id,
+          });
+          return;
+        }
+        // Admin, the billing managers and the partner the bill was sent to
         const managerIds = await getBillingManagerIds(bill.company);
         const recipients = managerIds.filter((id) => id !== user.id);
         if (bill.amountRequestedFromId) recipients.push(bill.amountRequestedFromId);

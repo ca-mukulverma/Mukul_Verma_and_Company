@@ -373,6 +373,82 @@ export async function sendTaskStatusUpdateNotification(
 
 
 
+// When a task is allotted to someone else: tells everyone concerned in one
+// go – the new assignees, the ones taken off, those still on it, the person
+// who created the task and the Admins. The person allotting it is skipped.
+export async function sendTaskAllotmentNotifications({
+  taskId,
+  taskTitle,
+  actor,
+  creatorId,
+  previousAssigneeIds,
+  newAssigneeIds,
+  note,
+}: {
+  taskId: string;
+  taskTitle: string;
+  actor: { id: string; name: string };
+  creatorId: string;
+  previousAssigneeIds: string[];
+  newAssigneeIds: string[];
+  note?: string;
+}) {
+  const nextIds = [...new Set(newAssigneeIds)];
+  const added = nextIds.filter((id) => !previousAssigneeIds.includes(id));
+  const removed = previousAssigneeIds.filter((id) => !nextIds.includes(id));
+  if (added.length === 0 && removed.length === 0) return;
+  const kept = nextIds.filter((id) => previousAssigneeIds.includes(id));
+
+  try {
+    const [users, admins] = await Promise.all([
+      prisma.user.findMany({
+        where: { id: { in: [...nextIds, ...removed] } },
+        select: { id: true, name: true },
+      }),
+      prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } }),
+    ]);
+    const names = (ids: string[]) =>
+      ids.map((id) => users.find((u) => u.id === id)?.name).filter(Boolean).join(", ") || "nobody";
+    const noteText = note ? ` - Note: ${note}` : "";
+    const ref = ` [taskId: ${taskId}]`;
+
+    const messages = new Map<string, { title: string; content: string }>();
+    for (const id of added) {
+      messages.set(id, {
+        title: "New Task Assigned",
+        content: `${actor.name} assigned you a task: ${taskTitle}${noteText}${ref}`,
+      });
+    }
+    for (const id of removed) {
+      messages.set(id, {
+        title: "Task Reassigned",
+        content: `${actor.name} reassigned your task "${taskTitle}" to ${names(nextIds)}${ref}`,
+      });
+    }
+    for (const id of kept) {
+      messages.set(id, {
+        title: "Task Assignees Changed",
+        content: `${actor.name} changed who is working on "${taskTitle}": now ${names(nextIds)}${noteText}${ref}`,
+      });
+    }
+    // The task's creator and the Admins, unless already told above
+    const allotted =
+      `${actor.name} allotted the task "${taskTitle}" to ${names(nextIds)}` +
+      (removed.length > 0 ? ` (taken off: ${names(removed)})` : "") +
+      `${noteText}${ref}`;
+    for (const id of [creatorId, ...admins.map((a) => a.id)]) {
+      if (!messages.has(id)) messages.set(id, { title: "Task Allotted", content: allotted });
+    }
+    messages.delete(actor.id);
+
+    await notifyEach([...messages], ([sentToId, message]) =>
+      sendInAppNotification({ ...message, taskId, sentById: actor.id, sentToId })
+    );
+  } catch (error) {
+    console.error("Failed to send task allotment notifications:", error);
+  }
+}
+
 // Add this function after the other notification functions only for admins
 
 export async function sendTaskCreatedNotificationToAdmins(

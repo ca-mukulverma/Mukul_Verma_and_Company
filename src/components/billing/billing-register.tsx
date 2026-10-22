@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Ban, Download, FileText, History, IndianRupee, Loader2, Mail, MailCheck, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
+import { Ban, Download, FileSpreadsheet, FileText, History, IndianRupee, Loader2, Mail, MailCheck, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -75,6 +75,20 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
 
   const downloadSelected = (format: "pdf" | "docx" | "combined") =>
     download(format, { method: "post", url: "/api/bills/documents", data: { ids: [...selected], format } });
+
+  // The whole list as it is filtered on screen (all pages), for a backup
+  const downloadExcel = () =>
+    download("xlsx", {
+      method: "get",
+      url: `/api/bills/export?${new URLSearchParams({
+        type,
+        status,
+        ...(emailed !== "all" && { emailed }),
+        ...(from && { from }),
+        ...(to && { to }),
+        ...(debouncedSearch && { search: debouncedSearch }),
+      })}`,
+    });
 
   const downloadOne = (bill: Bill, format: "pdf" | "docx") =>
     download(`${bill.id}-${format}`, { method: "get", url: `/api/bills/${bill.id}/document?format=${format}` });
@@ -212,21 +226,29 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
         </div>
       </div>
 
-      {data && data.totals.length > 0 && (
-        <div className="flex flex-wrap gap-3">
-          {data.totals.map((row) => (
-            <div key={row.type} className="rounded-md border px-3 py-2 text-sm">
-              <p className="text-xs text-muted-foreground">{BILL_TYPE_LABELS[row.type]}</p>
-              <p className="font-semibold">
-                {formatRupees(row.amount)}
-                {row.type === "GST" && (
-                  <span className="font-normal text-muted-foreground"> + GST {formatRupees(gstAmount(row.amount))}</span>
-                )}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap items-start gap-3">
+        {data?.totals.map((row) => (
+          <div key={row.type} className="rounded-md border px-3 py-2 text-sm">
+            <p className="text-xs text-muted-foreground">{BILL_TYPE_LABELS[row.type]}</p>
+            <p className="font-semibold">
+              {formatRupees(row.amount)}
+              {row.type === "GST" && (
+                <span className="font-normal text-muted-foreground"> + GST {formatRupees(gstAmount(row.amount))}</span>
+              )}
+            </p>
+          </div>
+        ))}
+        <Button
+          variant="outline"
+          className="ml-auto"
+          disabled={!data || data.total === 0 || !!downloading}
+          title="All bills matching these filters, as an Excel file"
+          onClick={downloadExcel}
+        >
+          {downloading === "xlsx" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1 h-4 w-4" />}
+          Download Excel{data && data.total > 0 ? ` (${data.total})` : ""}
+        </Button>
+      </div>
 
       {data && data.bills.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">

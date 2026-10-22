@@ -72,7 +72,14 @@ GST on a GST bill:
 Work done without a task is recorded on **Billing → Log work** by anyone.
 The form asks for the company (MVC or B Edge), the client, what was done,
 the date and an optional remark. It becomes a draft bill for the billing
-manager, exactly like a completed task.
+manager, exactly like a completed task. Admin and the company's billing
+managers are notified of every work entry; the form also lists the partners,
+and the ones ticked under **Also notify partners** are notified too.
+
+**New client?** Admins and partners see **Add new client** at the end of
+the client search (in *Log work* and in a bill's *Edit details*). It asks
+for the contact person, firm name, email or phone, address and GSTIN, saves
+the client in the client master and selects it for the bill.
 
 **Not a saved client?** In the client search, choose **Other – enter the
 name** (the last entry). Type the name the bill is made out to, and
@@ -112,14 +119,23 @@ Draft (task completed / direct work / B Edge work)
   ▼
 Awaiting amount ── billing manager enters it, or sends it to an allowed Partner/Admin
   │                 who enters it or sends it back with a remark
-  ▼
-Amount entered (GST calculated automatically: CGST+SGST in-state, IGST otherwise)
-  ▼
-Billing manager approval (one bill or several selected at once)
-  ▼
+  │
+  ├─ entered by the billing manager or Admin ─────────────────────┐
+  ▼                                                               │
+Amount entered by someone else (GST calculated automatically:     │
+  CGST+SGST in-state, IGST otherwise)                             │
+  ▼                                                               │
+Billing manager approval (one bill or several selected at once)   │
+  ▼  ◄────────────────────────────────────────────────────────────┘
 Admin final approval ──► bill number + bill date assigned ──► Billing List
   (one or several at once; or "Return" to the billing manager with a remark)
 ```
+
+An amount entered by the company's billing manager or by Admin counts as
+the billing manager's approval: the bill goes straight to Admin's final
+approval, and its history shows both steps. Only an amount entered by
+someone else (a partner the bill was sent to) waits under *Amount entered*
+for the billing manager.
 
 When several bills are approved together, they are numbered in order of
 work date. A task's bill keeps what the old billing approval did. At final
@@ -169,6 +185,11 @@ partners Admin allows to see it (both companies) can see the Billing List. It ca
 (approved/cancelled) and client or work. It shows fee, GST and total per bill,
 with the fee totals for each series.
 
+- **Download Excel**: every bill matching the filters on screen (all pages,
+  not only the one shown) as an `.xlsx` file for backup: bill number and
+  date, series, client and GSTIN, work, fee, CGST/SGST/IGST, round off,
+  total, status, reissue links and email status, with a total row for the
+  approved bills and a second sheet recording the filters used.
 - **PDF and Word** (`.docx`) bills, one at a time from a bill's ⋮ menu, or
   several selected bills as a ZIP of PDFs, a ZIP of Word files, or one
   combined PDF for printing.
@@ -385,9 +406,11 @@ Notifications appear in the app and as push notifications.
 
 | Event | Admin | Billing manager | Amount setter |
 |---|---|---|---|
+| Work logged (plus the partners ticked on the form) | ✔ | ✔ | |
 | Sent for amount | | | ✔ |
 | Sent back with remark | ✔ | ✔ | |
-| Amount entered | ✔ | ✔ | ✔ |
+| Amount entered by someone else | ✔ | ✔ | ✔ |
+| Amount entered by billing manager/Admin (awaiting final approval) | ✔ | | ✔ |
 | Billing manager approved | ✔ | | |
 | Admin final approval / rejection | | ✔ | |
 | Edit/cancel/reissue requested | ✔ | | |

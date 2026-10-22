@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,19 @@ export function WorkEntryForm({ onLogged }: { onLogged?: () => void }) {
   const [workDate, setWorkDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [remark, setRemark] = useState("");
   const [saving, setSaving] = useState(false);
+  // Admin and the billing managers are always told; these partners as well
+  const [partners, setPartners] = useState<{ id: string; name: string }[]>([]);
+  const [notifyPartnerIds, setNotifyPartnerIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    axios
+      .get<{ users: { id: string; name: string }[] }>("/api/users", { params: { roles: "PARTNER", status: "active" } })
+      .then((response) => setPartners(response.data.users.map((u) => ({ id: u.id, name: u.name }))))
+      .catch(() => setPartners([]));
+  }, []);
+
+  const togglePartner = (id: string) =>
+    setNotifyPartnerIds(notifyPartnerIds.includes(id) ? notifyPartnerIds.filter((p) => p !== id) : [...notifyPartnerIds, id]);
 
   const valid = billToValid(billTo) && description.trim().length >= 3 && workDate;
 
@@ -37,11 +51,13 @@ export function WorkEntryForm({ onLogged }: { onLogged?: () => void }) {
         description: description.trim(),
         workDate: new Date(`${workDate}T12:00:00`).toISOString(),
         remark: remark.trim() || null,
+        notifyPartnerIds,
       });
       toast.success("Work logged for billing");
       setBillTo({ client: null, other: null });
       setDescription("");
       setRemark("");
+      setNotifyPartnerIds([]);
       onLogged?.();
     } catch (error) {
       toast.error(apiErrorMessage(error, "Could not log the work"));
@@ -68,7 +84,8 @@ export function WorkEntryForm({ onLogged }: { onLogged?: () => void }) {
             <Label>Client*</Label>
             <BillToPicker value={billTo} onChange={setBillTo} />
             <p className="text-xs text-muted-foreground">
-              Not a saved client? Choose <strong>Other</strong> and type the name to bill.
+              Not a saved client? Admins and partners can choose <strong>Add new client</strong> to add it to the
+              client master; anyone can choose <strong>Other</strong> and type the name to bill.
             </p>
           </div>
           <div className="space-y-2">
@@ -89,6 +106,23 @@ export function WorkEntryForm({ onLogged }: { onLogged?: () => void }) {
             <Label htmlFor="work-remark">Remark (optional)</Label>
             <Textarea id="work-remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
           </div>
+          {partners.length > 0 && (
+            <div className="space-y-2">
+              <Label>Also notify partners (optional)</Label>
+              <p className="text-xs text-muted-foreground">Admin and the billing managers are always notified.</p>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {partners.map((partner) => (
+                  <label key={partner.id} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={notifyPartnerIds.includes(partner.id)}
+                      onCheckedChange={() => togglePartner(partner.id)}
+                    />
+                    {partner.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex justify-end">
             <Button type="submit" disabled={!valid || saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Log work

@@ -6,14 +6,15 @@ import { renderBillsPdf } from "@/lib/bill-pdf";
 
 export type BillFileFormat = "pdf" | "docx";
 
-const CONTENT_TYPES: Record<BillFileFormat | "zip" | "xml", string> = {
+const CONTENT_TYPES: Record<BillFileFormat | "zip" | "xml" | "xlsx", string> = {
   xml: "application/xml; charset=utf-8",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   zip: "application/zip",
 };
 
-export function fileResponse(body: Buffer | Uint8Array, kind: BillFileFormat | "zip" | "xml", fileName: string) {
+export function fileResponse(body: Buffer | Uint8Array, kind: BillFileFormat | "zip" | "xml" | "xlsx", fileName: string) {
   return new NextResponse(new Uint8Array(body), {
     headers: {
       "Content-Type": CONTENT_TYPES[kind],

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { sendEmail } from "@/lib/email";
 import { syncTaskAssignments } from "@/lib/task-assignment";
-import { TASK_EMAIL_WHATSAPP_ENABLED, sendInAppNotification } from "@/lib/notifications";
+import { TASK_EMAIL_WHATSAPP_ENABLED, sendTaskAllotmentNotifications } from "@/lib/notifications";
 
 // Update the reassignment schema
 const reassignSchema = z.object({
@@ -115,36 +115,19 @@ export async function PATCH(
       },
     });
 
-    const removedAssigneeIds = previousAssigneeIds.filter(
-      (id) => !validatedData.assignedToIds.includes(id)
-    );
-
     // Send notifications after the response so the user isn't kept waiting
     after(() =>
       Promise.all([
-        // Notify the assignees (skipping the person doing the reassigning)
-        ...validatedData.assignedToIds
-          .filter((assigneeId) => assigneeId !== currentUser.id)
-          .map((assigneeId) =>
-            sendInAppNotification({
-              title: "New Task Assigned",
-              content: `${currentUser.name} assigned you a task: ${task.title}${
-                validatedData.note ? ` - Note: ${validatedData.note}` : ""
-              } [taskId: ${task.id}]`,
-              taskId: task.id,
-              sentById: currentUser.id,
-              sentToId: assigneeId,
-            })
-          ),
-        // Notify previous assignees who are no longer assigned
-        ...removedAssigneeIds.map((previousAssigneeId) =>
-          sendInAppNotification({
-            title: "Task Reassigned",
-            content: `Your task "${task.title}" has been reassigned to another user`,
-            sentById: currentUser.id,
-            sentToId: previousAssigneeId,
-          })
-        ),
+        // The new, removed and remaining assignees, the task's creator and the Admins
+        sendTaskAllotmentNotifications({
+          taskId: task.id,
+          taskTitle: task.title,
+          actor: currentUser,
+          creatorId: task.assignedById,
+          previousAssigneeIds,
+          newAssigneeIds: validatedData.assignedToIds,
+          note: validatedData.note,
+        }),
         // Email the new assignees (off unless ENABLE_TASK_EMAIL_WHATSAPP=true)
         ...(TASK_EMAIL_WHATSAPP_ENABLED ? assignees : [])
           .filter((assignee) => assignee.email)
