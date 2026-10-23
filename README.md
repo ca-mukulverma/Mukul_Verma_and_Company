@@ -355,7 +355,7 @@ MV Company implements a sophisticated role-based access control system:
 
    To email bills to clients, set `BILLING_EMAIL_PASSWORD` for MVC bills
    (camukulverma.bhopal@gmail.com) and `BEDGE_BILLING_EMAIL_PASSWORD` for
-   B Edge bills (billing.bedge@gmail.com); `BILLING_EMAIL_USER` and
+   B Edge bills (bedgebusinessconsultants@gmail.com); `BILLING_EMAIL_USER` and
    `BEDGE_BILLING_EMAIL_USER` change the addresses – see
    [docs/BILLING.md](docs/BILLING.md#emailing-bills).
 

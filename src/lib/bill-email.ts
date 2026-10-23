@@ -43,10 +43,11 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
   BEDGE: {
     company: "BEDGE",
     name: "Billing-B Edge",
-    address: process.env.BEDGE_BILLING_EMAIL_USER || "billing.bedge@gmail.com",
+    // B Edge's own mailbox, which clients can reply to
+    address: process.env.BEDGE_BILLING_EMAIL_USER || "bedgebusinessconsultants@gmail.com",
     password: process.env.BEDGE_BILLING_EMAIL_PASSWORD,
     passwordVariable: "BEDGE_BILLING_EMAIL_PASSWORD",
-    contactAddress: "bedgebusinessconsultants@gmail.com",
+    contactAddress: null,
     signature: "B Edge Business Consultants",
   },
 };
@@ -289,10 +290,11 @@ export async function sendBillEmails(
           from: { name: mailbox.name, address: mailbox.address },
           to,
           ...(settings.copyTo && { bcc: settings.copyTo }),
-          // Replies go to the sending mailbox unless Admin set a reply address. No
-          // Reply-To otherwise: a Reply-To at a different free-mail address than
-          // the From is a spam signal (SpamAssassin FREEMAIL_REPLYTO)
-          ...(settings.allowReplies && settings.replyTo && { replyTo: settings.replyTo }),
+          // Replies go to the sending mailbox unless Admin set a reply address for a
+          // mailbox clients are asked not to write to. No Reply-To otherwise: a
+          // Reply-To at a different free-mail address than the From is a spam
+          // signal (SpamAssassin FREEMAIL_REPLYTO)
+          ...(mailbox.contactAddress && settings.allowReplies && settings.replyTo && { replyTo: settings.replyTo }),
           subject: content.subject,
           html: content.html,
           text: content.text,

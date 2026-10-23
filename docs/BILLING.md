@@ -293,14 +293,15 @@ email bills.
 
 ### The billing mailboxes
 
-Each company sends from its own Gmail account. MVC bills go from the firm's
-own long-used mailbox, which clients can reply to; mail from an established
-address is far less likely to be filed as spam than mail from a new one.
+Each company sends from its own Gmail account, which clients can reply to.
+MVC bills go from the firm's own long-used mailbox and B Edge bills from
+B Edge's own mailbox; mail from an established address is far less likely to
+be filed as spam than mail from a new one.
 
 | Bills | From (name shown) | Address | Password setting | Clients write to |
 |---|---|---|---|---|
 | MVC | Billing-CA Mukul Verma | camukulverma.bhopal@gmail.com | `BILLING_EMAIL_PASSWORD` | replies to the email |
-| B Edge | Billing-B Edge | billing.bedge@gmail.com | `BEDGE_BILLING_EMAIL_PASSWORD` | bedgebusinessconsultants@gmail.com |
+| B Edge | Billing-B Edge | bedgebusinessconsultants@gmail.com | `BEDGE_BILLING_EMAIL_PASSWORD` | replies to the email |
 
 To set up each one:
 
@@ -315,18 +316,14 @@ A free Gmail account can send about 500 emails a day.
 
 ### Replies (Billing → Bill emails, Admin)
 
-- **MVC** emails always say "For any query …, please reply to this email";
-  replies arrive in camukulverma.bhopal@gmail.com.
-- **B Edge, clients can reply: off** (the default). The email asks the
-  client not to send any email to the billing ID and, in case of any
-  problem, to write to bedgebusinessconsultants@gmail.com. The email has no
-  separate Reply-To: one at a different Gmail address than the sender is a
-  spam signal. A client who still clicks *Reply* reaches the billing
-  mailbox; the filter below forwards it to the contact address.
-- **On**: replies go to the address entered there, or to the billing mailbox
-  if it is left empty.
+- Bill emails always say "For any query …, please reply to this email";
+  replies arrive in the mailbox that sent the bill
+  (camukulverma.bhopal@gmail.com or bedgebusinessconsultants@gmail.com).
 - **Hidden copy**: an address (e.g. the office email) that gets a BCC of
   every bill email.
+- The "Clients can reply" switch only appears for a mailbox that clients are
+  asked not to write to (one with a separate contact address); neither
+  mailbox has one now.
 
 ### Keeping bill emails out of spam
 
@@ -340,8 +337,8 @@ fake-invoice spam looks the same, and Gmail files such emails as spam with
 "This message is similar to messages that were identified as spam in the
 past". Bill emails are therefore plain notes: a "Billing – Bill no. …"
 subject, a simple table of the attached bills, and the bank details only on
-the bills. A new Gmail account (such as the B Edge billing mailbox) has no
-sending history, so for the first weeks:
+the bills. A new Gmail account has no
+sending history, so for the first weeks after switching to a new mailbox:
 
 - send a few bills to the firm's own addresses and to friendly clients, and
   have them open the email, mark it **Not spam** and add the billing
@@ -349,23 +346,6 @@ sending history, so for the first weeks:
 - avoid sending many emails at once from a new mailbox;
 - for the most reliable delivery, use an address on the firm's own domain
   (e.g. Google Workspace) with SPF, DKIM and DMARC set up.
-
-Gmail cannot refuse mail that a client writes *directly* to the B Edge
-billing address. To keep that mailbox empty, add a filter in it (never in
-camukulverma.bhopal@gmail.com, where client replies are wanted):
-Settings → *See all settings* → *Filters and blocked addresses* → *Create a
-new filter*, **Has the words:**
-
-```
-deliveredto:billing.bedge@gmail.com -from:(mailer-daemon@googlemail.com OR no-reply@accounts.google.com)
-```
-
-→ *Create filter* → tick **Forward it to** bedgebusinessconsultants@gmail.com
-(it must first be added under *Forwarding and POP/IMAP*), **Delete it** and
-**Never send it to Spam** → *Create filter*. The `-from:` part keeps Gmail's bounce notices, which the
-delivery check below reads, and Google's security alerts. To answer such
-senders automatically, also tick **Send template** with a saved Gmail
-template ("This mailbox is not monitored, please write to …").
 
 ### Delivery: was the email received?
 
