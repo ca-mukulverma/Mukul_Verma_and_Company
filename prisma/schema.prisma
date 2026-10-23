@@ -414,7 +414,6 @@ model Bill {
   @@index([amountRequestedFromId, status])
   @@index([createdById])
   @@index([clientId])
-  @@index([emailMessageId])
 }
 
 // History of everything done to a bill
@@ -514,11 +513,14 @@ model BillingEmailSetting {
 }
 
 // One Tally XML file that was downloaded; kept so the same file can be
-// downloaded again if the import has to be repeated
+// downloaded again if the import has to be repeated. Only the latest few of
+// each series are kept, gzipped (see lib/tally.ts)
 model TallyExport {
   id          String   @id @default(uuid()) @db.Char(36)
   type        BillType
-  xml         String   @db.Text
+  // Files from before compression; new files go in xmlGzip
+  xml         String?  @db.Text
+  xmlGzip     Bytes?
   newCount    Int
   updateCount Int
   createdById String   @db.Char(36)

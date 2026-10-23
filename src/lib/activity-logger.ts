@@ -63,6 +63,28 @@ export async function logActivity(
 }
 
 /**
+ * Records several activities at once (e.g. a bulk bill approval) and trims
+ * the log to the 20 most recent only once
+ */
+export async function logActivities(
+  entries: { type: string; action: string; target: string; userId: string; details?: Record<string, unknown> }[]
+) {
+  if (entries.length === 0) return;
+  try {
+    // Only the newest 20 would survive the trim anyway
+    await prisma.activity.createMany({
+      data: entries.slice(-20).map(({ details, ...entry }) => ({
+        ...entry,
+        details: details ? JSON.parse(JSON.stringify(details)) : undefined,
+      })),
+    });
+    await cleanupOldActivities();
+  } catch (error) {
+    console.error("Failed to log activities:", error);
+  }
+}
+
+/**
  * Log activity with system as the actor
  * Used for automated actions where no user initiated the action
  */

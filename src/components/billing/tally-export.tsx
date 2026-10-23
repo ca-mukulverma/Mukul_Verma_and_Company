@@ -58,7 +58,7 @@ export function TallyExport({ isAdmin }: { isAdmin: boolean }) {
       <p className="text-sm text-muted-foreground">
         Each file goes into its own company in Tally: in TallyPrime choose <strong>Import → Vouchers</strong> and
         select the file. Bills in a downloaded file are marked as sent; if the import fails, download the same file
-        again from the history below.
+        again from the history below (the latest 10 files are kept).
       </p>
       <div className="grid gap-4 xl:grid-cols-3">
         {series.map((s) => (

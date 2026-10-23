@@ -1,4 +1,5 @@
-import { BillingEntity, BillType, Prisma } from "@prisma/client";
+import { gunzipSync, gzipSync } from "zlib";
+import { BillingEntity, BillType, Prisma, TallyExport } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { GST_STATES, billTotals } from "@/lib/bill-document";
 import { MVC_GST_STATE_CODE } from "@/lib/bill-formats";
@@ -196,6 +197,15 @@ export async function loadPendingTallyBills(type: BillType) {
 
 export class TallyExportConflict extends Error {}
 
+// Exports kept per series, as many as the Tally tab lists; older files are
+// deleted when a new one is made
+export const TALLY_EXPORTS_KEPT = 10;
+
+// The XML file of an export; it is stored gzipped (XML shrinks about 10x)
+export function tallyExportXml(tallyExport: Pick<TallyExport, "xml" | "xmlGzip">) {
+  return tallyExport.xmlGzip ? gunzipSync(tallyExport.xmlGzip) : Buffer.from(tallyExport.xml ?? "", "utf8");
+}
+
 // Builds the XML for everything waiting in a series, records the export and
 // marks the bills as sent, all in one transaction. Returns null when nothing
 // is waiting.
@@ -213,7 +223,7 @@ export async function createTallyExport(type: BillType, userId: string) {
 
   return prisma.$transaction(async (tx) => {
     const tallyExport = await tx.tallyExport.create({
-      data: { type, xml, newCount, updateCount: bills.length - newCount, createdById: userId },
+      data: { type, xmlGzip: gzipSync(xml), newCount, updateCount: bills.length - newCount, createdById: userId },
     });
     // Only bills still waiting are marked; if someone else exported them in
     // the meantime the counts differ and everything is rolled back
@@ -222,6 +232,16 @@ export async function createTallyExport(type: BillType, userId: string) {
       data: { tallyExportedAt: now, tallyNeedsUpdate: false, tallyExportId: tallyExport.id },
     });
     if (count !== bills.length) throw new TallyExportConflict("These bills were just exported by someone else");
+
+    const older = await tx.tallyExport.findMany({
+      where: { type },
+      orderBy: { createdAt: "desc" },
+      skip: TALLY_EXPORTS_KEPT,
+      select: { id: true },
+    });
+    if (older.length > 0) {
+      await tx.tallyExport.deleteMany({ where: { id: { in: older.map((e) => e.id) } } });
+    }
     return tallyExport;
   });
 }

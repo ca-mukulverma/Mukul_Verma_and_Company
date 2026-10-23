@@ -149,7 +149,17 @@ for the billing manager.
 When several bills are approved together, they are numbered in order of
 work date. A task's bill keeps what the old billing approval did. At final
 approval, the task is saved to the client's history and then removed from the
-task list. The bill keeps the work description.
+task list. The bill keeps the work description. Approving many bills at once
+is a single step: if it fails, none of them is approved and no number is
+used.
+
+**Bill history** lists every step taken on a bill. "Created" is shown from
+the bill itself (who logged it and when) rather than stored. A year after the
+bill date, the nightly cleanup job (`/api/cron/cleanup-notifications`) removes
+the steps on the way to the bill (type set, sent for amount, amount entered,
+sent back, details or company changed, billing manager approval, returned by
+Admin). What happened to the numbered bill stays: final approval, amount
+changes, edit/cancel/reissue requests and decisions, and emails.
 
 **Bill date** is the date of Admin final approval. The approval page carries a
 notice that bills are dated on approval, so all pending approvals should be
@@ -249,9 +259,10 @@ a "Scan & Pay" UPI QR code and the bank details.
     - a bill cancelled or reissued after it was sent goes as *Cancel* (the
       reissued bill goes as a new *Create*).
   - Bills cancelled before they were ever sent are not sent.
-  - Downloading the file marks its bills as sent. Every file is kept, and
-    an earlier file can be downloaded again if an import has to be
-    repeated. Two people exporting at the same moment cannot both send the
+  - Downloading the file marks its bills as sent. The latest 10 files of
+    each series are kept (compressed) and can be downloaded again if an
+    import has to be repeated; older files are deleted when a new one is
+    made. Two people exporting at the same moment cannot both send the
     same bills.
   - **Ledger names:**
     - The Tally company name, voucher type, fee ledger, CGST/SGST/IGST

@@ -11,6 +11,7 @@ import {
   loadPendingTallyBills,
   partyLedgerName,
   TallyExportConflict,
+  tallyExportXml,
   tallyFileName,
   tallyLedgers,
   tallyTypesFor,
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
   try {
     const tallyExport = await createTallyExport(type, ctx.user.id);
     if (!tallyExport) return NextResponse.json({ error: "Nothing is waiting to go to Tally" }, { status: 404 });
-    return fileResponse(Buffer.from(tallyExport.xml, "utf8"), "xml", tallyFileName(type, tallyExport.createdAt));
+    return fileResponse(tallyExportXml(tallyExport), "xml", tallyFileName(type, tallyExport.createdAt));
   } catch (error) {
     if (error instanceof TallyExportConflict) {
       return NextResponse.json({ error: error.message }, { status: 409 });

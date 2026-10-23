@@ -112,7 +112,6 @@ export async function POST(request: NextRequest) {
       remark: data.remark || null,
       ...billToData(data),
       createdById: user.id,
-      events: { create: { action: "created", userId: user.id, remark: "Work logged directly" } },
     },
     include: billInclude,
   });
