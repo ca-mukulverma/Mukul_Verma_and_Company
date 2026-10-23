@@ -70,6 +70,8 @@ export function EmailSettings() {
     return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
   }
   const addresses = settings.mailboxes.map((m) => m.address).join(" and ");
+  // The switch only matters for a mailbox clients are asked not to write to
+  const noReplyMailbox = settings.mailboxes.find((m) => m.contactAddress);
 
   return (
     <Card className="max-w-2xl">
@@ -105,19 +107,21 @@ export function EmailSettings() {
             </div>
           ))}
 
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="allow-replies">Clients can reply to the B Edge mailbox</Label>
-            <p className="text-sm text-muted-foreground">
-              {allowReplies
-                ? "Replies go to the address below, or to the billing mailbox if it is empty."
-                : "Off: the email asks clients not to write to the billing mailbox and, in case of any problem, to write to the company's contact address above. A client who still clicks Reply reaches the billing mailbox, so forward that mailbox to the contact address in Gmail."}
-            </p>
+        {noReplyMailbox && (
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="allow-replies">Clients can reply to the B Edge mailbox</Label>
+              <p className="text-sm text-muted-foreground">
+                {allowReplies
+                  ? "Replies go to the address below, or to the billing mailbox if it is empty."
+                  : "Off: the email asks clients not to write to the billing mailbox and, in case of any problem, to write to the company's contact address above. A client who still clicks Reply reaches the billing mailbox, so forward that mailbox to the contact address in Gmail."}
+              </p>
+            </div>
+            <Switch id="allow-replies" checked={allowReplies} onCheckedChange={setAllowReplies} />
           </div>
-          <Switch id="allow-replies" checked={allowReplies} onCheckedChange={setAllowReplies} />
-        </div>
+        )}
 
-        {allowReplies && (
+        {noReplyMailbox && allowReplies && (
           <div className="space-y-2">
             <Label htmlFor="reply-to">Send replies to</Label>
             <Input
