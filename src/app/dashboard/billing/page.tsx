@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BillList } from "@/components/billing/bill-list";
 import { BillingRegister } from "@/components/billing/billing-register";
 import { ChangeRequests } from "@/components/billing/change-requests";
+import { ClearBillingData } from "@/components/billing/clear-billing-data";
 import { EmailSettings } from "@/components/billing/email-settings";
 import { EntityProfiles } from "@/components/billing/entity-profiles";
 import { TallyExport } from "@/components/billing/tally-export";
@@ -129,7 +130,7 @@ function BillingPageContent() {
     ...(isManager ? ["tally", "requests"] : []),
     "log",
     "mine",
-    ...(summary.isAdmin ? ["series", "profiles", "emails"] : []),
+    ...(summary.isAdmin ? ["series", "profiles", "emails", "clear"] : []),
   ];
   const defaultTab =
     summary.isAdmin && summary.awaitingFinalCount > 0
@@ -186,6 +187,7 @@ function BillingPageContent() {
             {summary.isAdmin && <TabsTrigger value="series">Number series</TabsTrigger>}
             {summary.isAdmin && <TabsTrigger value="profiles">Company profiles</TabsTrigger>}
             {summary.isAdmin && <TabsTrigger value="emails">Bill emails</TabsTrigger>}
+            {summary.isAdmin && <TabsTrigger value="clear">Clear data</TabsTrigger>}
           </TabsList>
         </div>
 
@@ -243,6 +245,11 @@ function BillingPageContent() {
         {summary.isAdmin && (
           <TabsContent value="emails" className="mt-4">
             <EmailSettings />
+          </TabsContent>
+        )}
+        {summary.isAdmin && (
+          <TabsContent value="clear" className="mt-4">
+            <ClearBillingData onCleared={loadSummary} />
           </TabsContent>
         )}
       </Tabs>

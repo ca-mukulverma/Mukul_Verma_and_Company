@@ -443,6 +443,25 @@ For B Edge bills, "billing manager" means the B Edge billing manager.
   sends the bills waiting for that Partner's amount back to the billing
   managers as drafts.
 
+## Clearing billing data (Billing → Clear data, Admin)
+
+For a fresh start, e.g. after testing, Admin can delete all billing data. The
+Admin must enter their login password; with a wrong password nothing is
+deleted. The page shows how much will be removed first.
+
+- **Removed:** every MVC and B Edge bill at every stage (including numbered
+  bills in the Billing List, cancelled and not billable ones), each bill's
+  history and email delivery status, edit/cancel/reissue requests and the
+  Tally export history.
+- **Kept:** number series, company profiles, Tally ledgers, bill email
+  settings, users and their billing permissions, clients, tasks and client
+  history.
+- Completed tasks that are still in the app come back as new draft bills, so
+  no work drops out of billing.
+- The number series are not changed; Admin sets the next numbers in
+  **Number series** afterwards if needed.
+- The reset is recorded in the activity log.
+
 ## Build stages
 
 1. **(Done)** Company (MVC/B Edge) on tasks, work entry form, bill records,
