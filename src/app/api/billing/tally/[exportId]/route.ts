@@ -4,7 +4,7 @@ import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getBillingAccess } from "@/lib/billing";
 import { fileResponse } from "@/lib/bill-files";
-import { tallyFileName, tallyTypesFor } from "@/lib/tally";
+import { tallyExportXml, tallyFileName, tallyTypesFor } from "@/lib/tally";
 
 // GET /api/billing/tally/:exportId – the same XML file again, e.g. to repeat a failed import
 export async function GET(_request: Request, { params }: { params: Promise<{ exportId: string }> }) {
@@ -18,5 +18,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ exp
   if (!tallyExport || !tallyTypesFor(access).includes(tallyExport.type)) {
     return NextResponse.json({ error: "Export not found" }, { status: 404 });
   }
-  return fileResponse(Buffer.from(tallyExport.xml, "utf8"), "xml", tallyFileName(tallyExport.type, tallyExport.createdAt));
+  return fileResponse(tallyExportXml(tallyExport), "xml", tallyFileName(tallyExport.type, tallyExport.createdAt));
 }

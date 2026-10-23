@@ -249,9 +249,10 @@ a "Scan & Pay" UPI QR code and the bank details.
     - a bill cancelled or reissued after it was sent goes as *Cancel* (the
       reissued bill goes as a new *Create*).
   - Bills cancelled before they were ever sent are not sent.
-  - Downloading the file marks its bills as sent. Every file is kept, and
-    an earlier file can be downloaded again if an import has to be
-    repeated. Two people exporting at the same moment cannot both send the
+  - Downloading the file marks its bills as sent. The latest 10 files of
+    each series are kept (compressed) and can be downloaded again if an
+    import has to be repeated; older files are deleted when a new one is
+    made. Two people exporting at the same moment cannot both send the
     same bills.
   - **Ledger names:**
     - The Tally company name, voucher type, fee ledger, CGST/SGST/IGST
