@@ -82,7 +82,6 @@ export async function POST(request: NextRequest) {
             taskId: task.id,
             clientId: task.clientId,
             createdById: admin.id,
-            events: { create: { action: "created", userId: admin.id, remark: "Billing data cleared; task is completed" } },
           },
         });
       }

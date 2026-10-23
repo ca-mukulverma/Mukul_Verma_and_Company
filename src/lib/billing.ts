@@ -182,7 +182,6 @@ export async function ensureDraftBillForTask(taskId: string, userId: string) {
         taskId: task.id,
         clientId: task.clientId,
         createdById: userId,
-        events: { create: { action: "created", userId, remark: "Task completed" } },
       },
     });
   } catch (error) {
@@ -193,11 +192,37 @@ export async function ensureDraftBillForTask(taskId: string, userId: string) {
 }
 
 // When a completed task is reopened, its bill is removed if nobody has
-// worked on it yet
+// worked on it yet: it has no history, or only an old "created" entry
 export async function removeUntouchedDraftBillForTask(taskId: string) {
   await prisma.bill.deleteMany({
     where: { taskId, status: "draft", amount: null, events: { every: { action: "created" } } },
   });
+}
+
+// The steps on the way to a numbered bill. A year after the bill date only
+// what happened to the numbered bill itself stays in its history: final
+// approval, amount changes, edit/cancel/reissue requests and emails.
+const WORKFLOW_EVENT_ACTIONS = [
+  "type_set",
+  "amount_requested",
+  "amount_entered",
+  "sent_back",
+  "not_billable",
+  "reopened",
+  "details_updated",
+  "company_changed",
+  "manager_approved",
+  "final_rejected",
+];
+export const BILL_WORKFLOW_HISTORY_DAYS = 365;
+
+// Called from the nightly cleanup job
+export async function pruneOldBillHistory(olderThanDays: number = BILL_WORKFLOW_HISTORY_DAYS) {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+  const { count } = await prisma.billEvent.deleteMany({
+    where: { action: { in: WORKFLOW_EVENT_ACTIONS }, bill: { billDate: { lt: cutoff } } },
+  });
+  return count;
 }
 
 // Keeps the bill in step when a task is moved between MVC and B Edge.

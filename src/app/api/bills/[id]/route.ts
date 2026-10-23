@@ -112,6 +112,17 @@ export async function GET(_request: NextRequest, { params }: Params) {
         select: { id: true, action: true, remark: true, createdAt: true, user: { select: { id: true, name: true } } },
       })
     : [];
+  // "Created" isn't stored as history; it comes from the bill itself. A
+  // reissued bill starts with its "reissued" entry instead.
+  if (canSeeHistory && !bill.reissuedFromId && !events.some((event) => event.action === "created")) {
+    events.unshift({
+      id: `created-${bill.id}`,
+      action: "created",
+      remark: null,
+      createdAt: bill.createdAt,
+      user: bill.createdBy,
+    });
+  }
 
   return NextResponse.json({ ...serializeBill(bill, access), events });
 }

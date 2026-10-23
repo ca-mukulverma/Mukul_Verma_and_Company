@@ -414,7 +414,6 @@ model Bill {
   @@index([amountRequestedFromId, status])
   @@index([createdById])
   @@index([clientId])
-  @@index([emailMessageId])
 }
 
 // History of everything done to a bill
