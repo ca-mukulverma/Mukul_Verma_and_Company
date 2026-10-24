@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -38,6 +38,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogTitle, DialogContent } from "@/components/ui/dialog";
 import { Eye, Download, ZoomIn, ZoomOut, RotateCw, X } from "lucide-react";
 import Image from "next/image";
+import { useActivePolling } from "@/hooks/use-active-polling";
 
 // Id prefix for comments shown before the server has saved them
 const PENDING_PREFIX = "pending-";
@@ -91,7 +92,6 @@ export function TaskComments({
   const [newComment, setNewComment] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [currentImage, setCurrentImage] = useState<{
@@ -133,17 +133,8 @@ export function TaskComments({
     [taskId]
   );
 
-  useEffect(() => {
-    refreshTimerRef.current = setInterval(() => {
-      fetchLatestComments();
-    }, 300000);
-
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-      }
-    };
-  }, [fetchLatestComments]);
+  // Refresh comments every 5 minutes, only while the user is active
+  useActivePolling(() => fetchLatestComments(), 300000);
 
   const handleRefreshComments = () => {
     fetchLatestComments(true);

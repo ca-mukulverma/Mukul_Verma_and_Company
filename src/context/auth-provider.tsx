@@ -5,6 +5,7 @@ import { SessionProvider, signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Session } from "next-auth";
+import { useActivePolling } from "@/hooks/use-active-polling";
 
 // Create auth context type
 interface AuthContextType {
@@ -96,20 +97,16 @@ function RoleValidator({ children }: { children: ReactNode }) {
     }
   }, [router]);
   
-  // Periodically check for role changes (every 5 minutes)
+  // Check for role changes once on login, then every 5 minutes while the user
+  // is active. Paused for idle/background tabs so the database can sleep;
+  // runs again as soon as the user returns. (API responses are also checked
+  // for X-Role-Changed by the fetch interceptor above.)
   useEffect(() => {
     if (!session?.user) return;
-    
-    // Check once on mount
     checkRoleChange();
-    
-    // Set up periodic checking
-    const interval = setInterval(() => {
-      checkRoleChange();
-    }, 5 * 60 * 1000); // Every 5 minutes
-    
-    return () => clearInterval(interval);
   }, [session]);
+
+  useActivePolling(checkRoleChange, 5 * 60 * 1000, !!session?.user);
   
   return (
     <AuthContext.Provider value={{ checkRoleChange }}>

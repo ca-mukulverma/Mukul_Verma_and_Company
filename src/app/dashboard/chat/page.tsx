@@ -58,6 +58,7 @@ import { cn } from "@/lib/utils";
 import axios from "axios";
 import { debounce } from "lodash";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isUserActive } from "@/hooks/use-active-polling";
 
 interface Message {
   id: string;
@@ -476,9 +477,10 @@ function ChatPageContent() {
     window.addEventListener("storage", handleStorageEvent);
 
     // Set up a heartbeat to keep the user online
+    // Heartbeat every 20 seconds, only while the user is active
     const heartbeat = setInterval(() => {
-      updateOnlineStatus(true);
-    }, 20000); // Send heartbeat every 30 seconds
+      if (isUserActive()) updateOnlineStatus(true);
+    }, 20000);
 
     // Mark user as offline when the component unmounts
     return () => {
@@ -723,8 +725,10 @@ function ChatPageContent() {
     if (session?.user) {
       fetchOnlineUsers();
 
-      // Poll for online users every 30 seconds
-      const interval = setInterval(fetchOnlineUsers, 30000);
+      // Poll for online users every 30 seconds, only while the user is active
+      const interval = setInterval(() => {
+        if (isUserActive()) fetchOnlineUsers();
+      }, 30000);
       return () => clearInterval(interval);
     }
   }, [session]);
