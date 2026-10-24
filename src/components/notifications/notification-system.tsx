@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { isUserActive } from "@/hooks/use-active-polling";
 
 // Define notification types
 export interface Notification {
@@ -146,9 +147,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Initial fetch
     fetchNotifications();
     
-    // Poll every 30 seconds while the app is in the foreground
+    // Poll every 30 seconds while the app is in the foreground and the user
+    // is active (idle tabs stop polling so the database can sleep)
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") fetchNotifications();
+      if (isUserActive()) fetchNotifications();
     }, 30000);
 
     // Refresh as soon as the app comes back to the foreground
