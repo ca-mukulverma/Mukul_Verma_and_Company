@@ -1,0 +1,59 @@
+# Deletes the Neon database branch that Vercel created for a preview
+# deployment, as soon as its work is finished.
+#
+# Why: Vercel keeps preview deployments (and so their Neon branches) for
+# months. The Neon Launch plan includes 10 branches per project; every
+# branch above that is billed at $1.50/branch-month.
+#
+# Runs when:
+#   1. a pull request is closed or merged, or
+#   2. a Git branch is deleted (covers branches pushed without a PR).
+#
+# Safety: it only ever targets branches named "preview/<git-branch>",
+# which is the naming the Vercel integration uses. Production is never
+# touched (it is also delete-protected in Neon).
+#
+# Setup (one time, in GitHub → Settings → Secrets and variables → Actions):
+#   - Secret   NEON_API_KEY     : a Neon API key (Neon Console → Account
+#                                 settings → API keys)
+#   - Variable NEON_PROJECT_ID  : optional; defaults to this portal's project
+
+name: Cleanup Neon preview branch
+
+on:
+  pull_request:
+    types: [closed]
+  delete:
+
+permissions:
+  contents: read
+
+jobs:
+  delete-neon-branch:
+    # For a delete event, act only on deleted branches (not tags).
+    if: github.event_name == 'pull_request' || github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Work out the Neon branch name
+        id: target
+        env:
+          PR_BRANCH: ${{ github.head_ref }}
+          DELETED_BRANCH: ${{ github.event.ref }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH="$PR_BRANCH"
+          else
+            BRANCH="$DELETED_BRANCH"
+          fi
+          echo "name=preview/${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "Target Neon branch: preview/${BRANCH}"
+
+      - name: Delete the Neon preview branch
+        # The branch may already be gone (PR closed and Git branch deleted
+        # both fire, or Vercel cleaned it up first). That is not an error.
+        continue-on-error: true
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID || 'nameless-breeze-74272716' }}
+          branch: ${{ steps.target.outputs.name }}
+          api_key: ${{ secrets.NEON_API_KEY }}
