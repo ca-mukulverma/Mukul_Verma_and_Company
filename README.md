@@ -359,6 +359,10 @@ MV Company implements a sophisticated role-based access control system:
    `BEDGE_BILLING_EMAIL_USER` change the addresses – see
    [docs/BILLING.md](docs/BILLING.md#emailing-bills).
 
+   For compliance files (return PDFs, JSON, Form 16/16A), set `R2_ACCOUNT_ID`,
+   `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET` – see
+   [docs/COMPLIANCE.md](docs/COMPLIANCE.md#one-time-setup-cloudflare-r2).
+
 4. **Initialize the database**
    ```bash
    npx prisma migrate dev --name init

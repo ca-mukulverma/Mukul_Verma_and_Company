@@ -25,6 +25,7 @@ import {
   ArrowRight,
   Heart,
   Receipt,
+  CalendarCheck,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import {
@@ -107,6 +108,13 @@ export default function DashboardLayout({
       title: "Billing",
       href: "/dashboard/billing",
       icon: <Receipt className="h-6 w-6" />,
+      role: ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
+      category: "management",
+    },
+    {
+      title: "Compliance",
+      href: "/dashboard/compliance",
+      icon: <CalendarCheck className="h-6 w-6" />,
       role: ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
       category: "management",
     },
