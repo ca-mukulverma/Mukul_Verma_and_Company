@@ -127,6 +127,11 @@ model User {
   billChangesRequested    BillChangeRequest[] @relation("BillChangeRequestedBy")
   billChangesDecided      BillChangeRequest[] @relation("BillChangeDecidedBy")
   tallyExports            TallyExport[]
+  complianceTeams         ComplianceTeamMember[]
+  complianceItemsUpdated  ComplianceItem[]      @relation("ComplianceItemUpdatedBy")
+  complianceEvents        ComplianceEvent[]
+  complianceDocuments     ComplianceDocument[]
+  complianceReminders     ComplianceReminder[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -155,6 +160,11 @@ model Client {
   history        ClientHistory[] // Client history entries
   credentials    Credential[] //Credentials associated with this client
   bills          Bill[]
+  complianceSubscriptions ClientCompliance[]
+  complianceItems         ComplianceItem[]
+  complianceDocuments     ComplianceDocument[]
+  obligations             ClientObligation[]
+  complianceNotes         ComplianceNote[]
   
   @@index([managerId])
   @@index([contactPerson]) // Index for searching by contact person name
@@ -406,6 +416,8 @@ model Bill {
 
   events         BillEvent[]
   changeRequests BillChangeRequest[]
+  // Set when the bill comes from a completed compliance item
+  complianceItem ComplianceItem?
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
@@ -529,4 +541,317 @@ model TallyExport {
   bills       Bill[]
 
   @@index([type, createdAt])
+}
+
+// ─── Compliance (recurring statutory work, see docs/COMPLIANCE.md) ───────────
+
+// What a work type does beyond the common steps; locks and completion rules
+// depend on it (see lib/compliance.ts)
+enum ComplianceKind {
+  GSTR1
+  GSTR3B
+  TDS_PAYMENT
+  TDS_RETURN
+  GENERIC
+}
+
+enum ComplianceFrequency {
+  MONTHLY
+  QUARTERLY // financial-year quarters: Apr–Jun, Jul–Sep, Oct–Dec, Jan–Mar
+  YEARLY // financial year
+}
+
+enum ComplianceStatus {
+  pending
+  data_received
+  filed
+  completed
+  not_required // e.g. a TDS return for a quarter without challans
+}
+
+// When a TDS return needs Form 16/16A before it is complete
+enum CertificateRule {
+  NONE
+  EVERY_QUARTER // 26Q: Form 16A every quarter
+  Q4_ONLY // 24Q: Form 16 after the Q4 return
+}
+
+enum ObligationKind {
+  RCM
+  TDS
+}
+
+enum ObligationLineStatus {
+  pending
+  confirmed
+  skipped
+}
+
+enum ReminderChannel {
+  WHATSAPP
+  EMAIL
+}
+
+enum ComplianceDocKind {
+  RETURN_PDF
+  RETURN_JSON
+  GSTR1A_PDF
+  GSTR1A_JSON
+  CHALLAN
+  CERTIFICATE
+  OTHER
+}
+
+model ComplianceWorkType {
+  id                      String              @id @default(uuid()) @db.Char(36)
+  name                    String              @unique @db.VarChar(80)
+  kind                    ComplianceKind      @default(GENERIC)
+  // Default frequency; GST clients can be monthly or quarterly (allowQuarterly)
+  frequency               ComplianceFrequency @default(MONTHLY)
+  allowQuarterly          Boolean             @default(false)
+  company                 Company             @default(MVC)
+  // Due date: dueDay of the month dueMonthOffset months after the period ends.
+  // Quarterly filers may have their own rule; dueExceptions overrides it for
+  // periods ending in a given month, e.g. {"3": {"day": 30, "offset": 1}}
+  dueDay                  Int
+  dueMonthOffset          Int                 @default(1)
+  quarterlyDueDay         Int?
+  quarterlyDueMonthOffset Int?
+  dueExceptions           Json?
+  // Items appear this many days before the period ends (or before the due
+  // date, if that is earlier)
+  leadDays                Int                 @default(7)
+  returnType              String?             @db.VarChar(5) // TDS returns: "24Q", "26Q"
+  certificateRule         CertificateRule     @default(NONE)
+  // Files needed, after filing, for the item to be completed
+  requirePdf              Boolean             @default(false)
+  requireJson             Boolean             @default(false)
+  billable                Boolean             @default(false)
+  defaultFeeNil           Decimal?            @db.Decimal(12, 2)
+  defaultFeeNonNil        Decimal?            @db.Decimal(12, 2)
+  reminderSubject         String              @db.VarChar(150)
+  reminderMessage         String              @db.Text
+  sortOrder               Int                 @default(100)
+  active                  Boolean             @default(true)
+  // Seeded work types; their kind can't be changed
+  system                  Boolean             @default(false)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  team          ComplianceTeamMember[]
+  subscriptions ClientCompliance[]
+  items         ComplianceItem[]
+}
+
+// The staff who do a work type. Rotates every few months: a member who leaves
+// the team gets toDate, so the history of who was on it stays.
+model ComplianceTeamMember {
+  id         String             @id @default(uuid()) @db.Char(36)
+  workTypeId String             @db.Char(36)
+  workType   ComplianceWorkType @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  userId     String             @db.Char(36)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromDate   DateTime           @default(now())
+  toDate     DateTime?
+
+  @@index([workTypeId, toDate])
+  @@index([userId])
+}
+
+// A client's recurring work, from startPeriod on
+model ClientCompliance {
+  id          String              @id @default(uuid()) @db.Char(36)
+  clientId    String              @db.Char(36)
+  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workTypeId  String              @db.Char(36)
+  workType    ComplianceWorkType  @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  frequency   ComplianceFrequency
+  // A change between monthly and quarterly applies from frequencyFrom;
+  // earlier periods keep previousFrequency
+  previousFrequency ComplianceFrequency?
+  frequencyFrom     DateTime?           @db.Date
+  startPeriod DateTime            @db.Date
+  endPeriod   DateTime?           @db.Date
+  feeNil      Decimal?            @db.Decimal(12, 2)
+  feeNonNil   Decimal?            @db.Decimal(12, 2)
+  active      Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([clientId, workTypeId])
+  @@index([workTypeId, active])
+}
+
+// One period of one work for one client, e.g. ABC Traders – GSTR-3B – Oct 2026
+model ComplianceItem {
+  id              String              @id @default(uuid()) @db.Char(36)
+  clientId        String              @db.Char(36)
+  client          Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workTypeId      String              @db.Char(36)
+  workType        ComplianceWorkType  @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  frequency       ComplianceFrequency
+  periodStart     DateTime            @db.Date
+  periodEnd       DateTime            @db.Date
+  dueDate         DateTime            @db.Date
+  status          ComplianceStatus    @default(pending)
+  // Entered for a period before tracking started: no reminders, no bill
+  historical      Boolean             @default(false)
+  dataReceivedAt  DateTime?
+  filedAt         DateTime?           @db.Date
+  arn             String?             @db.VarChar(50) // ARN, token or acknowledgement number
+  isNil           Boolean?
+  taxPayable      Decimal?            @db.Decimal(14, 2)
+  // Return figures used in the reconciliation (see lib/compliance.ts FIGURE_FIELDS)
+  figures         Json?
+  gstr1aFiled     Boolean             @default(false)
+  gstr1aFiledAt   DateTime?           @db.Date
+  gstr1aArn       String?             @db.VarChar(50)
+  noTds           Boolean             @default(false) // TDS payment: nothing to pay this month
+  certRequestedAt DateTime?           @db.Date
+  certRequestNo   String?             @db.VarChar(50)
+  certEmailedAt   DateTime?
+  certEmailedTo   String?             @db.VarChar(400)
+  completedAt     DateTime?
+  // Overrides the client's fee for this period
+  fee             Decimal?            @db.Decimal(12, 2)
+  reminderCount   Int                 @default(0)
+  lastReminderAt  DateTime?
+  billId          String?             @unique @db.Char(36)
+  bill            Bill?               @relation(fields: [billId], references: [id], onDelete: SetNull)
+  updatedById     String?             @db.Char(36)
+  updatedBy       User?               @relation("ComplianceItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  documents ComplianceDocument[]
+  lines     ComplianceObligationLine[]
+  challans  TdsChallan[]
+  reminders ComplianceReminder[]
+  events    ComplianceEvent[]
+  notes     ComplianceNote[]
+
+  @@unique([clientId, workTypeId, periodStart])
+  @@index([workTypeId, periodEnd])
+  @@index([status, dueDate])
+}
+
+model ComplianceEvent {
+  id        String         @id @default(uuid()) @db.Char(36)
+  itemId    String         @db.Char(36)
+  item      ComplianceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  action    String         @db.VarChar(40)
+  remark    String?        @db.Text
+  userId    String?        @db.Char(36)
+  user      User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime       @default(now())
+
+  @@index([itemId])
+}
+
+// A file kept in Cloudflare R2 (see lib/r2.ts). Files with the same content
+// share one stored object (storageKey is derived from the SHA-256).
+model ComplianceDocument {
+  id           String            @id @default(uuid()) @db.Char(36)
+  clientId     String            @db.Char(36)
+  client       Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  itemId       String?           @db.Char(36)
+  item         ComplianceItem?   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  kind         ComplianceDocKind
+  fileName     String            @db.VarChar(150)
+  contentType  String            @db.VarChar(80)
+  storageKey   String            @db.VarChar(200)
+  sha256       String            @db.Char(64)
+  size         Int // bytes as stored (after compression)
+  gzipped      Boolean           @default(false)
+  uploadedById String?           @db.Char(36)
+  uploadedBy   User?             @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime          @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([itemId])
+  @@index([storageKey])
+}
+
+// Something a client pays every month that must not be missed: RCM on rent or
+// transport (checked in GSTR-3B), or TDS on rent, salary, fees (checked in the
+// TDS payment). fixedAmount null = the amount changes every month.
+model ClientObligation {
+  id          String         @id @default(uuid()) @db.Char(36)
+  clientId    String         @db.Char(36)
+  client      Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  kind        ObligationKind
+  category    String         @db.VarChar(60) // "Rent – unregistered", "194-I"
+  payee       String         @db.VarChar(100)
+  fixedAmount Decimal?       @db.Decimal(14, 2)
+  ratePercent Decimal        @db.Decimal(5, 2)
+  fromMonth   DateTime       @db.Date
+  toMonth     DateTime?      @db.Date
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  lines ComplianceObligationLine[]
+
+  @@index([clientId, kind])
+}
+
+// An obligation's line on one item; the item can't be closed while a line is pending
+model ComplianceObligationLine {
+  id           String               @id @default(uuid()) @db.Char(36)
+  itemId       String               @db.Char(36)
+  item         ComplianceItem       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  obligationId String               @db.Char(36)
+  obligation   ClientObligation     @relation(fields: [obligationId], references: [id], onDelete: Cascade)
+  baseAmount   Decimal?             @db.Decimal(14, 2)
+  taxAmount    Decimal?             @db.Decimal(14, 2)
+  status       ObligationLineStatus @default(pending)
+  note         String?              @db.VarChar(300)
+  resolvedAt   DateTime?
+
+  @@unique([itemId, obligationId])
+}
+
+model TdsChallan {
+  id          String         @id @default(uuid()) @db.Char(36)
+  itemId      String         @db.Char(36) // the month's TDS payment item
+  item        ComplianceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  section     String         @db.VarChar(10)
+  bsrCode     String?        @db.VarChar(7)
+  challanDate DateTime       @db.Date
+  serialNo    String?        @db.VarChar(10)
+  amount      Decimal        @db.Decimal(14, 2)
+  createdAt   DateTime       @default(now())
+
+  @@index([itemId])
+}
+
+model ComplianceReminder {
+  id       String          @id @default(uuid()) @db.Char(36)
+  itemId   String          @db.Char(36)
+  item     ComplianceItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  channel  ReminderChannel
+  sentTo   String          @db.VarChar(400)
+  ok       Boolean         @default(true)
+  error    String?         @db.Text
+  sentById String?         @db.Char(36)
+  sentBy   User?           @relation(fields: [sentById], references: [id], onDelete: SetNull)
+  sentAt   DateTime        @default(now())
+
+  @@index([itemId])
+  @@index([channel, sentAt])
+}
+
+// Short notes written by Claude's nightly review (through a database login that
+// may only add rows here); shown to Admins and Partners on the dashboard
+model ComplianceNote {
+  id        String          @id @default(uuid()) @db.Char(36)
+  clientId  String?         @db.Char(36)
+  client    Client?         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  itemId    String?         @db.Char(36)
+  item      ComplianceItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  body      String          @db.Text
+  source    String          @default("claude") @db.VarChar(20)
+  createdAt DateTime        @default(now())
+
+  @@index([createdAt])
 }
