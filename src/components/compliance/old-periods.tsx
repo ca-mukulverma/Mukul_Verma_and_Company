@@ -12,12 +12,12 @@ import { cn } from "@/lib/utils";
 import type { WorkType } from "./setup";
 import { apiError, currentMonthKey, todayKey } from "./types";
 import { uploadComplianceFile } from "./upload";
-import { monthFromFileName, returnFileKind } from "./old-period-files";
+import { returnFileKind } from "./old-period-files";
 
 // Past periods of one work for a client, one row per month or quarter, each
 // with its filing details and return PDF / JSON. Saving a row completes it;
-// missing files show as tags. Many files can be dropped at once: each goes to
-// the period named in its file name.
+// missing files show as tags. Many files at once go through Upload returns,
+// which reads each file for its period.
 
 interface Row {
   month: string;
@@ -62,8 +62,6 @@ export function OldPeriods({ clientId, workTypes, onChanged }: { clientId: strin
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [unmatched, setUnmatched] = useState<File[]>([]);
-  const dropRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -146,53 +144,6 @@ export function OldPeriods({ clientId, workTypes, onChanged }: { clientId: strin
     }
   };
 
-  const rowForMonth = (month: string | null) => (month ? data?.rows.find((r) => r.months.includes(month)) ?? null : null);
-
-  const dropMany = async (files: FileList | null) => {
-    if (!files?.length || !data) return;
-    const groups = new Map<Row, File[]>();
-    const missed: File[] = [];
-    for (const file of Array.from(files)) {
-      const row = rowForMonth(monthFromFileName(file.name));
-      if (!row || (row.item && !row.item.historical)) missed.push(file);
-      else groups.set(row, [...(groups.get(row) ?? []), file]);
-    }
-    setBusy("many");
-    let added = 0;
-    try {
-      for (const [row, list] of groups) {
-        await uploadTo(row, list);
-        added += list.length;
-      }
-      toast.success(`${added} file(s) added${missed.length ? `; ${missed.length} need a period chosen` : ""}`);
-    } catch (error) {
-      toast.error(error instanceof Error && !axios.isAxiosError(error) ? error.message : apiError(error));
-    } finally {
-      setBusy(null);
-      setUnmatched((u) => [...u, ...missed]);
-      if (dropRef.current) dropRef.current.value = "";
-      await load();
-      onChanged();
-    }
-  };
-
-  const placeUnmatched = async (file: File, month: string) => {
-    const row = data?.rows.find((r) => r.month === month);
-    if (!row) return;
-    setBusy("many");
-    try {
-      await uploadTo(row, [file]);
-      setUnmatched((u) => u.filter((f) => f !== file));
-      toast.success(`${file.name} added to ${row.period}`);
-      await load();
-      onChanged();
-    } catch (error) {
-      toast.error(error instanceof Error && !axios.isAxiosError(error) ? error.message : apiError(error));
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const editable = (row: Row) => !row.item || row.item.historical;
 
   return (
@@ -213,40 +164,11 @@ export function OldPeriods({ clientId, workTypes, onChanged }: { clientId: strin
         <Button size="sm" variant="outline" disabled={loading || !workTypeId || !range.from || !range.to} onClick={load}>
           {loading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Search className="mr-1 h-4 w-4" />} Show periods
         </Button>
-        {data && (
-          <>
-            <input ref={dropRef} type="file" multiple accept=".pdf,.json,.zip" className="hidden" onChange={(e) => dropMany(e.target.files)} />
-            <Button size="sm" disabled={busy !== null} onClick={() => dropRef.current?.click()}>
-              {busy === "many" ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileUp className="mr-1 h-4 w-4" />} Add many files
-            </Button>
-          </>
-        )}
       </div>
 
       {data && (
         <>
           {data.trackedFrom && <p className="text-xs text-muted-foreground">Tracked in the sheets from {data.trackedFrom}; those periods are changed in the sheet.</p>}
-          <p className="text-xs text-muted-foreground">
-            Add many files: each file goes to the month or quarter in its name (e.g. GSTR3B_…_102024.pdf, Oct-2024.json). JSON files are kept as the
-            return JSON, PDFs as the return PDF.
-          </p>
-          {unmatched.length > 0 && (
-            <div className="space-y-1 rounded-md border border-amber-300 p-2 text-sm dark:border-amber-900">
-              <p className="font-medium">Choose the period for these files</p>
-              {unmatched.map((file, i) => (
-                <div key={`${file.name}-${i}`} className="flex flex-wrap items-center gap-2">
-                  <span className="flex-1 truncate">{file.name}</span>
-                  <Select onValueChange={(month) => placeUnmatched(file, month)} disabled={busy !== null}>
-                    <SelectTrigger className="w-40"><SelectValue placeholder="Period" /></SelectTrigger>
-                    <SelectContent>
-                      {data.rows.filter(editable).map((r) => <SelectItem key={r.month} value={r.month}>{r.period}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Button size="sm" variant="ghost" onClick={() => setUnmatched((u) => u.filter((f) => f !== file))}>Leave out</Button>
-                </div>
-              ))}
-            </div>
-          )}
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
               <thead className="bg-muted text-left text-xs">

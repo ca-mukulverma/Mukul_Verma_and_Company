@@ -21,6 +21,10 @@ function r2() {
     region: "auto",
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: { accessKeyId: accessKeyId!, secretAccessKey: secretAccessKey! },
+    // Without this the SDK puts the checksum of an empty body into signed
+    // upload links, so the browser's real file fails the check
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   });
   return client;
 }

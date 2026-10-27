@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "MV Company WhatsApp sender",
+  "version": "1.0",
+  "description": "Sends the reminders prepared in the MV Company app through WhatsApp Web, one at a time with a pause between them.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://web.whatsapp.com/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["__APP_ORIGIN__/*"], "js": ["bridge.js"], "run_at": "document_start" },
+    { "matches": ["https://web.whatsapp.com/*"], "js": ["whatsapp.js"], "run_at": "document_start" }
+  ]
+}

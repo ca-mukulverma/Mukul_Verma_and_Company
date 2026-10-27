@@ -52,8 +52,10 @@ The checks are made on the server, not only hidden on screen.
    do it this quarter), check the **due date**, the **files needed** to
    complete it, whether it is **billed**, and its **default fees**.
 3. **Compliance → Clients**: tick clients (use *Select all shown* and the
-   filter) and click **Add work**. Choose the work, the frequency (GST:
-   monthly or quarterly), the **first period to track** and the client's fee.
+   filter) and click **Add work**. Tick every work to add (e.g. GSTR-1,
+   GSTR-3B and TDS together), the frequency (GST: monthly or quarterly), the
+   **first period to track** and each work's fee. For one client, works it
+   already has show ticked and greyed out.
 4. For clients who pay **rent, transport, legal fees** etc. under RCM, or
    deduct **TDS on fixed payments**, open the client and add them under
    **Monthly RCM and TDS payments** (see [RCM and fixed TDS](#rcm-and-fixed-tds-never-missed)).
@@ -221,6 +223,25 @@ reconciliation adds it to GSTR-1, and there is no separate fee.
 - Attach files from the cell window: **Return PDF**, **Return JSON** (GST
   JSON from the portal wherever available), **Challan**, **Form 16/16A**,
   **Other**. Client-level files go under the client's **Files**.
+- **Upload returns** (Compliance → Clients → a client): choose or drop any
+  number of PDFs, JSONs and ZIPs. ZIPs (and ZIPs inside them) are opened and
+  each file inside is read on its own. For each file the app reads:
+  - GST JSON: GSTIN and period (`fp` in GSTR-1, `ret_period` in GSTR-3B);
+  - GSTR-1, GSTR-1A and GSTR-3B PDFs: GSTIN, period, ARN and date of ARN;
+  - TDS: Form 27A / provisional receipt (TAN, 24Q/26Q, quarter, token
+    number), Form 16A and Form 16 (TAN, quarter or year), challan 281 (TAN;
+    the month is taken as the one before the deposit date, so check it);
+  - otherwise the file name (e.g. `GSTR3B_…_102024.pdf`).
+
+  A table shows each file with the return found, whether the **GSTIN / TAN
+  matches the client**, the work, file type and period, and where it will go.
+  Everything can be changed; rows to check are highlighted, and files of
+  another GSTIN or TAN are red and left unticked. **Upload** adds the ticked
+  files: periods in the sheet only get the file (their status is changed in
+  the sheet); a past period that doesn't exist yet is saved as completed with
+  the ARN and filing date read from the file. Scanned PDFs can't be read and
+  are placed by hand. Password-protected ZIPs (e.g. from TRACES) can't be
+  opened; they can be kept as they are as a client file.
 - Files go **straight from the browser to Cloudflare R2**, not through the app
   server, so even large JSON files upload quickly.
 - To save space: **JSON and CSV are compressed** in the browser (about 10×
@@ -237,9 +258,29 @@ reconciliation adds it to GSTR-1, and there is no separate fee.
 From a row's chat icon, the header buttons, or for ticked rows:
 
 - **WhatsApp (free)**: the app prepares one message per client (covering all
-  its pending work, e.g. "GSTR-1 & GSTR-3B for Sep 2026") and opens each chat
-  in turn in one WhatsApp tab; you press **Send** in WhatsApp. The app records
-  that the chat was opened (it can't see delivery).
+  its pending work, e.g. "GSTR-1 & GSTR-3B for Sep 2026"). Then either:
+  - **Open each chat**, choosing where (remembered on each device):
+    *WhatsApp Web* opens in a window on the right half of the screen, reused
+    for every chat, so the app stays in view: press Enter there, click *Open
+    WhatsApp* here for the next one. *WhatsApp app on this computer* opens the
+    desktop app. *Phone* opens the WhatsApp app on a phone.
+  - **Send all automatically** with the firm's browser extension (Chrome or
+    Edge on a computer, with WhatsApp Web logged in): it opens each chat in
+    WhatsApp Web, presses Send, waits 8–15 seconds and moves on, showing
+    Sent / Not sent for each client. *Stop* stops it. It sends at most 150 a
+    day from one computer.
+
+  The app records that the reminder was prepared (it can't see delivery).
+
+  **Installing the extension** (once per computer): in the reminder window
+  after preparing messages, click *download it*, unzip, open
+  `chrome://extensions` (or `edge://extensions`), turn on **Developer mode**,
+  **Load unpacked** and pick the unzipped folder, then reload the app. The
+  download is set up for the address the app was opened from. **Note**:
+  WhatsApp's terms don't allow automated sending. Keeping to known clients,
+  the pause between messages and the daily limit keeps the risk low, but a
+  number can still be restricted; use the firm's WhatsApp Business number,
+  not a personal one.
 - **Email (free)**: sent straight away from the company's billing Gmail (MVC
   work from the MVC mailbox, B Edge work from B Edge's), shown as
   *Reminder-CA Mukul Verma* or *Reminder-B Edge*. Files emailed to a client
@@ -311,10 +352,8 @@ arithmetic done by the app, always live and free.
   over, each with filing date, ARN, nil, Completed / Not required and its
   return PDF and JSON. **Saving a row completes it**; a missing PDF or JSON
   shows as a tag ("PDF missing"), and files can be added or removed later.
-  **Add many files** takes a whole folder of downloads: each file goes to the
-  period in its name (e.g. `GSTR3B_…_102024.pdf`, `Oct-2024.json`,
-  `2024-10`); JSON files become the return JSON, PDFs the return PDF, and
-  files without a clear month are listed to place by hand. No RCM/TDS check,
+  To add a whole folder of downloads at once, use **Upload returns** (see
+  [Files](#files)): each file is read for its period. No RCM/TDS check,
   no reminders, no bills, and no completed/checked by.
 - **After a registration**: completing a task whose title is a registration
   (GST, company, partnership, LLP, TAN…) asks *Start compliance for this
@@ -439,6 +478,10 @@ which is several years of return PDFs.
 
    Use your own domain instead if the app runs on one. For the preview bucket
    use `"AllowedOrigins": ["*"]` (it only ever holds test files).
+   Keep `Content-Encoding` in `AllowedHeaders`: JSON and CSV files are sent
+   gzipped, and without it the browser blocks them ("Failed to fetch"). The
+   app then falls back to sending them uncompressed, so they still upload,
+   just larger.
 5. **Access key**: R2 → **Manage R2 API Tokens** → **Create API token** →
    permission **Object Read & Write**, applied to **those two buckets only**.
    Copy the **Access Key ID**, **Secret Access Key** and your **Account ID**
@@ -475,14 +518,18 @@ which is several years of return PDFs.
 - Importing the old Excel tracker (a column-matching import can be added when
   the sheet is available).
 - More than one mobile number / email per client (the client master's are used).
-- WhatsApp delivery status (not possible with the free link method).
+- WhatsApp delivery status when chats are opened by hand (the extension shows
+  whether Send was pressed, not whether the message was delivered).
 
 ## For developers
 
 - Rules (access, item creation, locks, completion, billing): `src/lib/compliance.ts`;
   periods and due dates: `src/lib/compliance-periods.ts`; sheets:
   `src/lib/compliance-sheet.ts`; reconciliation: `src/lib/compliance-reco.ts`;
-  storage: `src/lib/r2.ts`; emails: `src/lib/compliance-email.ts`.
+  storage: `src/lib/r2.ts`; emails: `src/lib/compliance-email.ts`; reading
+  uploaded returns: `src/components/compliance/return-detect.ts`; WhatsApp:
+  `src/components/compliance/whatsapp-send.ts` and the extension in
+  `public/whatsapp-extension` (`__APP_ORIGIN__` is filled in on download).
 - API: `src/app/api/compliance/*`; daily job: `src/app/api/cron/compliance`
   (uses `CRON_SECRET`, runs at 01:30 UTC); page: `src/app/dashboard/compliance`;
   components: `src/components/compliance/*`.
