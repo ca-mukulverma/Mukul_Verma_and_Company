@@ -10,6 +10,7 @@ import { BillingRegister } from "@/components/billing/billing-register";
 import { ChangeRequests } from "@/components/billing/change-requests";
 import { ClearBillingData } from "@/components/billing/clear-billing-data";
 import { Connectors } from "@/components/billing/connectors";
+import { BillingAlert } from "@/components/billing/billing-alert";
 import { EmailSettings } from "@/components/billing/email-settings";
 import { EntityProfiles } from "@/components/billing/entity-profiles";
 import { TallyExport } from "@/components/billing/tally-export";
@@ -159,6 +160,7 @@ function BillingPageContent() {
         <h1 className="text-2xl font-bold tracking-tight">Billing</h1>
         <p className="text-muted-foreground">Work done for clients, on its way to a bill.</p>
       </div>
+      <BillingAlert />
 
       <Tabs value={tab} onValueChange={(value) => router.replace(`/dashboard/billing?tab=${value}`, { scroll: false })}>
         {/* w-0 + min-w-full: the tab bar scrolls sideways on phones instead of widening the page */}
