@@ -35,7 +35,9 @@ import {
   CheckCircle,
   Receipt,
   Download,
+  ClipboardCheck,
 } from "lucide-react";
+import { StartComplianceDialog, isRegistrationTask } from "@/components/compliance/start-compliance-dialog";
 import { TaskComments } from "@/components/tasks/task-comments";
 import { TaskDetailSkeleton } from "@/components/loading/task-skeleton";
 import { TaskAssignees } from "@/components/tasks/task-assignees";
@@ -261,6 +263,9 @@ export default function TaskDetailPage({
     [task?.status]
   );
 
+  const [startCompliance, setStartCompliance] = useState(false);
+  const canStartCompliance = isAdmin || session?.user?.role === "PARTNER";
+
   const updateTaskStatus = async () => {
     if (!newStatus || newStatus === task?.status) return;
   
@@ -281,6 +286,10 @@ export default function TaskDetailPage({
       } : null);
       
       toast.success("Task status updated successfully");
+      // A finished registration: offer to put the client into Compliance
+      if (newStatus === "completed" && task?.client && canStartCompliance && isRegistrationTask(task.title)) {
+        setStartCompliance(true);
+      }
     } catch (error) {
       console.error("Error updating task:", error);
       toast.error("Failed to update task status");
@@ -632,6 +641,30 @@ export default function TaskDetailPage({
                     </div>
                   )}
 
+                {task.status === "completed" && task.client && canStartCompliance && (
+                  <div className="mt-4 rounded-md border p-3">
+                    <h3 className="font-medium">Compliance</h3>
+                    <p className="mb-3 text-sm text-muted-foreground">
+                      A registration done? Put the client into Compliance (GST returns, TDS and other recurring work).
+                    </p>
+                    <Button size="sm" variant="outline" onClick={() => setStartCompliance(true)}>
+                      <ClipboardCheck className="mr-1 h-4 w-4" /> Start compliance
+                    </Button>
+                  </div>
+                )}
+
+                {task.status === "completed" && !task.client && canStartCompliance && isRegistrationTask(task.title) && (
+                  <div className="mt-4 rounded-md border p-3">
+                    <h3 className="font-medium">Compliance</h3>
+                    <p className="mb-3 text-sm text-muted-foreground">
+                      This registration has no client. Add the new business as a client, then add its work in Compliance → Clients.
+                    </p>
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href="/dashboard/clients/create">Create the client</Link>
+                    </Button>
+                  </div>
+                )}
+
                 {task.status === "completed" &&
                   currentBillingStatus === "billed" && (
                     <div className="mt-4">
@@ -685,6 +718,13 @@ export default function TaskDetailPage({
           </Card>
         </div>
       </div>
+      {startCompliance && task.client && (
+        <StartComplianceDialog
+          client={{ id: task.client.id, name: task.client.companyName || task.client.contactPerson }}
+          taskTitle={task.title}
+          onClose={() => setStartCompliance(false)}
+        />
+      )}
     </div>
   );
 }
