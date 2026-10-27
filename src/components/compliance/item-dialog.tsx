@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Check, Download, FileUp, History, Loader2, Lock, Mail, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, Check, Download, FileUp, History, Loader2, Lock, Mail, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -72,7 +72,97 @@ const EVENT_LABELS: Record<string, string> = {
   document_removed: "File removed",
   fee_set: "Fee set",
   past_period_entered: "Past period entered",
+  past_period_updated: "Past period changed",
+  signed_off: "Sign-off",
+  completer_changed: "Completed-by changed",
+  obligation_stopped: "Monthly payment stopped",
 };
+
+// Reasons offered when an RCM/TDS line is skipped
+const SKIP_REASONS = [
+  "Not paid this month",
+  "Paid by the client directly",
+  "Payee changed",
+  "Agreement ended / no longer paid",
+  "Other",
+];
+const ENDED_REASON = "Agreement ended / no longer paid";
+
+interface Staff {
+  users: { id: string; name: string }[];
+  me: { id: string; name: string; isAdmin: boolean };
+}
+
+let staffCache: Promise<Staff> | null = null;
+function loadStaff() {
+  staffCache ??= axios.get<Staff>("/api/compliance/staff").then(({ data }) => data);
+  staffCache.catch(() => (staffCache = null));
+  return staffCache;
+}
+
+function useStaff() {
+  const [staff, setStaff] = useState<Staff | null>(null);
+  useEffect(() => {
+    loadStaff().then(setStaff).catch(() => undefined);
+  }, []);
+  return staff;
+}
+
+// "self" or a user id; completedById is the signed-in user unless Admin picks someone
+interface SignOffValue {
+  completedById: string | null;
+  checkedById: string;
+}
+
+function initialSignOff(item: SheetItem): SignOffValue {
+  return {
+    completedById: item.completedBy?.id ?? null,
+    checkedById: !item.checkedBy || item.selfChecked ? "self" : item.checkedBy.id,
+  };
+}
+
+function signOffPayload(value: SignOffValue) {
+  return { checkedById: value.checkedById, ...(value.completedById && { completedById: value.completedById }) };
+}
+
+function SignOff({ value, onChange, disabled }: { value: SignOffValue; onChange: (v: SignOffValue) => void; disabled: boolean }) {
+  const staff = useStaff();
+  if (!staff) return <p className="text-xs text-muted-foreground">Loading staff…</p>;
+  const completedById = value.completedById ?? staff.me.id;
+  const completerName = staff.users.find((u) => u.id === completedById)?.name ?? staff.me.name;
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div className="space-y-1">
+        <Label className="text-xs">Completed by</Label>
+        {staff.me.isAdmin ? (
+          <Select value={completedById} onValueChange={(id) => onChange({ ...value, completedById: id })} disabled={disabled}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {staff.users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}{u.id === staff.me.id ? " (you)" : ""}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : (
+          <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{completerName}</p>
+        )}
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Checked by</Label>
+        <Select value={value.checkedById} onValueChange={(checkedById) => onChange({ ...value, checkedById })} disabled={disabled}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="self">Self</SelectItem>
+            {staff.users.filter((u) => u.id !== completedById).map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+function signOffText(item: SheetItem) {
+  if (!item.completedBy) return null;
+  return `Completed by ${item.completedBy.name} · ${item.selfChecked || !item.checkedBy ? "self-checked" : `checked by ${item.checkedBy.name}`}`;
+}
 
 const numberOrNull = (value: string) => (value.trim() === "" ? null : Number(value));
 
@@ -144,6 +234,20 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
         {locked && open && (
           <p className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
             <Lock className="mt-0.5 h-4 w-4 shrink-0" /> Can&apos;t be filed yet: {item.lockReason}
+          </p>
+        )}
+        {item.warning && open && (
+          <p className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {item.warning}. You can still file it; the warning is kept in the history.
+            </span>
+          </p>
+        )}
+        {signOffText(item) && <p className="text-xs text-muted-foreground">{signOffText(item)}</p>}
+        {item.historical && item.filesMissing.length > 0 && (
+          <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+            Past period: {item.filesMissing.join(" and ")} not attached yet. Add {item.filesMissing.length === 1 ? "it" : "them"} under Files.
           </p>
         )}
         {item.status === "filed" && item.missing.length > 0 && (
@@ -291,63 +395,106 @@ function Lines({ item, disabled, busy, run }: { item: SheetItem; disabled: boole
   const [amounts, setAmounts] = useState<Record<string, string>>(
     Object.fromEntries(item.lines.map((l) => [l.id, l.taxAmount !== null ? String(l.taxAmount) : ""]))
   );
+  const [skipping, setSkipping] = useState<string | null>(null);
   const title = item.kind === "GSTR3B" ? "RCM to pay this period" : "TDS to deduct and pay this month";
+  const closes = item.kind === "GSTR3B" ? "The return can't be marked filed" : "The month can't be closed";
   return (
     <Section title={title}>
-      <p className="text-xs text-muted-foreground">Confirm each line with the amount, or skip it with a reason. The period can&apos;t be closed while a line is open.</p>
+      <p className="text-xs text-muted-foreground">Confirm each line with the amount, or skip it with a reason. {closes} while a line is open.</p>
       <ul className="space-y-2">
         {item.lines.map((line) => (
-          <li key={line.id} className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="min-w-48 flex-1">
-              {line.label} <span className="text-muted-foreground">@ {line.ratePercent}%</span>
-              {line.fixed && line.baseAmount !== null && <span className="text-muted-foreground"> on {rupees(line.baseAmount)}</span>}
-            </span>
-            {line.status === "pending" ? (
-              <>
-                <Input
-                  type="number"
-                  min={0}
-                  placeholder="Tax amount"
-                  className="w-32"
-                  value={amounts[line.id] ?? ""}
-                  disabled={disabled}
-                  onChange={(e) => setAmounts((a) => ({ ...a, [line.id]: e.target.value }))}
-                />
-                <Button
-                  size="sm"
-                  disabled={disabled || busy !== null || numberOrNull(amounts[line.id] ?? "") === null}
-                  onClick={() => run(`line-${line.id}`, { action: "line", lineId: line.id, status: "confirmed", taxAmount: numberOrNull(amounts[line.id] ?? "") })}
-                >
-                  <Check className="mr-1 h-4 w-4" /> Confirm
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={disabled || busy !== null}
-                  onClick={() => {
-                    const note = window.prompt("Why is it skipped this time? (e.g. rent not paid this month)");
-                    if (note !== null) run(`line-${line.id}`, { action: "line", lineId: line.id, status: "skipped", note });
-                  }}
-                >
-                  Skip
-                </Button>
-              </>
-            ) : (
-              <>
-                <span className={line.status === "confirmed" ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}>
-                  {line.status === "confirmed" ? `✓ ${rupees(line.taxAmount)}` : `Skipped${line.note ? `: ${line.note}` : ""}`}
-                </span>
-                {!disabled && (
-                  <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => run(`line-${line.id}`, { action: "line", lineId: line.id, status: "pending" })}>
-                    <Undo2 className="h-4 w-4" />
+          <li key={line.id} className="space-y-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="min-w-48 flex-1">
+                {line.label} <span className="text-muted-foreground">@ {line.ratePercent}%</span>
+                {line.fixed && line.baseAmount !== null && <span className="text-muted-foreground"> on {rupees(line.baseAmount)}</span>}
+              </span>
+              {line.status === "pending" ? (
+                <>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="Tax amount"
+                    className="w-32"
+                    value={amounts[line.id] ?? ""}
+                    disabled={disabled}
+                    onChange={(e) => setAmounts((a) => ({ ...a, [line.id]: e.target.value }))}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={disabled || busy !== null || numberOrNull(amounts[line.id] ?? "") === null}
+                    onClick={() => run(`line-${line.id}`, { action: "line", lineId: line.id, status: "confirmed", taxAmount: numberOrNull(amounts[line.id] ?? "") })}
+                  >
+                    <Check className="mr-1 h-4 w-4" /> Confirm
                   </Button>
-                )}
-              </>
+                  <Button size="sm" variant="outline" disabled={disabled || busy !== null} onClick={() => setSkipping((s) => (s === line.id ? null : line.id))}>
+                    Skip
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className={line.status === "confirmed" ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}>
+                    {line.status === "confirmed" ? `✓ ${rupees(line.taxAmount)}` : `Skipped${line.note ? `: ${line.note}` : ""}`}
+                    {line.resolvedBy && <span className="text-xs text-muted-foreground"> · {line.resolvedBy}</span>}
+                  </span>
+                  {!disabled && (
+                    <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => run(`line-${line.id}`, { action: "line", lineId: line.id, status: "pending" })}>
+                      <Undo2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+            {skipping === line.id && line.status === "pending" && (
+              <SkipForm
+                busy={busy !== null}
+                onCancel={() => setSkipping(null)}
+                onSkip={async (note, stopObligation) => {
+                  const ok = await run(`line-${line.id}`, { action: "line", lineId: line.id, status: "skipped", note, stopObligation }, "Skipped");
+                  if (ok) setSkipping(null);
+                }}
+              />
             )}
           </li>
         ))}
       </ul>
     </Section>
+  );
+}
+
+function SkipForm({ busy, onCancel, onSkip }: { busy: boolean; onCancel: () => void; onSkip: (note: string, stop: boolean) => void }) {
+  const [reason, setReason] = useState(SKIP_REASONS[0]);
+  const [detail, setDetail] = useState("");
+  const [stop, setStop] = useState(true);
+  const note = (reason === "Other" ? detail : detail.trim() ? `${reason}: ${detail.trim()}` : reason).trim();
+  return (
+    <div className="space-y-2 rounded-md bg-muted/40 p-2">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Select value={reason} onValueChange={setReason}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {SKIP_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Input
+          placeholder={reason === "Other" ? "Why is it skipped this time?" : "Details (optional)"}
+          maxLength={250}
+          value={detail}
+          onChange={(e) => setDetail(e.target.value)}
+        />
+      </div>
+      {reason === ENDED_REASON && (
+        <label className="flex items-center gap-2 text-xs">
+          <Checkbox checked={stop} onCheckedChange={(c) => setStop(c === true)} /> Stop this monthly payment from this period
+        </label>
+      )}
+      <div className="flex gap-2">
+        <Button size="sm" disabled={busy || note.length < 3} onClick={() => onSkip(note, reason === ENDED_REASON && stop)}>
+          Skip with this reason
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
   );
 }
 
@@ -386,6 +533,7 @@ function Filing({ item, disabled, busy, run }: { item: SheetItem; disabled: bool
   const [values, setValues] = useState<Record<string, string>>(
     Object.fromEntries(fields.map((f) => [f.key, item.figures[f.key] !== undefined ? String(item.figures[f.key]) : ""]))
   );
+  const [signOff, setSignOff] = useState(() => initialSignOff(item));
   const filed = item.status === "filed" || item.status === "completed";
   const closed = item.status === "completed" || item.status === "not_required";
   const arnLabel = item.kind === "TDS_RETURN" ? "Token / RRR number" : "ARN / acknowledgement number";
@@ -411,6 +559,7 @@ function Filing({ item, disabled, busy, run }: { item: SheetItem; disabled: bool
           <Checkbox checked={isNil} disabled={disabled || closed} onCheckedChange={(c) => setIsNil(c === true)} /> Nil return
         </label>
       )}
+      {!closed && !item.historical && <SignOff value={signOff} onChange={setSignOff} disabled={disabled} />}
       {fields.length > 0 && (
         <>
           <p className="text-xs text-muted-foreground">
@@ -425,7 +574,18 @@ function Filing({ item, disabled, busy, run }: { item: SheetItem; disabled: bool
             size="sm"
             disabled={disabled || busy !== null || !filedAt}
             onClick={() =>
-              run("file", { action: "file", filedAt, arn: arn.trim() || null, isNil, figures: figuresPayload(values) }, filed ? "Saved" : "Marked filed")
+              run(
+                "file",
+                {
+                  action: "file",
+                  filedAt,
+                  arn: arn.trim() || null,
+                  isNil,
+                  figures: figuresPayload(values),
+                  ...(!item.historical && signOffPayload(signOff)),
+                },
+                filed ? "Saved" : "Marked filed"
+              )
             }
           >
             {busy === "file" && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
@@ -488,6 +648,7 @@ function Gstr1A({ item, client, disabled, busy, run, onChange }: { item: SheetIt
 
 function TdsPayment({ item, disabled, busy, run, onChange }: { item: SheetItem; disabled: boolean; busy: string | null; run: Run; onChange: (i: SheetItem) => void }) {
   const [form, setForm] = useState({ section: "192", bsrCode: "", challanDate: todayKey(), serialNo: "", amount: "" });
+  const [signOff, setSignOff] = useState(() => initialSignOff(item));
   const closed = item.status === "completed";
   const total = item.challans.reduce((s, c) => s + c.amount, 0);
   const addChallan = async () => {
@@ -535,6 +696,7 @@ function TdsPayment({ item, disabled, busy, run, onChange }: { item: SheetItem; 
           </div>
         </div>
       )}
+      {!closed && !item.historical && <SignOff value={signOff} onChange={setSignOff} disabled={disabled} />}
       <div className="flex flex-wrap gap-2">
         {closed ? (
           <Button size="sm" variant="outline" disabled={disabled || busy !== null} onClick={() => run("close", { action: "tds_reopen" }, "Reopened")}>
@@ -542,10 +704,10 @@ function TdsPayment({ item, disabled, busy, run, onChange }: { item: SheetItem; 
           </Button>
         ) : (
           <>
-            <Button size="sm" disabled={disabled || busy !== null || item.challans.length === 0} onClick={() => run("close", { action: "tds_close", noTds: false }, "Month closed")}>
+            <Button size="sm" disabled={disabled || busy !== null || item.challans.length === 0} onClick={() => run("close", { action: "tds_close", noTds: false, ...signOffPayload(signOff) }, "Month closed")}>
               Close month (TDS paid)
             </Button>
-            <Button size="sm" variant="outline" disabled={disabled || busy !== null || item.challans.length > 0} onClick={() => run("close", { action: "tds_close", noTds: true }, "Marked no TDS")}>
+            <Button size="sm" variant="outline" disabled={disabled || busy !== null || item.challans.length > 0} onClick={() => run("close", { action: "tds_close", noTds: true, ...signOffPayload(signOff) }, "Marked no TDS")}>
               No TDS this month
             </Button>
           </>
@@ -733,7 +895,7 @@ function Files({ item, client, disabled, onChange }: { item: SheetItem; client: 
                   <Download className="h-4 w-4" />
                 </a>
               </Button>
-              {!disabled && item.status !== "completed" && (
+              {!disabled && (item.status !== "completed" || item.historical) && (
                 <Button size="sm" variant="ghost" disabled={removing === d.id} onClick={() => remove(d.id)} aria-label="Remove">
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -750,7 +912,7 @@ function Files({ item, client, disabled, onChange }: { item: SheetItem; client: 
           </Button>
         </div>
       )}
-      {item.status !== "completed" && <FileButtons item={item} client={client} kinds={kinds} disabled={disabled} onChange={onChange} />}
+      {(item.status !== "completed" || item.historical) && <FileButtons item={item} client={client} kinds={kinds} disabled={disabled} onChange={onChange} />}
     </Section>
   );
 }

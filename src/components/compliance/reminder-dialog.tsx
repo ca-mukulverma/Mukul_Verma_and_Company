@@ -5,6 +5,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Check, Loader2, Mail, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +19,8 @@ export interface ReminderTarget {
 }
 
 interface Result {
+  // One per client and person (the responsible person, or the owner too)
+  key: string;
   clientId: string;
   name: string;
   ok: boolean;
@@ -43,6 +46,7 @@ export function ReminderDialog({
 }) {
   const [channel, setChannel] = useState<"WHATSAPP" | "EMAIL">("WHATSAPP");
   const [message, setMessage] = useState(template ?? "");
+  const [alsoOwner, setAlsoOwner] = useState(false);
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState<Result[] | null>(null);
   const [opened, setOpened] = useState<string[]>([]);
@@ -53,6 +57,7 @@ export function ReminderDialog({
       const { data } = await axios.post("/api/compliance/reminders", {
         itemIds: targets.flatMap((t) => t.itemIds),
         channel,
+        alsoOwner,
         message: message.trim() && message.trim() !== template?.trim() ? message.trim() : null,
       });
       setResults(data.results);
@@ -71,9 +76,9 @@ export function ReminderDialog({
   // One browser tab named "whatsapp" is reused for every chat
   const openChat = (r: Result) => {
     window.open(`https://wa.me/${r.phone}?text=${encodeURIComponent(r.text ?? "")}`, "whatsapp");
-    setOpened((o) => [...o, r.clientId]);
+    setOpened((o) => [...o, r.key]);
   };
-  const next = results?.find((r) => r.ok && r.phone && !opened.includes(r.clientId));
+  const next = results?.find((r) => r.ok && r.phone && !opened.includes(r.key));
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -108,6 +113,15 @@ export function ReminderDialog({
                 {"{client}"}, {"{work}"}, {"{period}"}, {"{due}"}, {"{taxPayable}"} and {"{firm}"} are filled in for each client.
               </p>
             </div>
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox className="mt-0.5" checked={alsoOwner} onCheckedChange={(c) => setAlsoOwner(c === true)} />
+              <span>
+                Also send to the owner
+                <span className="block text-xs text-muted-foreground">
+                  Reminders go to each client&apos;s responsible person. Tick this to send them to the owner as well, where someone else is responsible.
+                </span>
+              </span>
+            </label>
             {targets.length > 1 && (
               <p className="max-h-24 overflow-y-auto text-xs text-muted-foreground">{targets.map((t) => t.clientName).join(", ")}</p>
             )}
@@ -130,15 +144,15 @@ export function ReminderDialog({
             )}
             <ul className="max-h-72 space-y-1 overflow-y-auto text-sm">
               {results.map((r) => (
-                <li key={r.clientId} className="flex items-center gap-2">
+                <li key={r.key} className="flex items-center gap-2">
                   {r.ok ? <Check className="h-4 w-4 text-emerald-600" /> : <span className="h-4 w-4 text-center text-red-600">!</span>}
                   <span className="flex-1">
                     {r.name}
                     {!r.ok && <span className="text-red-600"> – {r.error}</span>}
                   </span>
                   {channel === "WHATSAPP" && r.ok && (
-                    <Button size="sm" variant={opened.includes(r.clientId) ? "ghost" : "outline"} onClick={() => openChat(r)}>
-                      {opened.includes(r.clientId) ? "Open again" : "Open"}
+                    <Button size="sm" variant={opened.includes(r.key) ? "ghost" : "outline"} onClick={() => openChat(r)}>
+                      {opened.includes(r.key) ? "Open again" : "Open"}
                     </Button>
                   )}
                 </li>

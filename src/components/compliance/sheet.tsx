@@ -411,6 +411,11 @@ export function ComplianceSheet({
                     <td className="sticky left-0 max-w-[14rem] bg-background p-2">
                       <p className="truncate font-medium" title={row.client.name}>{row.client.name}</p>
                       {row.client.gstin && <p className="text-[11px] text-muted-foreground">{row.client.gstin}</p>}
+                      {row.client.noWhatsapp && (
+                        <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                          ⚠ No WhatsApp number{row.client.responsibleName ? ` for ${row.client.responsibleName}` : ""}
+                        </p>
+                      )}
                     </td>
                     {cells(row).map((cell, i) => (
                       <td key={i} className="p-2 align-middle">

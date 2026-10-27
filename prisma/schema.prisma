@@ -132,6 +132,9 @@ model User {
   complianceEvents        ComplianceEvent[]
   complianceDocuments     ComplianceDocument[]
   complianceReminders     ComplianceReminder[]
+  complianceCompleted     ComplianceItem[]      @relation("ComplianceItemCompletedBy")
+  complianceChecked       ComplianceItem[]      @relation("ComplianceItemCheckedBy")
+  obligationLinesResolved ComplianceObligationLine[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -139,13 +142,26 @@ model User {
 
 model Client {
   id             String       @id @default(uuid()) @db.Char(36)
-  contactPerson  String       @db.VarChar(50)   // 50 is sufficient for names
+  contactPerson  String       @db.VarChar(50)   // Owner's name
   companyName    String?      @db.VarChar(75)   // Reduced from 150
   email          String?      @db.VarChar(75)   // Reduced from 255
-  phone          String?      @db.VarChar(15)   // International format
+  phone          String?      @db.VarChar(15)   // First of the owner's numbers (kept in step with phones)
+  // Owner's mobile numbers: [{ number, label, whatsapp }] (see lib/client-contacts.ts)
+  phones         Json?
+  // When false, compliance reminders go to the responsible person instead
+  ownerIsResponsible Boolean  @default(true)
+  responsibleName    String?  @db.VarChar(50)
+  responsiblePhone   String?  @db.VarChar(15)
+  responsibleEmail   String?  @db.VarChar(75)
+  // The connector who brought the client: bills go to the connector's ledger
+  connectorId    String?      @db.Char(36)
+  connector      Connector?   @relation(fields: [connectorId], references: [id], onDelete: SetNull)
+  // Added without a Tally ledger by someone who may not set it: the billing
+  // manager is reminded until they do
   address        String?      @db.VarChar(150)  // Reduced from 255
   notes          String?      @db.Text        // Keep as Text for longer content
   gstin          String?      @db.VarChar(15) // Standard GSTIN is 15 chars
+  tallyLedgerPending Boolean  @default(false)
   tallyLedgerName String?     @db.VarChar(100) // Party ledger in Tally, if not the client's name
   isGuest        Boolean      @default(false) // Whether this is a temporary guest client
   accessExpiry   DateTime?    // When guest client access expires
@@ -168,6 +184,23 @@ model Client {
   
   @@index([managerId])
   @@index([contactPerson]) // Index for searching by contact person name
+  @@index([connectorId])
+}
+
+// Someone who brings clients to the firm. Fees of their clients are collected
+// from them, so those bills go to the connector's ledger in Tally.
+model Connector {
+  id              String   @id @default(uuid()) @db.Char(36)
+  name            String   @db.VarChar(100)
+  phone           String?  @db.VarChar(15)
+  email           String?  @db.VarChar(75)
+  tallyLedgerName String?  @db.VarChar(100) // Defaults to the name
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  clients Client[]
+  bills   Bill[]
 }
 
 model Task {
@@ -379,6 +412,17 @@ model Bill {
   billToName    String? @db.VarChar(150)
   billToAddress String? @db.Text
   billToGstin   String? @db.VarChar(15)
+  // Clients of a connector: the client's GSTIN is printed (and the bill
+  // reported as B2B) only when this is ticked; otherwise it is B2C
+  showGstin     Boolean @default(false)
+  // Set at final approval, so a later change of the client's connector or
+  // ledger doesn't move a numbered bill to another ledger
+  connectorId     String?    @db.Char(36)
+  connector       Connector? @relation(fields: [connectorId], references: [id], onDelete: SetNull)
+  tallyLedgerName String?    @db.VarChar(100)
+  // When the bill reached its current stage (or was sent to another person
+  // for the amount); kept by a database trigger. Used by the daily reminders.
+  statusChangedAt DateTime   @default(now())
 
   // Professional fee before GST
   amount                Decimal?  @db.Decimal(12, 2)
@@ -426,6 +470,7 @@ model Bill {
   @@index([amountRequestedFromId, status])
   @@index([createdById])
   @@index([clientId])
+  @@index([connectorId])
 }
 
 // History of everything done to a bill
@@ -720,6 +765,12 @@ model ComplianceItem {
   bill            Bill?               @relation(fields: [billId], references: [id], onDelete: SetNull)
   updatedById     String?             @db.Char(36)
   updatedBy       User?               @relation("ComplianceItemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  // Who filed the return (or closed the TDS month), and who checked it; the
+  // same person when it was self-checked. Not asked for past periods.
+  completedById   String?             @db.Char(36)
+  completedBy     User?               @relation("ComplianceItemCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  checkedById     String?             @db.Char(36)
+  checkedBy       User?               @relation("ComplianceItemCheckedBy", fields: [checkedById], references: [id], onDelete: SetNull)
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
@@ -805,8 +856,10 @@ model ComplianceObligationLine {
   baseAmount   Decimal?             @db.Decimal(14, 2)
   taxAmount    Decimal?             @db.Decimal(14, 2)
   status       ObligationLineStatus @default(pending)
-  note         String?              @db.VarChar(300)
+  note         String?              @db.VarChar(300) // Required when skipped
   resolvedAt   DateTime?
+  resolvedById String?              @db.Char(36)
+  resolvedBy   User?                @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
 
   @@unique([itemId, obligationId])
 }

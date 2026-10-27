@@ -24,9 +24,9 @@ import {
   STATUS_LABELS,
   statusClasses,
   TDS_SECTIONS,
-  todayKey,
 } from "./types";
 import { uploadComplianceFile } from "./upload";
+import { OldPeriods } from "./old-periods";
 
 interface ClientListItem {
   id: string;
@@ -327,7 +327,7 @@ function ClientDetailView({ clientId, workTypes, isManager, onChanged }: { clien
       <Works data={data} workTypes={workTypes} isManager={isManager} onChanged={reload} />
       <Obligations data={data} onChanged={reload} />
       <YearView data={data} workTypes={workTypes} fy={data.fy} setFy={setFy} />
-      <PastPeriod data={data} workTypes={workTypes} onChanged={reload} />
+      <PastPeriods data={data} workTypes={workTypes} onChanged={reload} />
       <Documents data={data} onChanged={reload} />
     </div>
   );
@@ -642,59 +642,19 @@ function YearView({ data, workTypes, fy, setFy }: { data: ClientDetail; workType
   );
 }
 
-function PastPeriod({ data, workTypes, onChanged }: { data: ClientDetail; workTypes: WorkType[]; onChanged: () => void }) {
+function PastPeriods({ data, workTypes, onChanged }: { data: ClientDetail; workTypes: WorkType[]; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ workTypeId: data.subscriptions[0]?.workTypeId ?? workTypes[0]?.id ?? "", month: "", status: "completed", filedAt: "", arn: "", isNil: false });
-  const [saving, setSaving] = useState(false);
-  const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
-  const save = async () => {
-    setSaving(true);
-    try {
-      await axios.post("/api/compliance/history", {
-        clientId: data.client.id,
-        workTypeId: form.workTypeId,
-        month: form.month,
-        status: form.status,
-        filedAt: form.filedAt || null,
-        arn: form.arn.trim() || null,
-        isNil: form.isNil,
-      });
-      toast.success("Past period saved");
-      set({ month: "", filedAt: "", arn: "", isNil: false });
-      onChanged();
-    } catch (error) {
-      toast.error(apiError(error));
-    } finally {
-      setSaving(false);
-    }
-  };
+  // The client's own works first
+  const ordered = [
+    ...workTypes.filter((w) => data.subscriptions.some((s) => s.workTypeId === w.id)),
+    ...workTypes.filter((w) => !data.subscriptions.some((s) => s.workTypeId === w.id)),
+  ];
   return (
-    <Box title="Enter a past period" action={<Button size="sm" variant="outline" onClick={() => setOpen((o) => !o)}>{open ? "Close" : "Open"}</Button>}>
-      <p className="text-xs text-muted-foreground">For periods before tracking started, so the full history is in one place. No reminders or bills are made for them. Files can be added from the sheet.</p>
-      {open && (
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Select value={form.workTypeId} onValueChange={(workTypeId) => set({ workTypeId })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {workTypes.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Input type="month" value={form.month} onChange={(e) => set({ month: e.target.value })} title="Any month of the period" />
-          <Select value={form.status} onValueChange={(status) => set({ status })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="filed">Filed (files still to add)</SelectItem>
-              <SelectItem value="not_required">Not required</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input type="date" max={todayKey()} value={form.filedAt} onChange={(e) => set({ filedAt: e.target.value })} title="Filing date" />
-          <Input placeholder="ARN / acknowledgement (optional)" value={form.arn} onChange={(e) => set({ arn: e.target.value })} />
-          <div className="flex items-center justify-between gap-2">
-            <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.isNil} onCheckedChange={(c) => set({ isNil: c === true })} /> Nil</label>
-            <Button size="sm" disabled={saving || !form.month || !form.workTypeId} onClick={save}>{saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Save</Button>
-          </div>
-        </div>
+    <Box title="Past periods (with return PDF and JSON)" action={<Button size="sm" variant="outline" onClick={() => setOpen((o) => !o)}>{open ? "Close" : "Open"}</Button>}>
+      {open ? (
+        <OldPeriods clientId={data.client.id} workTypes={ordered} onChanged={onChanged} />
+      ) : (
+        <p className="text-xs text-muted-foreground">Enter the months or quarters before tracking started, each with its filing date, ARN and files.</p>
       )}
     </Box>
   );

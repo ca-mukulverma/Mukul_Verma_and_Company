@@ -18,7 +18,8 @@ export async function GET() {
   const monthStart = utcDate(today.getUTCFullYear(), today.getUTCMonth() + 1);
   const open = { in: ["pending", "data_received"] as ("pending" | "data_received")[] };
 
-  const [workTypes, overdue, dueSoon, pending, dataReceived, filed, completed, notes, sentToday] = await Promise.all([
+  const signOffFrom = new Date(today.getTime() - 90 * 86_400_000);
+  const [workTypes, overdue, dueSoon, pending, dataReceived, filed, completed, notes, sentToday, signOffs] = await Promise.all([
     prisma.complianceWorkType.findMany({
       where: { active: true },
       orderBy: { sortOrder: "asc" },
@@ -38,7 +39,22 @@ export async function GET() {
         })
       : Promise.resolve([]),
     emailsSentToday(),
+    // Who completed what in the last 90 days, and how much was self-checked
+    access.isManager
+      ? prisma.complianceItem.findMany({
+          where: { completedById: { not: null }, OR: [{ filedAt: { gte: signOffFrom } }, { completedAt: { gte: signOffFrom } }] },
+          select: { completedById: true, checkedById: true, completedBy: { select: { name: true } } },
+        })
+      : Promise.resolve([]),
   ]);
+
+  const byPerson = new Map<string, { name: string; total: number; selfChecked: number }>();
+  for (const s of signOffs) {
+    const row = byPerson.get(s.completedById!) ?? { name: s.completedBy?.name ?? "?", total: 0, selfChecked: 0 };
+    row.total++;
+    if (s.checkedById === s.completedById) row.selfChecked++;
+    byPerson.set(s.completedById!, row);
+  }
 
   const count = (rows: { workTypeId: string; _count: number }[], id: string) => rows.find((r) => r.workTypeId === id)?._count ?? 0;
   return NextResponse.json({
@@ -60,5 +76,6 @@ export async function GET() {
     notes: notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString(), client: n.client ? { id: n.client.id, name: partyName(n.client) } : null })),
     email: { sentToday, limit: GMAIL_DAILY_LIMIT, mvc: billingEmailConfigured("MVC"), bedge: billingEmailConfigured("BEDGE") },
     storageReady: r2Configured(),
+    signOffs: [...byPerson.values()].sort((a, b) => b.total - a.total),
   });
 }

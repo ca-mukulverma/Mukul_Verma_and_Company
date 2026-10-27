@@ -33,6 +33,8 @@ export interface ComplianceAccess {
   name: string;
   // Admins and Partners: setup, every item, Claude notes
   isManager: boolean;
+  // Only Admin may record someone else as the one who completed a filing
+  isAdmin: boolean;
   // Work types the user is currently on the team of
   teamWorkTypeIds: Set<string>;
   // Work types that have a team at all; anyone may work on the others
@@ -49,6 +51,7 @@ export async function getComplianceAccess(userId: string): Promise<ComplianceAcc
     userId,
     name: user.name,
     isManager: user.role === "ADMIN" || user.role === "PARTNER",
+    isAdmin: user.role === "ADMIN",
     teamWorkTypeIds: new Set(teams.filter((t) => t.userId === userId).map((t) => t.workTypeId)),
     staffedWorkTypeIds: new Set(teams.map((t) => t.workTypeId)),
   };
@@ -186,17 +189,35 @@ export async function ensureItems(pairs: { sub: SubscriptionWithRefs; periodStar
 async function addObligationLines(pairs: { sub: SubscriptionWithRefs; periodStart: Date }[]) {
   const candidates = pairs.filter(({ sub }) => sub.workType.kind === "GSTR3B" || sub.workType.kind === "TDS_PAYMENT");
   if (candidates.length === 0) return;
+  await addLinesToOpenItems(
+    [...new Set(candidates.map(({ sub }) => sub.clientId))],
+    candidates.map(({ sub, periodStart }) => ({ clientId: sub.clientId, workTypeId: sub.workTypeId, periodStart }))
+  );
+}
+
+// Gives open GSTR-3B / TDS payment items (of `only`, or every open one of the
+// clients) the RCM/TDS lines they don't have yet. Every open period is covered,
+// so a monthly payment added late still reaches older periods not filed yet.
+// Past periods entered by hand never get lines.
+export async function addLinesToOpenItems(
+  clientIds: string[],
+  only?: { clientId: string; workTypeId: string; periodStart: Date }[]
+) {
   // Only clients that have obligations get lines
   const obligations = await prisma.clientObligation.findMany({
-    where: { clientId: { in: [...new Set(candidates.map(({ sub }) => sub.clientId))] }, active: true },
+    where: { clientId: { in: clientIds }, active: true },
   });
-  const withLines = candidates.filter(({ sub }) => obligations.some((o) => o.clientId === sub.clientId));
-  if (withLines.length === 0) return;
+  if (obligations.length === 0) return;
+  const withObligations = new Set(obligations.map((o) => o.clientId));
+  const wanted = only?.filter((o) => withObligations.has(o.clientId));
+  if (wanted && wanted.length === 0) return;
 
   const items = await prisma.complianceItem.findMany({
     where: {
-      OR: withLines.map(({ sub, periodStart }) => ({ clientId: sub.clientId, workTypeId: sub.workTypeId, periodStart })),
+      ...(wanted ? { OR: wanted } : { clientId: { in: [...withObligations] } }),
+      workType: { kind: { in: ["GSTR3B", "TDS_PAYMENT"] } },
       status: { notIn: DONE },
+      historical: false,
     },
     select: { id: true, clientId: true, frequency: true, periodStart: true, workType: { select: { kind: true } } },
   });
@@ -267,20 +288,22 @@ export interface LockableItem {
 
 // Why each item can't be filed yet (only locked items are in the map):
 // - GSTR-1: every earlier GSTR-1 must be completed and the previous GSTR-3B filed
-// - GSTR-3B: this period's GSTR-1 and the previous GSTR-3B must be filed
-// - TDS return: the quarter's TDS payments must be closed
+// - GSTR-3B: this period's GSTR-1 and the previous GSTR-3B must be filed, and
+//   every RCM line confirmed or skipped (so an RCM payment is never missed)
 // Periods before tracking started have no items and don't lock anything.
+// A TDS return is not locked; see tdsReturnWarnings.
 export async function computeLocks(items: LockableItem[]): Promise<Map<string, string>> {
   const locks = new Map<string, string>();
   const gst = items.filter((i) => i.kind === "GSTR1" || i.kind === "GSTR3B");
-  const tds = items.filter((i) => i.kind === "TDS_RETURN");
+  if (gst.length === 0) return locks;
 
-  if (gst.length) {
-    const clientIds = [...new Set(gst.map((i) => i.clientId))];
-    const maxStart = new Date(Math.max(...gst.map((i) => i.periodStart.getTime())));
-    const recentFrom = addMonths(new Date(Math.min(...gst.map((i) => i.periodStart.getTime()))), -12);
-    // The last year's GST items, and any older GSTR-1 still open
-    const earlier = await prisma.complianceItem.findMany({
+  const clientIds = [...new Set(gst.map((i) => i.clientId))];
+  const maxStart = new Date(Math.max(...gst.map((i) => i.periodStart.getTime())));
+  const recentFrom = addMonths(new Date(Math.min(...gst.map((i) => i.periodStart.getTime()))), -12);
+  const threeBIds = gst.filter((i) => i.kind === "GSTR3B").map((i) => i.id);
+  // The last year's GST items, and any older GSTR-1 still open
+  const [earlier, pendingLines] = await Promise.all([
+    prisma.complianceItem.findMany({
       where: {
         clientId: { in: clientIds },
         periodStart: { lte: maxStart },
@@ -291,55 +314,112 @@ export async function computeLocks(items: LockableItem[]): Promise<Map<string, s
       },
       select: { clientId: true, periodStart: true, frequency: true, status: true, workType: { select: { kind: true } } },
       orderBy: { periodStart: "desc" },
-    });
-    for (const item of gst) {
-      const mine = earlier.filter((e) => e.clientId === item.clientId);
-      const openGstr1 = mine
-        .filter((e) => e.workType.kind === "GSTR1" && e.periodStart < item.periodStart && !DONE.includes(e.status))
-        .pop(); // oldest open one
-      const previous3b = mine.find((e) => e.workType.kind === "GSTR3B" && e.periodStart < item.periodStart);
-      const reasons: string[] = [];
-      if (item.kind === "GSTR1" && openGstr1) {
-        reasons.push(`GSTR-1 ${periodLabel(openGstr1.frequency, openGstr1.periodStart)} is not completed`);
-      }
-      if (item.kind === "GSTR3B") {
-        const gstr1 = mine.find((e) => e.workType.kind === "GSTR1" && e.periodStart.getTime() === item.periodStart.getTime());
-        if (gstr1 && !FILED_OR_DONE.includes(gstr1.status)) reasons.push("GSTR-1 of this period is not filed");
-      }
-      if (previous3b && !FILED_OR_DONE.includes(previous3b.status)) {
-        reasons.push(`GSTR-3B ${periodLabel(previous3b.frequency, previous3b.periodStart)} is not filed`);
-      }
-      if (reasons.length) locks.set(item.id, reasons.join("; "));
+    }),
+    threeBIds.length
+      ? prisma.complianceObligationLine.groupBy({
+          by: ["itemId"],
+          where: { itemId: { in: threeBIds }, status: "pending" },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  for (const item of gst) {
+    const mine = earlier.filter((e) => e.clientId === item.clientId);
+    const openGstr1 = mine
+      .filter((e) => e.workType.kind === "GSTR1" && e.periodStart < item.periodStart && !DONE.includes(e.status))
+      .pop(); // oldest open one
+    const previous3b = mine.find((e) => e.workType.kind === "GSTR3B" && e.periodStart < item.periodStart);
+    const reasons: string[] = [];
+    if (item.kind === "GSTR1" && openGstr1) {
+      reasons.push(`GSTR-1 ${periodLabel(openGstr1.frequency, openGstr1.periodStart)} is not completed`);
     }
-  }
-
-  if (tds.length) {
-    const clientIds = [...new Set(tds.map((i) => i.clientId))];
-    const [payments, paymentSubs] = await Promise.all([
-      prisma.complianceItem.findMany({
-        where: { clientId: { in: clientIds }, workType: { kind: "TDS_PAYMENT" } },
-        select: { clientId: true, periodStart: true, status: true },
-      }),
-      prisma.clientCompliance.findMany({
-        where: { clientId: { in: clientIds }, active: true, workType: { kind: "TDS_PAYMENT", active: true } },
-        select: { clientId: true, startPeriod: true },
-      }),
-    ]);
-    for (const item of tds) {
-      const sub = paymentSubs.find((s) => s.clientId === item.clientId);
-      if (!sub) continue; // TDS payments not tracked for this client
-      for (let i = 0; i < 3; i++) {
-        const month = addMonths(item.periodStart, i);
-        if (month < sub.startPeriod) continue;
-        const payment = payments.find((p) => p.clientId === item.clientId && p.periodStart.getTime() === month.getTime());
-        if (!payment || payment.status !== "completed") {
-          locks.set(item.id, `TDS payment for ${periodLabel("MONTHLY", month)} is not closed`);
-          break;
-        }
-      }
+    if (item.kind === "GSTR3B") {
+      const gstr1 = mine.find((e) => e.workType.kind === "GSTR1" && e.periodStart.getTime() === item.periodStart.getTime());
+      if (gstr1 && !FILED_OR_DONE.includes(gstr1.status)) reasons.push("GSTR-1 of this period is not filed");
+      const open = pendingLines.find((l) => l.itemId === item.id)?._count._all ?? 0;
+      if (open > 0) reasons.push(`${open === 1 ? "1 RCM line is" : `${open} RCM lines are`} not confirmed or skipped`);
     }
+    if (previous3b && !FILED_OR_DONE.includes(previous3b.status)) {
+      reasons.push(`GSTR-3B ${periodLabel(previous3b.frequency, previous3b.periodStart)} is not filed`);
+    }
+    if (reasons.length) locks.set(item.id, reasons.join("; "));
   }
   return locks;
+}
+
+// The months of each TDS return's quarter whose TDS payment is not closed yet
+// (only returns with such months are in the map). Months before the client's
+// TDS payments were tracked are left out.
+async function openTdsPaymentMonths(items: LockableItem[]): Promise<Map<string, Date[]>> {
+  const open = new Map<string, Date[]>();
+  const tds = items.filter((i) => i.kind === "TDS_RETURN");
+  if (tds.length === 0) return open;
+  const clientIds = [...new Set(tds.map((i) => i.clientId))];
+  const [payments, paymentSubs] = await Promise.all([
+    prisma.complianceItem.findMany({
+      where: { clientId: { in: clientIds }, workType: { kind: "TDS_PAYMENT" } },
+      select: { clientId: true, periodStart: true, status: true },
+    }),
+    prisma.clientCompliance.findMany({
+      where: { clientId: { in: clientIds }, active: true, workType: { kind: "TDS_PAYMENT", active: true } },
+      select: { clientId: true, startPeriod: true },
+    }),
+  ]);
+  for (const item of tds) {
+    const sub = paymentSubs.find((s) => s.clientId === item.clientId);
+    if (!sub) continue; // TDS payments not tracked for this client
+    const months: Date[] = [];
+    for (let i = 0; i < 3; i++) {
+      const month = addMonths(item.periodStart, i);
+      if (month < sub.startPeriod) continue;
+      const payment = payments.find((p) => p.clientId === item.clientId && p.periodStart.getTime() === month.getTime());
+      if (!payment || payment.status !== "completed") months.push(month);
+    }
+    if (months.length) open.set(item.id, months);
+  }
+  return open;
+}
+
+// What the filing window of a TDS return warns about. It does not stop the
+// filing; the warning is kept in the item's history when it is filed anyway.
+export async function tdsReturnWarnings(items: LockableItem[]): Promise<Map<string, string>> {
+  const warnings = new Map<string, string>();
+  const tds = items.filter((i) => i.kind === "TDS_RETURN");
+  if (tds.length === 0) return warnings;
+  const [openMonths, workTypes, challans] = await Promise.all([
+    openTdsPaymentMonths(tds),
+    prisma.complianceWorkType.findMany({ where: { id: { in: [...new Set(tds.map((i) => i.workTypeId))] } }, select: { id: true, returnType: true } }),
+    prisma.tdsChallan.findMany({
+      where: {
+        item: {
+          clientId: { in: [...new Set(tds.map((i) => i.clientId))] },
+          workType: { kind: "TDS_PAYMENT" },
+          periodStart: { gte: new Date(Math.min(...tds.map((i) => i.periodStart.getTime()))) },
+        },
+      },
+      select: { section: true, item: { select: { clientId: true, periodStart: true } } },
+    }),
+  ]);
+  for (const item of tds) {
+    const parts: string[] = [];
+    const months = openMonths.get(item.id);
+    if (months) parts.push(`TDS payment not closed for ${months.map((m) => periodLabel("MONTHLY", m)).join(", ")}`);
+    const salary = workTypes.find((w) => w.id === item.workTypeId)?.returnType === "24Q";
+    const paid = challans.filter(
+      (c) =>
+        c.item.clientId === item.clientId &&
+        c.item.periodStart >= item.periodStart &&
+        c.item.periodStart <= item.periodEnd &&
+        SALARY_SECTIONS.includes(c.section) === salary
+    );
+    const withoutChallans = [0, 1, 2]
+      .map((i) => addMonths(item.periodStart, i))
+      .filter((m) => !months?.some((o) => o.getTime() === m.getTime()) && !paid.some((c) => c.item.periodStart.getTime() === m.getTime()));
+    if (paid.length === 0) parts.push(`No ${salary ? "salary " : ""}challans paid in the quarter`);
+    else if (withoutChallans.length) parts.push(`No challans paid for ${withoutChallans.map((m) => periodLabel("MONTHLY", m)).join(", ")}`);
+    if (parts.length) warnings.set(item.id, parts.join("; "));
+  }
+  return warnings;
 }
 
 // ─── TDS returns without challans ────────────────────────────────────────────
@@ -370,7 +450,7 @@ export async function resolveTdsReturns(clientIds?: string[]) {
   });
   if (returns.length === 0) return;
 
-  const locks = await computeLocks(returns.map((r) => ({ ...r, kind: r.workType.kind })));
+  const openMonths = await openTdsPaymentMonths(returns.map((r) => ({ ...r, kind: r.workType.kind })));
   const challans = await prisma.tdsChallan.findMany({
     where: {
       item: {
@@ -392,7 +472,7 @@ export async function resolveTdsReturns(clientIds?: string[]) {
         SALARY_SECTIONS.includes(c.section) === salary
     );
     const next: ComplianceStatus | null =
-      !locks.has(ret.id) && !hasChallans && ret.status === "pending"
+      !openMonths.has(ret.id) && !hasChallans && ret.status === "pending"
         ? "not_required"
         : hasChallans && ret.status === "not_required"
           ? "pending"
@@ -541,11 +621,4 @@ export function renderMessage(
     .replaceAll("{firm}", values.firm);
 }
 
-// Indian numbers for wa.me links: "098260 12345" → "919826012345"; null if unusable
-export function whatsappNumber(phone: string | null | undefined): string | null {
-  if (!phone) return null;
-  let digits = phone.replace(/\D/g, "");
-  if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
-  if (digits.length === 10) digits = `91${digits}`;
-  return digits.length >= 11 && digits.length <= 15 ? digits : null;
-}
+export { whatsappNumber } from "@/lib/client-contacts";
