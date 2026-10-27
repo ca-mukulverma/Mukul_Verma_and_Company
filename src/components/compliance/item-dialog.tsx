@@ -68,6 +68,7 @@ const EVENT_LABELS: Record<string, string> = {
   certificates_request_undone: "Form 16/16A request undone",
   certificates_emailed: "Form 16/16A emailed",
   documents_emailed: "Files emailed",
+  sent_to_client: "Sent to client (Send to Client)",
   document_added: "File added",
   document_removed: "File removed",
   fee_set: "Fee set",

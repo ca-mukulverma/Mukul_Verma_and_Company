@@ -362,6 +362,9 @@ MV Company implements a sophisticated role-based access control system:
    For compliance files (return PDFs, JSON, Form 16/16A), set `R2_ACCOUNT_ID`,
    `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET` – see
    [docs/COMPLIANCE.md](docs/COMPLIANCE.md#one-time-setup-cloudflare-r2).
+   The same storage and mailboxes power **Send to Client** (one-click emailing
+   of a client's documents and details) – see
+   [docs/CLIENT_REQUESTS.md](docs/CLIENT_REQUESTS.md).
 
 4. **Initialize the database**
    ```bash

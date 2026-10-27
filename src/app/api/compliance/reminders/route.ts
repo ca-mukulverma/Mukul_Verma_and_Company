@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
       if (sendable.length === 0) continue;
       const failures = await sendComplianceEmails(
         company,
+        "Reminder",
         sendable.map((r) => ({ to: r.to, subject: r.subject, text: r.text }))
       );
       sendable.forEach((r, i) => {

@@ -15,8 +15,10 @@ import { formatIndianDate, formatRupees } from "@/lib/billing-constants";
 
 export interface BillingMailbox {
   company: Company;
-  // The name the email shows as "From"
+  // The name bill emails show as "From"; reminders and documents use
+  // senderName() with the same brand
   name: string;
+  brand: string;
   address: string;
   password: string | undefined;
   // The server setting that holds the password
@@ -32,6 +34,7 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
   MVC: {
     company: "MVC",
     name: "Billing-CA Mukul Verma",
+    brand: "CA Mukul Verma",
     // The firm's own, long-used mailbox: mail from an established address is
     // far less likely to be filed as spam than mail from a new one
     address: process.env.BILLING_EMAIL_USER || "camukulverma.bhopal@gmail.com",
@@ -43,6 +46,7 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
   BEDGE: {
     company: "BEDGE",
     name: "Billing-B Edge",
+    brand: "B Edge",
     // B Edge's own mailbox, which clients can reply to
     address: process.env.BEDGE_BILLING_EMAIL_USER || "bedgebusinessconsultants@gmail.com",
     password: process.env.BEDGE_BILLING_EMAIL_PASSWORD,
@@ -53,6 +57,11 @@ export const BILLING_MAILBOXES: Record<Company, BillingMailbox> = {
 };
 
 export const BILLING_COMPANIES: Company[] = ["MVC", "BEDGE"];
+
+// What each kind of email shows as "From", all from the same mailbox:
+// "Billing-CA Mukul Verma", "Reminder-CA Mukul Verma", "Document-B Edge"
+export type EmailPurpose = "Billing" | "Reminder" | "Document";
+export const senderName = (mailbox: BillingMailbox, purpose: EmailPurpose) => `${purpose}-${mailbox.brand}`;
 
 // "Billing-CA Mukul Verma <camukulverma.bhopal@gmail.com>"
 export const mailboxLabel = (mailbox: BillingMailbox) => `${mailbox.name} <${mailbox.address}>`;

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ClientPhone, PHONE_LABELS, clientPhones } from "@/lib/client-contacts";
+import { REGISTRATION_FIELDS, RegistrationValues } from "@/lib/client-documents";
 
 // Parts of the client form (create and edit): the owner's mobile numbers, the
 // responsible person, the connector and the Tally ledger (see docs/BILLING.md)
@@ -225,6 +226,32 @@ export function ClientBillingFields({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// PAN, TAN, CIN, Udyam and IEC, sent to the client on request (Send to Client)
+export function ClientRegistrationFields({ value, onChange }: { value: RegistrationValues; onChange: (v: RegistrationValues) => void }) {
+  const id = useId();
+  return (
+    <div className="space-y-2">
+      <Label>Registration numbers</Label>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {REGISTRATION_FIELDS.map((f) => (
+          <div key={f.key} className="space-y-1">
+            <Label htmlFor={`${id}-${f.key}`} className="text-xs">{f.label}</Label>
+            <Input
+              id={`${id}-${f.key}`}
+              placeholder={f.placeholder}
+              maxLength={f.maxLength}
+              className="uppercase"
+              value={value[f.key]}
+              onChange={(e) => onChange({ ...value, [f.key]: e.target.value.toUpperCase() })}
+            />
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">Optional. Used when the client asks for their details (Send to Client).</p>
     </div>
   );
 }

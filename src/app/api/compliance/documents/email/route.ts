@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     links +
     `\n\nRegards,\n${firm}`;
 
-  const [failure] = await sendComplianceEmails(company, [{ to, subject: `${what} – ${party}`, text, attachments }]);
+  const [failure] = await sendComplianceEmails(company, "Document", [{ to, subject: `${what} – ${party}`, text, attachments }]);
   if (failure) return NextResponse.json({ error: failure }, { status: 502 });
 
   const itemIds = [...new Set(docs.map((d) => d.itemId).filter((id): id is string => !!id))];

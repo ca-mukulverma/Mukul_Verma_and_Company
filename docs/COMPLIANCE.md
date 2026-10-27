@@ -241,7 +241,9 @@ From a row's chat icon, the header buttons, or for ticked rows:
   in turn in one WhatsApp tab; you press **Send** in WhatsApp. The app records
   that the chat was opened (it can't see delivery).
 - **Email (free)**: sent straight away from the company's billing Gmail (MVC
-  work from the MVC mailbox, B Edge work from B Edge's).
+  work from the MVC mailbox, B Edge work from B Edge's), shown as
+  *Reminder-CA Mukul Verma* or *Reminder-B Edge*. Files emailed to a client
+  show as *Document-CA Mukul Verma* or *Document-B Edge*.
 
 Only clients whose work is still **Pending** or **Data received** are
 included; once data is received or the return is filed, the client drops out

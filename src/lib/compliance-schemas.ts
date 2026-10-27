@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { forbidden, money, monthString, notFound } from "@/lib/compliance-api";
+import { badRequest, forbidden, money, monthString, notFound } from "@/lib/compliance-api";
+import { CLIENT_DOC_TYPE_KEYS, clientDocType } from "@/lib/client-documents";
 
 // Request shapes and checks shared by several /api/compliance routes
 
@@ -27,6 +28,10 @@ export const uploadSchema = z.object({
   size: z.number().int().positive().max(MAX_DOCUMENT_BYTES, "The file is larger than 15 MB"),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
   gzipped: z.boolean(),
+  // The client's own documents (Client → Documents): their type and, for
+  // yearly ones, the financial year (2025 = FY 2025-26)
+  docType: z.enum(CLIENT_DOC_TYPE_KEYS).optional().nullable(),
+  financialYear: z.number().int().min(2000).max(2100).optional().nullable(),
 });
 
 // Same content → same stored object, so a file uploaded twice is kept once
@@ -40,6 +45,10 @@ export async function checkUploadAllowed(
   data: z.infer<typeof uploadSchema>,
   canWork: (workTypeId: string) => boolean
 ) {
+  if (data.docType) {
+    if (data.itemId) return badRequest("A client document can't belong to a period");
+    if (clientDocType(data.docType)?.yearly && !data.financialYear) return badRequest("Choose the financial year");
+  }
   if (data.itemId) {
     const item = await prisma.complianceItem.findUnique({
       where: { id: data.itemId },

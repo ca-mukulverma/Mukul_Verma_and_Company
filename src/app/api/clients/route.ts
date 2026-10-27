@@ -6,9 +6,10 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { contactsData, contactsError, contactsSchema } from "@/lib/client-contacts";
 import { canSetTallyLedger } from "@/lib/connectors";
+import { registrationsPayload, registrationsProblem, registrationsSchema } from "@/lib/client-documents";
 
 // Client validation schema
-const clientSchema = contactsSchema.extend({
+const clientSchema = contactsSchema.merge(registrationsSchema).extend({
   contactPerson: z.string().min(1, "Contact person name is required"),
   companyName: z.string().optional(),
   email: z.string().email("Invalid email").optional().or(z.literal('')), // Allow empty string
@@ -155,6 +156,8 @@ export async function POST(req: NextRequest) {
     const clientData = validationResult.data;
     const contactProblem = contactsError(clientData);
     if (contactProblem) return NextResponse.json({ error: contactProblem }, { status: 400 });
+    const registrationProblem = registrationsProblem(clientData);
+    if (registrationProblem) return NextResponse.json({ error: registrationProblem }, { status: 400 });
     const contacts = contactsData(clientData);
     const phone = contacts.phone !== undefined ? contacts.phone : clientData.phone;
     // Only billing managers and Admin set the Tally ledger; a client added by
@@ -191,6 +194,7 @@ export async function POST(req: NextRequest) {
         address: clientData.address,
         notes: clientData.notes,
         gstin: clientData.gstin,
+        ...registrationsPayload(clientData),
         connectorId: clientData.connectorId || null,
         tallyLedgerName: mayLedger ? clientData.tallyLedgerName || null : null,
         tallyLedgerPending: !mayLedger && !clientData.isGuest && !clientData.connectorId,

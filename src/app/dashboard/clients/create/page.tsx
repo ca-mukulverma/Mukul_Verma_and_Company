@@ -38,12 +38,14 @@ import {
   BillingValue,
   ClientBillingFields,
   ClientContactsFields,
+  ClientRegistrationFields,
   ContactsValue,
   contactsPayload,
   contactsProblem,
   emptyContacts,
   useBillingOptions,
 } from "@/components/clients/client-extra-fields";
+import { RegistrationValues, emptyRegistrations, registrationsPayload, registrationsProblem } from "@/lib/client-documents";
 
 // Schema for permanent client
 const clientFormSchema = z.object({
@@ -66,6 +68,7 @@ export default function ClientCreatePage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [contacts, setContacts] = useState<ContactsValue>(emptyContacts);
+  const [registrations, setRegistrations] = useState<RegistrationValues>(emptyRegistrations);
   const [billing, setBilling] = useState<BillingValue>({ connectorId: null, tallyLedgerName: "" });
   const billingOptions = useBillingOptions();
 
@@ -140,7 +143,7 @@ export default function ClientCreatePage() {
       toast.error("Please provide either an email or phone number");
       return;
     }
-    const problem = contactsProblem(contacts);
+    const problem = contactsProblem(contacts) ?? registrationsProblem(registrations);
     if (problem) {
       toast.error(problem);
       return;
@@ -154,6 +157,7 @@ export default function ClientCreatePage() {
       await axios.post("/api/clients", {
         ...data,
         ...contactsData,
+        ...registrationsPayload(registrations),
         connectorId: billing.connectorId,
         ...(billingOptions?.canSetLedger && !billing.connectorId && { tallyLedgerName: billing.tallyLedgerName.trim() || null }),
         isGuest: false, // Explicitly mark as permanent client
@@ -167,6 +171,7 @@ export default function ClientCreatePage() {
       // Reset form
       form.reset();
       setContacts(emptyContacts());
+      setRegistrations(emptyRegistrations());
 
       // Redirect after short delay
       setTimeout(() => {
@@ -306,6 +311,8 @@ export default function ClientCreatePage() {
                       </FormItem>
                     )}
                   />
+
+                  <ClientRegistrationFields value={registrations} onChange={setRegistrations} />
 
                   <ClientContactsFields value={contacts} onChange={setContacts} />
 

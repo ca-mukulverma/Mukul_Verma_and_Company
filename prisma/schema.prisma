@@ -135,6 +135,7 @@ model User {
   complianceCompleted     ComplianceItem[]      @relation("ComplianceItemCompletedBy")
   complianceChecked       ComplianceItem[]      @relation("ComplianceItemCheckedBy")
   obligationLinesResolved ComplianceObligationLine[]
+  clientDispatches        ClientDispatch[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -161,6 +162,12 @@ model Client {
   address        String?      @db.VarChar(150)  // Reduced from 255
   notes          String?      @db.Text        // Keep as Text for longer content
   gstin          String?      @db.VarChar(15) // Standard GSTIN is 15 chars
+  // Registration numbers, sent to the client on request (Send to Client)
+  pan            String?      @db.VarChar(10)
+  tan            String?      @db.VarChar(10)
+  cin            String?      @db.VarChar(21) // CIN or LLPIN
+  udyamNumber    String?      @db.VarChar(19) // UDYAM-MP-12-0012345
+  iec            String?      @db.VarChar(10)
   tallyLedgerPending Boolean  @default(false)
   tallyLedgerName String?     @db.VarChar(100) // Party ledger in Tally, if not the client's name
   isGuest        Boolean      @default(false) // Whether this is a temporary guest client
@@ -181,6 +188,7 @@ model Client {
   complianceDocuments     ComplianceDocument[]
   obligations             ClientObligation[]
   complianceNotes         ComplianceNote[]
+  dispatches              ClientDispatch[]
   
   @@index([managerId])
   @@index([contactPerson]) // Index for searching by contact person name
@@ -816,9 +824,15 @@ model ComplianceDocument {
   gzipped      Boolean           @default(false)
   uploadedById String?           @db.Char(36)
   uploadedBy   User?             @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  // The client's own documents (Client → Documents), not tied to a period:
+  // the type (lib/client-documents.ts) and, for yearly ones, the financial
+  // year it belongs to (2025 = FY 2025-26)
+  docType       String?          @db.VarChar(40)
+  financialYear Int?
   createdAt    DateTime          @default(now())
 
   @@index([clientId, createdAt])
+  @@index([clientId, docType])
   @@index([itemId])
   @@index([storageKey])
 }
@@ -906,5 +920,47 @@ model ComplianceNote {
   source    String          @default("claude") @db.VarChar(20)
   createdAt DateTime        @default(now())
 
+  @@index([createdAt])
+}
+
+// ─── Send to Client ─────────────────────────────────────────────────────────
+// Ready-made requests ("Last ITR", "Bank loan pack") that pick a client's
+// files and details for one-click emailing (see docs/CLIENT_REQUESTS.md).
+// Built-in ones have a key and are added by the app; Admin can edit or switch
+// them off, and add their own.
+model ClientRequestType {
+  id          String   @id @default(uuid()) @db.Char(36)
+  key         String?  @unique @db.VarChar(40)
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(300)
+  category    String   @db.VarChar(30)
+  // What it picks (lib/client-requests.ts RequestConfig)
+  config      Json
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+// One email sent from Send to Client
+model ClientDispatch {
+  id             String   @id @default(uuid()) @db.Char(36)
+  clientId       String   @db.Char(36)
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  requestName    String   @db.VarChar(100)
+  company        Company
+  sentTo         String   @db.VarChar(400)
+  // Sent to an address that isn't on the client's record
+  thirdParty     Boolean  @default(false)
+  // [{ name, label }] of the files sent
+  files          Json
+  includedLogins Boolean  @default(false)
+  sentById       String?  @db.Char(36)
+  sentBy         User?    @relation(fields: [sentById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@index([clientId, createdAt])
   @@index([createdAt])
 }

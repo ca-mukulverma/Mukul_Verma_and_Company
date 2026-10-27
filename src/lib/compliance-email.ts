@@ -1,13 +1,14 @@
 import nodemailer from "nodemailer";
 import { Company } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { BILLING_MAILBOXES, billingEmailConfigured, sendFailureReason } from "@/lib/bill-email";
+import { BILLING_MAILBOXES, billingEmailConfigured, EmailPurpose, sendFailureReason, senderName } from "@/lib/bill-email";
 import { todayIST } from "@/lib/compliance-periods";
 
 // Reminders and documents are emailed from the same Gmail accounts as bills
 // (see docs/BILLING.md): MVC work from the MVC mailbox, B Edge work from
-// B Edge's. A free Gmail account sends about 500 emails a day, shared with
-// the bill emails.
+// B Edge's, under their own names ("Reminder-CA Mukul Verma",
+// "Document-CA Mukul Verma"). A free Gmail account sends about 500 emails a
+// day, shared with the bill emails.
 
 export const GMAIL_DAILY_LIMIT = 500;
 
@@ -24,10 +25,14 @@ export interface OutgoingEmail {
 
 // Sends the emails over one connection; never throws. Returns, per email,
 // null when Gmail accepted it or the reason it failed.
-export async function sendComplianceEmails(company: Company, emails: OutgoingEmail[]): Promise<(string | null)[]> {
+export async function sendComplianceEmails(
+  company: Company,
+  purpose: Exclude<EmailPurpose, "Billing">,
+  emails: OutgoingEmail[]
+): Promise<(string | null)[]> {
   const mailbox = BILLING_MAILBOXES[company];
   if (!billingEmailConfigured(company)) {
-    return emails.map(() => `The ${mailbox.name} mailbox is not set up (${mailbox.passwordVariable})`);
+    return emails.map(() => `The ${mailbox.brand} mailbox is not set up (${mailbox.passwordVariable})`);
   }
   const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -39,7 +44,7 @@ export async function sendComplianceEmails(company: Company, emails: OutgoingEma
     for (const email of emails) {
       try {
         await transporter.sendMail({
-          from: { name: mailbox.name, address: mailbox.address },
+          from: { name: senderName(mailbox, purpose), address: mailbox.address },
           to: email.to,
           subject: email.subject,
           text: email.text,
@@ -64,15 +69,16 @@ function textToHtml(text: string) {
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">${linked.replace(/\n/g, "<br>")}</div>`;
 }
 
-// Roughly how many emails went out today from the app (reminders, documents
-// and bills), to warn before Gmail's daily limit is reached
+// Roughly how many emails went out today from the app (reminders, documents,
+// Send to Client and bills), to warn before Gmail's daily limit is reached
 export async function emailsSentToday(): Promise<number> {
   // Midnight in India
   const since = new Date(todayIST().getTime() - 330 * 60_000);
-  const [reminders, documentEmails, billEmails] = await Promise.all([
+  const [reminders, documentEmails, dispatches, billEmails] = await Promise.all([
     prisma.complianceReminder.count({ where: { channel: "EMAIL", sentAt: { gte: since } } }),
     prisma.complianceEvent.count({ where: { action: "documents_emailed", createdAt: { gte: since } } }),
+    prisma.clientDispatch.count({ where: { createdAt: { gte: since } } }),
     prisma.billEvent.count({ where: { action: "emailed", createdAt: { gte: since } } }),
   ]);
-  return reminders + documentEmails + billEmails;
+  return reminders + documentEmails + dispatches + billEmails;
 }

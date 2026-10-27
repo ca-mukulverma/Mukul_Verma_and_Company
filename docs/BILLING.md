@@ -325,6 +325,19 @@ To set up each one:
 
 A free Gmail account can send about 500 emails a day.
 
+The same mailboxes also send compliance reminders and documents, each under
+its own name so clients can tell them apart in their inbox. Replies to any of
+them reach the same mailbox.
+
+| Email | MVC shows as | B Edge shows as |
+|---|---|---|
+| Bills | Billing-CA Mukul Verma | Billing-B Edge |
+| Compliance reminders | Reminder-CA Mukul Verma | Reminder-B Edge |
+| Documents (Compliance files, Send to Client) | Document-CA Mukul Verma | Document-B Edge |
+
+A client who has saved the mailbox in their contacts may still see their own
+contact name instead.
+
 ### Replies (Billing → Bill emails, Admin)
 
 - Bill emails always say "For any query …, please reply to this email";

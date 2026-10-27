@@ -34,6 +34,7 @@ import {
   AlertCircle,
   Hash,
   Users,
+  Send,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { UnifiedHistoryTab } from "@/components/clients/unified-history-tab";
 import { canCreateTask, canEditClient, canModifyClient } from "@/lib/permissions";
 import { CredentialsTab } from "@/components/clients/credentials-tab";
+import { ClientDocumentsTab } from "@/components/clients/client-documents-tab";
+import { REGISTRATION_FIELDS, RegistrationField } from "@/lib/client-documents";
 import { clientPhones } from "@/lib/client-contacts";
 
 interface Client {
@@ -57,6 +60,11 @@ interface Client {
   createdAt: string;
   updatedAt: string;
   gstin: string | null;
+  pan: string | null;
+  tan: string | null;
+  cin: string | null;
+  udyamNumber: string | null;
+  iec: string | null;
   phones: unknown;
   ownerIsResponsible: boolean;
   responsibleName: string | null;
@@ -221,20 +229,29 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-        {canEdit && (
-          <Button asChild>
-            <Link href={`/dashboard/clients/${client.id}/edit`}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit Client
+        <div className="flex flex-wrap gap-2">
+          <Button variant={canEdit ? "outline" : "default"} asChild>
+            <Link href={`/dashboard/clients/${client.id}/send`}>
+              <Send className="mr-2 h-4 w-4" />
+              Send to Client
             </Link>
           </Button>
-        )}
+          {canEdit && (
+            <Button asChild>
+              <Link href={`/dashboard/clients/${client.id}/edit`}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit Client
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
       {/* Main content with tabs */}
       <Tabs defaultValue="details" className="space-y-4">
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="credentials">Credentials</TabsTrigger>
         </TabsList>
@@ -348,6 +365,16 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                         <p className="text-lg">{client.gstin}</p>
                       </div>
                     )}
+
+                    {REGISTRATION_FIELDS.filter((f) => client[f.key as RegistrationField]).map((f) => (
+                      <div key={f.key} className="flex items-start gap-2">
+                        <Hash className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                        <div>
+                          <p>{client[f.key as RegistrationField]}</p>
+                          <p className="text-xs text-muted-foreground">{f.label}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -495,6 +522,11 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Documents Tab: registrations and yearly papers, picked by Send to Client */}
+        <TabsContent value="documents" className="space-y-4">
+          <ClientDocumentsTab clientId={client.id} />
         </TabsContent>
 
         {/* History Tab */}
