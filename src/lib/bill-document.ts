@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { BillingAccess } from "@/lib/billing";
 import { GST_RATE_PERCENT } from "@/lib/billing-constants";
 import { BILL_FORMATS, MVC_GST_STATE_CODE } from "@/lib/bill-formats";
+import { billShowsGstin } from "@/lib/connectors";
 
 // Everything printed on one bill (PDF or Word). Built only for bills in a
 // Billing List the user may see, so amounts never reach anyone else.
@@ -134,7 +135,7 @@ export function billTotals(type: BillType, fee: number, stateCode: string | null
 }
 
 const documentInclude = {
-  client: { select: { contactPerson: true, companyName: true, address: true, gstin: true, email: true } },
+  client: { select: { contactPerson: true, companyName: true, address: true, gstin: true, email: true, connectorId: true } },
   reissuedFrom: { select: { billNumber: true } },
 } satisfies Prisma.BillInclude;
 
@@ -165,7 +166,10 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
           email: bill.client.email?.trim() || null,
         }
       : { name: bill.billToName || "", contactPerson: bill.billToName || "", address: bill.billToAddress, gstin: bill.billToGstin, email: null };
+    // Place of supply and CGST + SGST / IGST follow the client's GSTIN even when
+    // it isn't printed (a connector's client, billed as B2C)
     const { taxLines, placeOfSupply, roundOff, total } = billTotals(bill.type, fee, entity?.stateCode || null, party.gstin);
+    if (bill.client && !billShowsGstin(bill, bill.client.connectorId)) party.gstin = null;
 
     return [
       {

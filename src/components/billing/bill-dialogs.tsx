@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -393,12 +394,17 @@ export function EditDetailsDialog({ bill, onClose, onDone }: DialogProps) {
   const [description, setDescription] = useState(bill.description);
   const [workDate, setWorkDate] = useState(format(new Date(bill.workDate), "yyyy-MM-dd"));
   const [remark, setRemark] = useState(bill.remark || "");
+  const [showGstin, setShowGstin] = useState(bill.showGstin);
   const [saving, setSaving] = useState(false);
+  // Only for the saved client the bill had when opened; a new client's
+  // connector shows once saved
+  const connectorBill = !!bill.connector && billTo.client?.id === bill.client?.id;
 
   const save = async () => {
     setSaving(true);
     try {
       const response = await axios.patch<Bill>(`/api/bills/${bill.id}`, {
+        ...(connectorBill && { showGstin }),
         // Leave the bill-to alone if nothing has been chosen yet
         ...(billToValid(billTo) && billToPayload(billTo)),
         description: description.trim(),
@@ -438,6 +444,18 @@ export function EditDetailsDialog({ bill, onClose, onDone }: DialogProps) {
             <Label htmlFor="bill-edit-remark">Remark</Label>
             <Textarea id="bill-edit-remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
           </div>
+          {connectorBill && (
+            <div className="space-y-1 rounded-md border p-3">
+              <p className="text-sm">Client of connector <span className="font-medium">{bill.connector!.name}</span>: the bill goes to their ledger in Tally.</p>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={showGstin} onCheckedChange={(c) => setShowGstin(c === true)} disabled={!bill.client?.gstin} />
+                Show the client&apos;s GSTIN on this bill (reported as B2B)
+              </label>
+              <p className="text-xs text-muted-foreground">
+                {bill.client?.gstin ? "Not ticked: no GSTIN on the bill and it is reported as B2C." : "The client has no GSTIN saved."}
+              </p>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>

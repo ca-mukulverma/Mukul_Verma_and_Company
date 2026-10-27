@@ -336,6 +336,12 @@ function BillCard({
               {!clientName && bill.billToName && (
                 <span className="ml-2 text-xs font-normal text-muted-foreground">(Other – not a saved client)</span>
               )}
+              {bill.connector && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  via {bill.connector.name}
+                  {bill.type === "GST" ? (bill.showGstin ? " · GSTIN shown (B2B)" : " · no GSTIN (B2C)") : ""}
+                </span>
+              )}
             </p>
             <p className="text-sm break-words">{title}</p>
             {rest.length > 0 && <p className="text-sm text-muted-foreground whitespace-pre-line line-clamp-2">{rest.join("\n")}</p>}

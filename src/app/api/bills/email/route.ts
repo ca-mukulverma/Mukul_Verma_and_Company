@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
         partyName: g.partyName,
         savedEmail: g.savedEmail,
         isClient: !!g.clientId,
+        connector: g.connector,
         bills: g.docs.map((d) => ({ id: d.id, billNumber: d.billNumber, total: d.total })),
       })),
     });

@@ -26,9 +26,14 @@ export async function PUT(request: NextRequest) {
 
   const client = await prisma.client.update({
     where: { id: parsed.data.clientId },
-    data: { tallyLedgerName: parsed.data.tallyLedgerName || null },
+    data: { tallyLedgerName: parsed.data.tallyLedgerName || null, tallyLedgerPending: false },
     select: { id: true, contactPerson: true, companyName: true, tallyLedgerName: true },
   }).catch(() => null);
   if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
+  // Numbered bills not sent to Tally yet go to the corrected ledger too
+  await prisma.bill.updateMany({
+    where: { clientId: client.id, billNumber: { not: null }, tallyExportedAt: null, connectorId: null },
+    data: { tallyLedgerName: client.tallyLedgerName || client.companyName || client.contactPerson },
+  });
   return NextResponse.json(client);
 }

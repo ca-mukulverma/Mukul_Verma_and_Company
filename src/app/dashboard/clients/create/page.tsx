@@ -27,17 +27,27 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, User, Building, Mail, Phone, MapPin, FileText, Info } from "lucide-react";
+import { ArrowLeft, Loader2, User, Building, Mail, MapPin, FileText, Info } from "lucide-react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { canCreateClient } from "@/lib/permissions";
 import { useSession } from "next-auth/react";
+import {
+  BillingValue,
+  ClientBillingFields,
+  ClientContactsFields,
+  ContactsValue,
+  contactsPayload,
+  contactsProblem,
+  emptyContacts,
+  useBillingOptions,
+} from "@/components/clients/client-extra-fields";
 
 // Schema for permanent client
 const clientFormSchema = z.object({
-  contactPerson: z.string().min(2, "Contact person name is required"),
+  contactPerson: z.string().min(2, "Owner's name is required"),
   companyName: z.string().optional(),
   email: z.string().email("Please enter a valid email").optional().or(z.literal('')),
   phone: z.string().optional(),
@@ -54,6 +64,10 @@ export default function ClientCreatePage() {
   const [sourceParam, setSourceParam] = useState<string | null>(null);
   const [referrerParam, setReferrerParam] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [contacts, setContacts] = useState<ContactsValue>(emptyContacts);
+  const [billing, setBilling] = useState<BillingValue>({ connectorId: null, tallyLedgerName: "" });
+  const billingOptions = useBillingOptions();
 
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -120,9 +134,15 @@ export default function ClientCreatePage() {
 
   // Handle form submission
   const onSubmit = async (data: ClientFormValues) => {
+    const contactsData = contactsPayload(contacts);
     // Ensure at least one contact method is provided
-    if (!data.email && !data.phone) {
+    if (!data.email && contactsData.phones.length === 0) {
       toast.error("Please provide either an email or phone number");
+      return;
+    }
+    const problem = contactsProblem(contacts);
+    if (problem) {
+      toast.error(problem);
       return;
     }
     
@@ -133,6 +153,9 @@ export default function ClientCreatePage() {
       // Include source and referrer from URL in the API request if available
       await axios.post("/api/clients", {
         ...data,
+        ...contactsData,
+        connectorId: billing.connectorId,
+        ...(billingOptions?.canSetLedger && !billing.connectorId && { tallyLedgerName: billing.tallyLedgerName.trim() || null }),
         isGuest: false, // Explicitly mark as permanent client
         source: sourceParam,
         referrer: referrerParam
@@ -143,6 +166,7 @@ export default function ClientCreatePage() {
 
       // Reset form
       form.reset();
+      setContacts(emptyContacts());
 
       // Redirect after short delay
       setTimeout(() => {
@@ -205,7 +229,7 @@ export default function ClientCreatePage() {
                     name="contactPerson"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Contact Person *</FormLabel>
+                        <FormLabel>Owner Name *</FormLabel>
                         <div className="relative">
                           <FormControl>
                             <Input 
@@ -216,7 +240,7 @@ export default function ClientCreatePage() {
                           </FormControl>
                           <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         </div>
-                        <FormDescription>Main person to contact at this client</FormDescription>
+                        <FormDescription>Owner / proprietor of the business</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -244,7 +268,7 @@ export default function ClientCreatePage() {
                     )}
                   />
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     <FormField
                       control={form.control}
                       name="email"
@@ -267,27 +291,6 @@ export default function ClientCreatePage() {
                       )}
                     />
 
-                    <FormField
-                      control={form.control}
-                      name="phone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Phone Number</FormLabel>
-                          <div className="relative">
-                            <FormControl>
-                              <Input 
-                                placeholder="+1 (555) 123-4567" 
-                                className="pl-9"
-                                {...field} 
-                              />
-                            </FormControl>
-                            <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          </div>
-                          <FormDescription>Email or phone required</FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
                   </div>
 
                   <FormField
@@ -302,6 +305,15 @@ export default function ClientCreatePage() {
                         <FormMessage />
                       </FormItem>
                     )}
+                  />
+
+                  <ClientContactsFields value={contacts} onChange={setContacts} />
+
+                  <ClientBillingFields
+                    value={billing}
+                    onChange={setBilling}
+                    options={billingOptions}
+                    clientName={form.watch("companyName") || form.watch("contactPerson")}
                   />
                 </TabsContent>
                 

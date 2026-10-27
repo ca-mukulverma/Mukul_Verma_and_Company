@@ -25,7 +25,7 @@ interface Series {
   ledgersSet: boolean;
   bills: { id: string; billNumber: string; action: "Create" | "Alter" | "Cancel"; client: string | null; amount: number | null }[];
   // clientId is null for names entered under "Other"
-  parties: { clientId: string | null; clientName: string; ledgerName: string; custom: boolean }[];
+  parties: { clientId: string | null; clientName: string; ledgerName: string; custom: boolean; connectorName?: string }[];
   history: { id: string; createdAt: string; newCount: number; updateCount: number; createdBy: { name: string } }[];
 }
 
@@ -160,7 +160,11 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
                 <PartyLedger key={party.clientId} party={party} onSaved={onChanged} />
               ) : (
                 <div key={`other-${party.clientName}`} className="space-y-1">
-                  <p className="text-xs text-muted-foreground">{party.clientName} (Other – not a saved client)</p>
+                  <p className="text-xs text-muted-foreground">
+                    {party.connectorName
+                      ? `${party.connectorName} (connector – their clients' bills; change it in Connectors)`
+                      : `${party.clientName} (Other – not a saved client)`}
+                  </p>
                   <p className="rounded-md border px-3 py-2 text-sm">{party.ledgerName}</p>
                 </div>
               )

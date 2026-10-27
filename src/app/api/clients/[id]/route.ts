@@ -3,9 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { contactsData, contactsError, contactsSchema } from "@/lib/client-contacts";
+import { canSetTallyLedger } from "@/lib/connectors";
 
 // Client update validation schema
-const clientUpdateSchema = z.object({
+const clientUpdateSchema = contactsSchema.extend({
   contactPerson: z.string().optional(),
   companyName: z.string().optional().nullable(),
   email: z.string().email("Invalid email").optional().nullable(),
@@ -15,6 +17,9 @@ const clientUpdateSchema = z.object({
   gstin: z.string().optional().nullable(),
   isGuest: z.boolean().optional(),
   accessExpiry: z.string().optional().nullable(),
+  connectorId: z.string().min(1).nullable().optional(),
+  // Billing managers and Admin only
+  tallyLedgerName: z.string().trim().max(100).nullable().optional(),
 });
 
 // GET specific client - keep accessible to all authenticated users
@@ -42,6 +47,7 @@ export async function GET(
             email: true,
           },
         },
+        connector: { select: { id: true, name: true, tallyLedgerName: true } },
         tasks: {
           select: {
             id: true,
@@ -127,9 +133,18 @@ export async function PATCH(
       );
     }
 
+    const input = validationResult.data;
+    const contactProblem = contactsError(input);
+    if (contactProblem) return NextResponse.json({ error: contactProblem }, { status: 400 });
+    const contacts = contactsData(input);
+    const mayLedger = await canSetTallyLedger(session.user.id);
+    if (input.tallyLedgerName !== undefined && !mayLedger && (input.tallyLedgerName || null) !== existingClient.tallyLedgerName) {
+      return NextResponse.json({ error: "Only the billing manager or Admin can set the Tally ledger" }, { status: 403 });
+    }
+
     // Make sure at least one contact method exists after the update
     const willHaveEmail = data.email !== undefined ? data.email : existingClient.email;
-    const willHavePhone = data.phone !== undefined ? data.phone : existingClient.phone;
+    const willHavePhone = contacts.phone !== undefined ? contacts.phone : data.phone !== undefined ? data.phone : existingClient.phone;
 
     if (!willHaveEmail && !willHavePhone) {
       return NextResponse.json(
@@ -154,11 +169,15 @@ export async function PATCH(
         companyName: data.companyName,
         email: data.email,
         phone: data.phone,
+        ...contacts,
         address: data.address,
         notes: data.notes,
         gstin: data.gstin,
         isGuest: data.isGuest,
         accessExpiry,
+        ...(input.connectorId !== undefined && { connectorId: input.connectorId }),
+        ...(mayLedger &&
+          input.tallyLedgerName !== undefined && { tallyLedgerName: input.tallyLedgerName || null, tallyLedgerPending: false }),
       },
     });
 

@@ -9,6 +9,7 @@ import { BillList } from "@/components/billing/bill-list";
 import { BillingRegister } from "@/components/billing/billing-register";
 import { ChangeRequests } from "@/components/billing/change-requests";
 import { ClearBillingData } from "@/components/billing/clear-billing-data";
+import { Connectors } from "@/components/billing/connectors";
 import { EmailSettings } from "@/components/billing/email-settings";
 import { EntityProfiles } from "@/components/billing/entity-profiles";
 import { TallyExport } from "@/components/billing/tally-export";
@@ -127,7 +128,7 @@ function BillingPageContent() {
     ...(summary.manages.includes("MVC") ? ["mvc"] : []),
     ...(summary.manages.includes("BEDGE") ? ["bedge"] : []),
     ...(seesList ? ["list"] : []),
-    ...(isManager ? ["tally", "requests"] : []),
+    ...(isManager ? ["tally", "connectors", "requests"] : []),
     "log",
     "mine",
     ...(summary.isAdmin ? ["series", "profiles", "emails", "clear"] : []),
@@ -179,6 +180,7 @@ function BillingPageContent() {
             )}
             {seesList && <TabsTrigger value="list">Billing list</TabsTrigger>}
             {isManager && <TabsTrigger value="tally">Tally</TabsTrigger>}
+            {isManager && <TabsTrigger value="connectors">Connectors</TabsTrigger>}
             {isManager && (
               <TabsTrigger value="requests">Change requests<CountBadge count={summary.pendingChangeRequests} /></TabsTrigger>
             )}
@@ -214,6 +216,11 @@ function BillingPageContent() {
         {isManager && (
           <TabsContent value="tally" className="mt-4 min-w-0">
             <TallyExport isAdmin={summary.isAdmin} />
+          </TabsContent>
+        )}
+        {isManager && (
+          <TabsContent value="connectors" className="mt-4 min-w-0">
+            <Connectors />
           </TabsContent>
         )}
         {isManager && (
