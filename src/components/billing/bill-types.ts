@@ -16,6 +16,10 @@ export interface Bill {
   billToName: string | null;
   billToAddress: string | null;
   billToGstin: string | null;
+  // The client's connector (fixed at approval): the bill goes to their ledger
+  connector: { id: string; name: string } | null;
+  // Connector clients: the client's GSTIN is printed (B2B) only when ticked
+  showGstin: boolean;
   createdBy: { id: string; name: string };
   createdAt: string;
   amountRequestedFrom: { id: string; name: string } | null;

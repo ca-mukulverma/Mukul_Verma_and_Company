@@ -27,6 +27,8 @@ interface EmailPreview {
     partyName: string;
     savedEmail: string | null;
     isClient: boolean;
+    // A connector's client: emailed to the connector, copying the client if asked
+    connector: { name: string; email: string | null } | null;
     bills: { id: string; billNumber: string; total: number }[];
   }[];
 }
@@ -46,6 +48,8 @@ export function EmailBillsDialog({ billIds, onClose, onSent }: { billIds: string
   const [recipients, setRecipients] = useState<Record<string, string>>({});
   const [saveToClient, setSaveToClient] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
+  // Connector groups whose client also gets a copy
+  const [copyClient, setCopyClient] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   // The preview loads once per set of bills, whatever the parent re-renders
   const onCloseRef = useRef(onClose);
@@ -56,8 +60,8 @@ export function EmailBillsDialog({ billIds, onClose, onSent }: { billIds: string
       .post<EmailPreview>("/api/bills/email", { mode: "preview", ids: billIds })
       .then(({ data }) => {
         setPreview(data);
-        setRecipients(Object.fromEntries(data.groups.map((g) => [g.key, g.savedEmail ?? ""])));
-        setSaveToClient(new Set(data.groups.filter((g) => g.isClient && !g.savedEmail).map((g) => g.key)));
+        setRecipients(Object.fromEntries(data.groups.map((g) => [g.key, g.connector ? g.connector.email ?? "" : g.savedEmail ?? ""])));
+        setSaveToClient(new Set(data.groups.filter((g) => g.isClient && !g.connector && !g.savedEmail).map((g) => g.key)));
       })
       .catch((error) => {
         toast.error(apiErrorMessage(error, "Could not prepare the emails"));
@@ -75,7 +79,13 @@ export function EmailBillsDialog({ billIds, onClose, onSent }: { billIds: string
       const { data } = await axios.post<{ results: EmailResult[] }>("/api/bills/email", {
         mode: "send",
         ids: billIds,
-        recipients,
+        recipients: Object.fromEntries(
+          Object.entries(recipients).map(([key, to]) => {
+            const group = preview.groups.find((g) => g.key === key);
+            const copy = group?.connector && group.savedEmail && copyClient.has(key) ? `, ${group.savedEmail}` : "";
+            return [key, `${to}${copy}`];
+          })
+        ),
         saveToClient: [...saveToClient],
         note: note.trim() || null,
       });
@@ -138,7 +148,10 @@ export function EmailBillsDialog({ billIds, onClose, onSent }: { billIds: string
               return (
                 <div key={group.key} className="space-y-2 rounded-md border p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium break-words">{group.partyName}</p>
+                    <p className="font-medium break-words">
+                      {group.partyName}
+                      {group.connector && <span className="block text-xs font-normal text-muted-foreground">Via connector {group.connector.name}</span>}
+                    </p>
                     <p className="text-sm font-medium whitespace-nowrap">{formatRupees(total)}</p>
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -147,7 +160,7 @@ export function EmailBillsDialog({ billIds, onClose, onSent }: { billIds: string
                     ))}
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor={`email-${group.key}`} className="text-xs">Email to</Label>
+                    <Label htmlFor={`email-${group.key}`} className="text-xs">Email to{group.connector ? " (the connector)" : ""}</Label>
                     <Input
                       id={`email-${group.key}`}
                       type="text"
@@ -158,7 +171,22 @@ export function EmailBillsDialog({ billIds, onClose, onSent }: { billIds: string
                       className={!recipients[group.key]?.trim() ? "border-amber-500" : undefined}
                     />
                   </div>
-                  {group.isClient && !group.savedEmail && (
+                  {group.connector && (
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Checkbox
+                        checked={copyClient.has(group.key)}
+                        disabled={!group.savedEmail}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(copyClient);
+                          if (checked) next.add(group.key);
+                          else next.delete(group.key);
+                          setCopyClient(next);
+                        }}
+                      />
+                      {group.savedEmail ? `Also copy the client (${group.savedEmail})` : "The client has no saved email to copy"}
+                    </label>
+                  )}
+                  {group.isClient && !group.connector && !group.savedEmail && (
                     <label className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Checkbox
                         checked={saveToClient.has(group.key)}

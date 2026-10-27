@@ -83,7 +83,10 @@ export function isEditableStatus(status: Bill["status"]) {
 }
 
 export const billInclude = {
-  client: { select: { id: true, contactPerson: true, companyName: true, gstin: true } },
+  client: {
+    select: { id: true, contactPerson: true, companyName: true, gstin: true, connector: { select: { id: true, name: true } } },
+  },
+  connector: { select: { id: true, name: true } },
   task: { select: { id: true, title: true } },
   createdBy: { select: { id: true, name: true } },
   amountRequestedFrom: { select: { id: true, name: true } },
@@ -126,6 +129,9 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     billToName: bill.billToName,
     billToAddress: bill.billToAddress,
     billToGstin: bill.billToGstin,
+    // A numbered bill keeps the connector it had at approval
+    connector: bill.billNumber ? bill.connector : (bill.client?.connector ?? null),
+    showGstin: bill.showGstin,
     createdBy: bill.createdBy,
     createdAt: bill.createdAt,
     amountRequestedFrom: bill.amountRequestedFrom,

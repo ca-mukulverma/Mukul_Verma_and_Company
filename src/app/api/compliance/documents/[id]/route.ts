@@ -23,12 +23,14 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const { id } = await params;
   const doc = await prisma.complianceDocument.findUnique({
     where: { id },
-    include: { item: { select: { id: true, status: true, workTypeId: true } } },
+    include: { item: { select: { id: true, status: true, workTypeId: true, historical: true } } },
   });
   if (!doc) return notFound("File not found");
   if (doc.item) {
     if (!canWorkOn(access, doc.item.workTypeId)) return forbidden();
-    if (doc.item.status === "completed") return badRequest("This period is completed. Reopen it before removing its files");
+    if (doc.item.status === "completed" && !doc.item.historical) {
+      return badRequest("This period is completed. Reopen it before removing its files");
+    }
   } else if (!access.isManager && doc.uploadedById !== access.userId) {
     return forbidden("Only Admins, Partners or the person who added the file can remove it");
   }

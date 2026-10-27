@@ -51,12 +51,20 @@ export async function GET() {
       // Clients of the waiting bills and the party ledger each will be posted to
       // Names entered under "Other" have no saved client, so their ledger
       // name can't be changed here (clientId null)
+      // Bills of a connector's clients go to the connector's ledger, changed in
+      // Billing → Connectors (connectorName set)
       const parties = new Map<
         string,
-        { clientId: string | null; clientName: string; ledgerName: string; custom: boolean }
+        { clientId: string | null; clientName: string; ledgerName: string; custom: boolean; connectorName?: string }
       >();
       for (const bill of pending) {
-        if (bill.client && !parties.has(bill.client.id)) {
+        const connectorName = bill.connector?.name ?? (bill.billNumber && bill.tallyLedgerName ? null : bill.client?.connector?.name);
+        if (bill.client && connectorName) {
+          const key = `connector:${connectorName}`;
+          if (!parties.has(key)) {
+            parties.set(key, { clientId: null, clientName: connectorName, ledgerName: partyLedgerName(bill), custom: true, connectorName });
+          }
+        } else if (bill.client && !parties.has(bill.client.id)) {
           parties.set(bill.client.id, {
             clientId: bill.client.id,
             clientName: bill.client.companyName || bill.client.contactPerson,

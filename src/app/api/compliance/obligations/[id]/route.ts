@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { ensureItemsAround } from "@/lib/compliance";
+import { addLinesToOpenItems, ensureItemsAround } from "@/lib/compliance";
 import { monthKey, parseMonthKey, todayIST } from "@/lib/compliance-periods";
 import { badRequest, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 import { obligationSchema } from "@/lib/compliance-schemas";
@@ -25,6 +25,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     prisma.complianceObligationLine.deleteMany({ where: { obligationId: id, status: "pending" } }),
   ]);
   await ensureItemsAround(null, undefined, [ob.clientId]);
+  await addLinesToOpenItems([ob.clientId]);
   return NextResponse.json({ ok: true });
 }
 

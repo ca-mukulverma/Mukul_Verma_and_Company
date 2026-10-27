@@ -9,6 +9,8 @@ import { BillList } from "@/components/billing/bill-list";
 import { BillingRegister } from "@/components/billing/billing-register";
 import { ChangeRequests } from "@/components/billing/change-requests";
 import { ClearBillingData } from "@/components/billing/clear-billing-data";
+import { Connectors } from "@/components/billing/connectors";
+import { BillingAlert } from "@/components/billing/billing-alert";
 import { EmailSettings } from "@/components/billing/email-settings";
 import { EntityProfiles } from "@/components/billing/entity-profiles";
 import { TallyExport } from "@/components/billing/tally-export";
@@ -127,7 +129,7 @@ function BillingPageContent() {
     ...(summary.manages.includes("MVC") ? ["mvc"] : []),
     ...(summary.manages.includes("BEDGE") ? ["bedge"] : []),
     ...(seesList ? ["list"] : []),
-    ...(isManager ? ["tally", "requests"] : []),
+    ...(isManager ? ["tally", "connectors", "requests"] : []),
     "log",
     "mine",
     ...(summary.isAdmin ? ["series", "profiles", "emails", "clear"] : []),
@@ -158,6 +160,7 @@ function BillingPageContent() {
         <h1 className="text-2xl font-bold tracking-tight">Billing</h1>
         <p className="text-muted-foreground">Work done for clients, on its way to a bill.</p>
       </div>
+      <BillingAlert />
 
       <Tabs value={tab} onValueChange={(value) => router.replace(`/dashboard/billing?tab=${value}`, { scroll: false })}>
         {/* w-0 + min-w-full: the tab bar scrolls sideways on phones instead of widening the page */}
@@ -179,6 +182,7 @@ function BillingPageContent() {
             )}
             {seesList && <TabsTrigger value="list">Billing list</TabsTrigger>}
             {isManager && <TabsTrigger value="tally">Tally</TabsTrigger>}
+            {isManager && <TabsTrigger value="connectors">Connectors</TabsTrigger>}
             {isManager && (
               <TabsTrigger value="requests">Change requests<CountBadge count={summary.pendingChangeRequests} /></TabsTrigger>
             )}
@@ -214,6 +218,11 @@ function BillingPageContent() {
         {isManager && (
           <TabsContent value="tally" className="mt-4 min-w-0">
             <TallyExport isAdmin={summary.isAdmin} />
+          </TabsContent>
+        )}
+        {isManager && (
+          <TabsContent value="connectors" className="mt-4 min-w-0">
+            <Connectors />
           </TabsContent>
         )}
         {isManager && (

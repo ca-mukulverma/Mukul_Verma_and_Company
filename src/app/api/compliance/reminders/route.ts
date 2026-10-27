@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Company } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { canWorkOn, partyName, renderMessage, whatsappNumber } from "@/lib/compliance";
+import { canWorkOn, partyName, renderMessage } from "@/lib/compliance";
+import { clientContactSelect, reminderRecipients } from "@/lib/client-contacts";
 import { periodLabel } from "@/lib/compliance-periods";
 import { emailsSentToday, firmName, GMAIL_DAILY_LIMIT, sendComplianceEmails } from "@/lib/compliance-email";
 import { parseEmailList } from "@/lib/bill-email";
@@ -13,23 +14,25 @@ const schema = z.object({
   channel: z.enum(["WHATSAPP", "EMAIL"]),
   // Changed text from the dialog; {client} etc. are still filled in per client
   message: z.string().trim().max(2000).optional().nullable(),
+  // Reminders go to the responsible person; this also sends them to the owner
+  alsoOwner: z.boolean().optional(),
 });
 
-// POST /api/compliance/reminders – one reminder per client, covering all of
-// its selected items. WhatsApp: returns the links to open (counted as sent).
+// POST /api/compliance/reminders – one reminder per client (to its responsible
+// person, and the owner if asked), covering all of its selected items. WhatsApp: returns the links to open (counted as sent).
 // Email: sends from the company's Gmail.
 export async function POST(request: NextRequest) {
   const { access, error } = await requireComplianceAccess();
   if (error) return error;
   const body = parseBody(schema, await request.json());
   if (body.error) return body.error;
-  const { itemIds, channel, message } = body.data;
+  const { itemIds, channel, message, alsoOwner } = body.data;
 
   const items = await prisma.complianceItem.findMany({
     where: { id: { in: itemIds }, historical: false },
     include: {
       workType: true,
-      client: { select: { id: true, contactPerson: true, companyName: true, phone: true, email: true } },
+      client: { select: clientContactSelect },
     },
     orderBy: [{ dueDate: "asc" }],
   });
@@ -61,19 +64,22 @@ export async function POST(request: NextRequest) {
     };
   });
 
-  const results: { clientId: string; name: string; ok: boolean; error?: string; phone?: string; text?: string }[] = [];
+  const results: { key: string; clientId: string; name: string; ok: boolean; error?: string; phone?: string; text?: string }[] = [];
   const logs: { itemIds: string[]; sentTo: string; ok: boolean; error?: string }[] = [];
 
   if (channel === "WHATSAPP") {
     for (const r of reminders) {
-      const phone = whatsappNumber(r.client.phone);
       const name = partyName(r.client);
-      if (!phone) {
-        results.push({ clientId: r.client.id, name, ok: false, error: "No valid mobile number on the client" });
-        continue;
+      for (const person of reminderRecipients(r.client, alsoOwner)) {
+        const label = person.role === "owner" ? `${name} (owner ${person.name})` : r.client.ownerIsResponsible ? name : `${name} (${person.name})`;
+        const key = `${r.client.id}:${person.role}`;
+        if (!person.whatsapp) {
+          results.push({ key, clientId: r.client.id, name: label, ok: false, error: `No WhatsApp number for ${person.role === "owner" ? "the owner" : "the responsible person"}` });
+          continue;
+        }
+        results.push({ key, clientId: r.client.id, name: label, ok: true, phone: person.whatsapp, text: r.text });
+        logs.push({ itemIds: r.group.map((i) => i.id), sentTo: person.whatsapp, ok: true });
       }
-      results.push({ clientId: r.client.id, name, ok: true, phone, text: r.text });
-      logs.push({ itemIds: r.group.map((i) => i.id), sentTo: phone, ok: true });
     }
   } else {
     const sentToday = await emailsSentToday();
@@ -83,20 +89,25 @@ export async function POST(request: NextRequest) {
       );
     }
     for (const company of ["MVC", "BEDGE"] as Company[]) {
-      const batch = reminders.filter((r) => r.company === company);
-      const sendable = batch.filter((r) => r.client.email && parseEmailList(r.client.email));
+      const batch = reminders
+        .filter((r) => r.company === company)
+        .map((r) => {
+          const addresses = [...new Set(reminderRecipients(r.client, alsoOwner).flatMap((p) => parseEmailList(p.email ?? "") ?? []))];
+          return { ...r, to: addresses };
+        });
+      const sendable = batch.filter((r) => r.to.length > 0);
       for (const r of batch.filter((b) => !sendable.includes(b))) {
-        results.push({ clientId: r.client.id, name: partyName(r.client), ok: false, error: "No valid email address on the client" });
+        results.push({ key: r.client.id, clientId: r.client.id, name: partyName(r.client), ok: false, error: "No valid email address for the responsible person" });
       }
       if (sendable.length === 0) continue;
       const failures = await sendComplianceEmails(
         company,
-        sendable.map((r) => ({ to: parseEmailList(r.client.email!)!, subject: r.subject, text: r.text }))
+        sendable.map((r) => ({ to: r.to, subject: r.subject, text: r.text }))
       );
       sendable.forEach((r, i) => {
         const failure = failures[i];
-        results.push({ clientId: r.client.id, name: partyName(r.client), ok: !failure, ...(failure && { error: failure }) });
-        logs.push({ itemIds: r.group.map((it) => it.id), sentTo: r.client.email!, ok: !failure, ...(failure && { error: failure }) });
+        results.push({ key: r.client.id, clientId: r.client.id, name: partyName(r.client), ok: !failure, ...(failure && { error: failure }) });
+        logs.push({ itemIds: r.group.map((it) => it.id), sentTo: r.to.join(", "), ok: !failure, ...(failure && { error: failure }) });
       });
     }
   }

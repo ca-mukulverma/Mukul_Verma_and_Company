@@ -132,8 +132,12 @@ Pending → Data received → Filed → Completed
 | Work | Can't be filed until |
 |---|---|
 | GSTR-1 | **every earlier GSTR-1 is Completed**, and the **previous GSTR-3B is Filed** |
-| GSTR-3B | **this period's GSTR-1 is Filed**, and the **previous GSTR-3B is Filed** |
-| TDS return | the quarter's three TDS payment months are closed |
+| GSTR-3B | **this period's GSTR-1 is Filed**, the **previous GSTR-3B is Filed**, and **every RCM line is confirmed or skipped** |
+
+A **TDS return is not locked**. Its window warns when a TDS payment month of
+the quarter is not closed or a month has no challans (e.g. "TDS payment not
+closed for Jun 2026; No challans paid for May 2026"). It can still be filed;
+the warning is kept in its history ("Filed with a warning: …").
 
 - Filed is enough to open the next period, but the earlier item **stays on the
   sheet as "files pending" until it is Completed**.
@@ -155,14 +159,34 @@ regular payment once:
 | Rate | 18% → ₹9,000 | 10% → ₹5,000 |
 | From month | Aug 2026 | Jul 2026 |
 
-Every GSTR-3B (RCM) and every TDS payment month (TDS) then gets a line for it.
-**The period can't be completed until each line is confirmed with its amount
-or skipped with a reason** (e.g. "rent not paid this month"). For quarterly
-3B the fixed amount is taken for the months of the quarter. The RCM column of
-the GST sheet shows how many lines are done (e.g. 1/2).
+Every GSTR-3B (RCM) and every TDS payment month (TDS) then gets a line for it,
+including open periods older than this month when the payment is added late.
+**A GSTR-3B can't be marked filed, and a TDS month can't be closed, until each
+line is confirmed with its amount or skipped with a reason.** Reasons are
+chosen from a list (Not paid this month, Paid by the client directly, Payee
+changed, Agreement ended / no longer paid, Other) with optional details; who
+confirmed or skipped each line is shown next to it. Skipping with *Agreement
+ended* can also stop the payment from that period. For quarterly 3B the fixed
+amount is taken for the months of the quarter. The RCM column of the GST sheet
+shows how many lines are done (e.g. 1/2).
 
 Removing a payment stops it from this month; months already done keep their
-lines.
+lines. Past periods never get lines and are not checked.
+
+## Completed by and checked by
+
+When a return is marked filed (and when a TDS payment month is closed) the
+window asks:
+
+- **Completed by**: the person signed in. Only Admin can choose someone else;
+  the change is kept in the history.
+- **Checked by**: **Self** is chosen already; pick the colleague who checked it
+  if someone else did.
+
+Both show on the item ("Completed by Ramesh · checked by Suresh" or
+"self-checked"). Admins and Partners see, on the Overview, how many filings
+each person completed in the last 90 days and how many were self-checked.
+Past periods don't ask for these.
 
 ## TDS step by step
 
@@ -206,7 +230,7 @@ reconciliation adds it to GSTR-1, and there is no separate fee.
   and click *Email*. Any staff member can. Files go from the company's billing
   Gmail; if they are larger than about 18 MB together, the email carries
   download links valid for 7 days instead.
-- A file can't be removed from a completed period; reopen it first.
+- A file can't be removed from a completed period; reopen it first (past periods excepted).
 
 ## Reminders
 
@@ -226,8 +250,14 @@ of the next "remind all".
 The message is set per work in Setup and can be changed before sending.
 `{client}`, `{work}`, `{period}`, `{due}`, `{taxPayable}` (the tax payable
 entered on GSTR-3B / TDS payment, e.g. "Tax payable: ₹12,340.") and `{firm}`
-are filled in per client. The mobile number and email are taken from the
-client master; a 10-digit Indian number gets +91 automatically.
+are filled in per client. A 10-digit Indian number gets +91 automatically.
+
+**Who gets it:** the client's **responsible person** (the owner unless the
+client form says someone else, e.g. the accountant): their WhatsApp number and
+email. Tick *Also send to the owner* in the reminder window to send to the
+owner as well. There is no fallback: when the responsible person has no
+WhatsApp number, the sheet shows "⚠ No WhatsApp number" under the client and
+the reminder is not sent on WhatsApp.
 
 **Gmail limit:** a free Gmail account sends about 500 emails a day, shared with
 bill emails. The Overview shows today's count, and a reminder run that would
@@ -274,9 +304,21 @@ arithmetic done by the app, always live and free.
 
 ## Past periods, frequency changes, stopping
 
-- **Past period** (client → *Enter a past period*): work, any month of the
-  period, Completed / Filed / Not required, filing date, ARN, nil. Only periods
-  that are over. No reminders, no bills. Files can be added from the sheet.
+- **Past periods** (client → *Past periods (with return PDF and JSON)*):
+  choose the work and a range of months; one row per month or quarter that is
+  over, each with filing date, ARN, nil, Completed / Not required and its
+  return PDF and JSON. **Saving a row completes it**; a missing PDF or JSON
+  shows as a tag ("PDF missing"), and files can be added or removed later.
+  **Add many files** takes a whole folder of downloads: each file goes to the
+  period in its name (e.g. `GSTR3B_…_102024.pdf`, `Oct-2024.json`,
+  `2024-10`); JSON files become the return JSON, PDFs the return PDF, and
+  files without a clear month are listed to place by hand. No RCM/TDS check,
+  no reminders, no bills, and no completed/checked by.
+- **After a registration**: completing a task whose title is a registration
+  (GST, company, partnership, LLP, TAN…) asks *Start compliance for this
+  client?*: tick the works, Monthly or Quarterly (QRMP), and the first period.
+  Any completed task of a client has a *Start compliance* button too. Monthly
+  RCM/TDS payments are added on the client's compliance page as usual.
 - **Monthly ↔ quarterly GST** (client → Edit on GSTR-1 or GSTR-3B): choose the
   first period of the new frequency. GSTR-1 and GSTR-3B change together;
   earlier periods keep the old frequency. A period already in the sheet can't

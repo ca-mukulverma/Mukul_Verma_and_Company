@@ -13,7 +13,12 @@ export interface ClientCell {
   name: string;
   gstin: string | null;
   phone: string | null;
+  // The responsible person's email (the owner's when the owner is responsible)
   email: string | null;
+  ownerIsResponsible: boolean;
+  responsibleName: string | null;
+  // The responsible person has no WhatsApp number: reminders can't go on WhatsApp
+  noWhatsapp: boolean;
 }
 
 export const STATUS_LABELS: Record<ItemStatus, string> = {

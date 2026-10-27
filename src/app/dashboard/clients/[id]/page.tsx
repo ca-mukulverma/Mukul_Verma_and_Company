@@ -33,6 +33,7 @@ import {
   User,
   AlertCircle,
   Hash,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { UnifiedHistoryTab } from "@/components/clients/unified-history-tab";
 import { canCreateTask, canEditClient, canModifyClient } from "@/lib/permissions";
 import { CredentialsTab } from "@/components/clients/credentials-tab";
+import { clientPhones } from "@/lib/client-contacts";
 
 interface Client {
   id: string;
@@ -55,6 +57,12 @@ interface Client {
   createdAt: string;
   updatedAt: string;
   gstin: string | null;
+  phones: unknown;
+  ownerIsResponsible: boolean;
+  responsibleName: string | null;
+  responsiblePhone: string | null;
+  responsibleEmail: string | null;
+  connector: { id: string; name: string; tallyLedgerName: string | null } | null;
   manager: {
     id: string;
     name: string;
@@ -250,7 +258,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                       <User className="h-4 w-4 mt-0.5 text-muted-foreground" />
                       <div>
                         <p className="font-medium">{client.contactPerson}</p>
-                        <p className="text-xs text-muted-foreground">Contact Person</p>
+                        <p className="text-xs text-muted-foreground">Owner{client.ownerIsResponsible ? " · responsible for compliance" : ""}</p>
                       </div>
                     </div>
 
@@ -279,17 +287,44 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
                       </div>
                     )}
 
-                    {client.phone && (
-                      <div className="flex items-start gap-2">
+                    {clientPhones(client).map((p, i) => (
+                      <div key={i} className="flex items-start gap-2">
                         <Phone className="h-4 w-4 mt-0.5 text-muted-foreground" />
                         <div>
                           <a 
-                            href={`tel:${client.phone}`}
+                            href={`tel:${p.number}`}
                             className="text-primary hover:underline"
                           >
-                            {client.phone}
+                            {p.number}
                           </a>
-                          <p className="text-xs text-muted-foreground">Phone</p>
+                          <p className="text-xs text-muted-foreground">{p.label}{p.whatsapp ? " · WhatsApp" : ""}</p>
+                        </div>
+                      </div>
+                    ))}
+
+                    {!client.ownerIsResponsible && (
+                      <div className="flex items-start gap-2 rounded-md border p-2">
+                        <User className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium">{client.responsibleName}</p>
+                          <p className="text-xs text-muted-foreground">Responsible for compliance (gets the reminders)</p>
+                          {client.responsiblePhone && (
+                            <a href={`tel:${client.responsiblePhone}`} className="block text-sm text-primary hover:underline">{client.responsiblePhone}</a>
+                          )}
+                          {client.responsibleEmail && (
+                            <a href={`mailto:${client.responsibleEmail}`} className="block text-sm text-primary hover:underline">{client.responsibleEmail}</a>
+                          )}
+                          {!client.responsiblePhone && <p className="text-xs text-amber-700 dark:text-amber-300">No WhatsApp number: reminders can&apos;t go on WhatsApp</p>}
+                        </div>
+                      </div>
+                    )}
+
+                    {client.connector && (
+                      <div className="flex items-start gap-2">
+                        <Users className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                        <div>
+                          <p>{client.connector.name}</p>
+                          <p className="text-xs text-muted-foreground">Connector · bills go to their ledger in Tally</p>
                         </div>
                       </div>
                     )}

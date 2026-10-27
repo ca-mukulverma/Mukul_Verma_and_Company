@@ -99,6 +99,8 @@ export interface BillEmailGroup {
   clientId: string | null;
   // The client's saved email, if any
   savedEmail: string | null;
+  // A connector's client: the bill goes to the connector by default
+  connector: { name: string; email: string | null } | null;
   docs: BillDocument[];
 }
 
@@ -115,6 +117,7 @@ export async function loadBillEmailGroups(ids: string[], access: BillingAccess) 
         billToName: true,
         billToGstin: true,
         client: { select: { contactPerson: true, companyName: true, email: true } },
+        connector: { select: { name: true, email: true } },
       },
     }),
     loadBillDocuments(ids, access),
@@ -130,7 +133,8 @@ export async function loadBillEmailGroups(ids: string[], access: BillingAccess) 
     const party = bill.clientId
       ? `client:${bill.clientId}`
       : `other:${(bill.billToName || "").trim().toLowerCase()}:${bill.billToGstin || ""}`;
-    const key = `${bill.company}:${party}`;
+    // A connector's bills are emailed separately from the client's own
+    const key = `${bill.company}:${party}${bill.connector ? ":connector" : ""}`;
     const group = groups.get(key) ?? {
       key,
       company: bill.company,
@@ -138,6 +142,7 @@ export async function loadBillEmailGroups(ids: string[], access: BillingAccess) 
       contactPerson: bill.client?.contactPerson || null,
       clientId: bill.clientId,
       savedEmail: bill.client?.email?.trim() || null,
+      connector: bill.connector ? { name: bill.connector.name, email: bill.connector.email?.trim() || null } : null,
       docs: [],
     };
     group.docs.push(doc);
@@ -178,7 +183,7 @@ export function buildBillEmail(group: BillEmailGroup, options: { allowReplies: b
   const subject = single
     ? `Billing – Bill no. ${first.billNumber} for ${group.partyName}`
     : `Billing – ${docs.length} bills for ${group.partyName} (Nos. ${numberList(docs)})`;
-  const greeting = `Dear ${group.contactPerson || "Sir/Madam"},`;
+  const greeting = `Dear ${group.connector?.name || group.contactPerson || "Sir/Madam"},`;
   const intro = single
     ? `Please find attached our bill for ${group.partyName}. Its details are given below.`
     : `Please find attached our ${docs.length} bills for ${group.partyName}. Their details are given below.`;

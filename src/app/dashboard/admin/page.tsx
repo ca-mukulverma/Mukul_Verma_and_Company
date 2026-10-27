@@ -31,6 +31,7 @@ import { RecentNotificationsCard } from "@/components/dashboard/recent-notificat
 import { OverviewStats } from "@/components/dashboard/overview-stats";
 import { TaskProgress } from "@/components/dashboard/task-progress";
 import { BillingDashboardCard } from "@/components/billing/billing-dashboard-card";
+import { BillingAlert } from "@/components/billing/billing-alert";
 import {
   DashboardStatsSkeleton,
   DashboardContentSkeleton,
@@ -241,6 +242,8 @@ export default function AdminDashboard() {
           </Button>
         </div>
       </div>
+
+      <BillingAlert />
 
       <Tabs
         value={activeTab}

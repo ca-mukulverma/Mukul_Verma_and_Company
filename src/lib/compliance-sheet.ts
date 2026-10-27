@@ -12,20 +12,24 @@ import {
   resolveTdsReturns,
   subscriptionInclude,
   SubscriptionWithRefs,
+  tdsReturnWarnings,
 } from "@/lib/compliance";
 import { addMonths, dateKey, periodEndOf, periodLabel, todayIST } from "@/lib/compliance-periods";
+import { clientContactSelect, reminderContacts } from "@/lib/client-contacts";
 
 // The data behind the sheets on the Compliance page: one row per client, one
 // cell per item. Opening a sheet also creates the period's missing items.
 
 export const sheetItemInclude = {
   workType: true,
-  client: { select: { id: true, contactPerson: true, companyName: true, gstin: true, phone: true, email: true } },
+  client: { select: clientContactSelect },
   documents: { select: { id: true, kind: true, fileName: true, size: true, createdAt: true }, orderBy: { createdAt: "asc" } },
-  lines: { include: { obligation: true }, orderBy: { obligation: { createdAt: "asc" } } },
+  lines: { include: { obligation: true, resolvedBy: { select: { name: true } } }, orderBy: { obligation: { createdAt: "asc" } } },
   challans: { orderBy: { challanDate: "asc" } },
   bill: { select: { id: true, status: true } },
   updatedBy: { select: { name: true } },
+  completedBy: { select: { id: true, name: true } },
+  checkedBy: { select: { id: true, name: true } },
   _count: { select: { challans: true } },
 } satisfies Prisma.ComplianceItemInclude;
 
@@ -33,7 +37,21 @@ export type SheetItemRecord = Prisma.ComplianceItemGetPayload<{ include: typeof 
 
 const num = (value: Prisma.Decimal | null) => (value === null ? null : Number(value));
 
-export function serializeItem(item: SheetItemRecord, access: ComplianceAccess, lockReason: string | null) {
+// Files a past period still lacks (it is completed when saved; these show as tags)
+function missingFiles(item: SheetItemRecord) {
+  const kinds = new Set(item.documents.map((d) => d.kind));
+  return [
+    ...(item.workType.requirePdf && !kinds.has("RETURN_PDF") ? ["PDF"] : []),
+    ...(item.workType.requireJson && !kinds.has("RETURN_JSON") ? ["JSON"] : []),
+  ];
+}
+
+export function serializeItem(
+  item: SheetItemRecord,
+  access: ComplianceAccess,
+  lockReason: string | null,
+  warning: string | null = null
+) {
   const today = todayIST();
   const open = item.status === "pending" || item.status === "data_received";
   return {
@@ -49,7 +67,10 @@ export function serializeItem(item: SheetItemRecord, access: ComplianceAccess, l
     dueDate: dateKey(item.dueDate),
     overdue: open && !item.historical && item.dueDate < today,
     lockReason,
+    // TDS return: challans not paid / payments not closed; filing is allowed
+    warning,
     historical: item.historical,
+    filesMissing: item.historical && item.status === "completed" ? missingFiles(item) : [],
     dataReceivedAt: item.dataReceivedAt?.toISOString() ?? null,
     filedAt: item.filedAt ? dateKey(item.filedAt) : null,
     arn: item.arn,
@@ -82,6 +103,7 @@ export function serializeItem(item: SheetItemRecord, access: ComplianceAccess, l
       taxAmount: num(l.taxAmount),
       status: l.status,
       note: l.note,
+      resolvedBy: l.resolvedBy?.name ?? null,
     })),
     challans: item.challans.map((c) => ({
       id: c.id,
@@ -92,6 +114,9 @@ export function serializeItem(item: SheetItemRecord, access: ComplianceAccess, l
       amount: Number(c.amount),
     })),
     updatedBy: item.updatedBy?.name ?? null,
+    completedBy: item.completedBy,
+    checkedBy: item.checkedBy,
+    selfChecked: !!item.completedById && item.completedById === item.checkedById,
     updatedAt: item.updatedAt.toISOString(),
     canEdit: canWorkOn(access, item.workTypeId),
   };
@@ -99,12 +124,13 @@ export function serializeItem(item: SheetItemRecord, access: ComplianceAccess, l
 
 export type SheetItem = ReturnType<typeof serializeItem>;
 
-// Serializes items with their locks
+// Serializes items with their locks and warnings (both only for open items)
 export async function serializeItems(items: SheetItemRecord[], access: ComplianceAccess) {
-  const locks = await computeLocks(items.map((i) => ({ ...i, kind: i.workType.kind })));
-  return items.map((item) =>
-    serializeItem(item, access, item.status === "pending" || item.status === "data_received" ? locks.get(item.id) ?? null : null)
-  );
+  const lockable = items
+    .filter((i) => !i.historical && (i.status === "pending" || i.status === "data_received"))
+    .map((i) => ({ ...i, kind: i.workType.kind }));
+  const [locks, warnings] = await Promise.all([computeLocks(lockable), tdsReturnWarnings(lockable)]);
+  return items.map((item) => serializeItem(item, access, locks.get(item.id) ?? null, warnings.get(item.id) ?? null));
 }
 
 export async function loadSheetItem(id: string, access: ComplianceAccess) {
@@ -115,7 +141,7 @@ export async function loadSheetItem(id: string, access: ComplianceAccess) {
 }
 
 function clientRow(client: SheetItemRecord["client"]) {
-  return { id: client.id, name: partyName(client), gstin: client.gstin, phone: client.phone, email: client.email };
+  return { id: client.id, name: partyName(client), gstin: client.gstin, ...reminderContacts(client) };
 }
 
 // Items may be created for periods up to next month, not further ahead

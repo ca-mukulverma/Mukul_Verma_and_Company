@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { ensureItemsAround } from "@/lib/compliance";
+import { addLinesToOpenItems, ensureItemsAround } from "@/lib/compliance";
 import { parseMonthKey } from "@/lib/compliance-periods";
 import { badRequest, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 import { obligationSchema } from "@/lib/compliance-schemas";
@@ -23,7 +23,8 @@ export async function POST(request: NextRequest) {
   await prisma.clientObligation.create({
     data: { ...data, fromMonth, toMonth },
   });
-  // Open GSTR-3B / TDS payment periods get the new line
+  // Every open GSTR-3B / TDS payment period from its first month gets the new line
   await ensureItemsAround(null, undefined, [data.clientId]);
+  await addLinesToOpenItems([data.clientId]);
   return NextResponse.json({ ok: true }, { status: 201 });
 }

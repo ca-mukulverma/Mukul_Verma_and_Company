@@ -38,6 +38,8 @@ const detailsSchema = z.object({
   description: z.string().trim().min(3).max(2000).optional(),
   workDate: z.string().datetime().optional(),
   remark: z.string().trim().max(1000).optional().nullable(),
+  // Connector clients: print the client's GSTIN (reported as B2B)
+  showGstin: z.boolean().optional(),
 });
 
 const actionSchema = z.discriminatedUnion("action", [
@@ -139,7 +141,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.errors[0]?.message || "Invalid data" }, { status: 400 });
   }
-  const { clientId, other, description, workDate, remark } = parsed.data;
+  const { clientId, other, description, workDate, remark, showGstin } = parsed.data;
 
   if (clientId && !other) {
     const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } });
@@ -154,8 +156,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       ...(description !== undefined && { description }),
       ...(workDate !== undefined && { workDate: new Date(workDate) }),
       ...(remark !== undefined && { remark: remark || null }),
+      ...(showGstin !== undefined && { showGstin }),
     },
-    { action: "details_updated", userId: user.id }
+    {
+      action: "details_updated",
+      userId: user.id,
+      ...(showGstin !== undefined && showGstin !== bill.showGstin && { remark: showGstin ? "Client's GSTIN shown (B2B)" : "Client's GSTIN not shown (B2C)" }),
+    }
   );
   if (!updated) return conflict();
 

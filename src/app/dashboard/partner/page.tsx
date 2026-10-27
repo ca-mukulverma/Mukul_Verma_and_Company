@@ -40,6 +40,7 @@ import {
 } from "@/components/loading/dashboard-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BillingDashboardCard } from "@/components/billing/billing-dashboard-card";
+import { BillingAlert } from "@/components/billing/billing-alert";
 import { RecentNotificationsCard } from "@/components/dashboard/recent-notifications-card";
 import { AssignTaskButton } from "@/components/tasks/assign-task-button";
 import { PriorityTasksCard } from "@/components/dashboard/priority-tasks-card";
@@ -203,6 +204,8 @@ function PartnerDashboardContent() {
           </Button>
         </div>
       </div>
+
+      <BillingAlert />
 
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>

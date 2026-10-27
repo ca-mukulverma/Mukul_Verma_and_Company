@@ -26,6 +26,8 @@ interface Overview {
   notes: { id: string; body: string; createdAt: string; client: { id: string; name: string } | null }[];
   email: { sentToday: number; limit: number; mvc: boolean; bedge: boolean };
   storageReady: boolean;
+  // Admins and Partners: filings in the last 90 days per person
+  signOffs: { name: string; total: number; selfChecked: number }[];
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: "red" | "amber" | "sky" | "green" }) {
@@ -97,6 +99,39 @@ export function ComplianceOverview({ onOpenSheet }: { onOpenSheet: (kind: string
           </Card>
         ))}
       </div>
+
+      {data.isManager && data.signOffs.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Completed and self-checked (last 90 days)</CardTitle>
+            <p className="text-xs text-muted-foreground">Returns filed and TDS months closed by each person, and how many of them nobody else checked.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="p-1">Completed by</th>
+                    <th className="p-1 text-right">Total</th>
+                    <th className="p-1 text-right">Self-checked</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.signOffs.map((p) => (
+                    <tr key={p.name} className="border-t">
+                      <td className="p-1">{p.name}</td>
+                      <td className="p-1 text-right">{p.total}</td>
+                      <td className={cn("p-1 text-right", p.total > 0 && p.selfChecked / p.total > 0.8 && "font-medium text-amber-700 dark:text-amber-300")}>
+                        {p.selfChecked} ({Math.round((p.selfChecked / p.total) * 100)}%)
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {data.isManager && (
         <Card>

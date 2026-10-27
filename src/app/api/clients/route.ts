@@ -4,9 +4,11 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { contactsData, contactsError, contactsSchema } from "@/lib/client-contacts";
+import { canSetTallyLedger } from "@/lib/connectors";
 
 // Client validation schema
-const clientSchema = z.object({
+const clientSchema = contactsSchema.extend({
   contactPerson: z.string().min(1, "Contact person name is required"),
   companyName: z.string().optional(),
   email: z.string().email("Invalid email").optional().or(z.literal('')), // Allow empty string
@@ -16,6 +18,9 @@ const clientSchema = z.object({
   gstin: z.string().optional(),
   isGuest: z.boolean().default(false),
   accessExpiry: z.string().nullable().optional(),
+  connectorId: z.string().min(1).nullable().optional(),
+  // Billing managers and Admin only
+  tallyLedgerName: z.string().trim().max(100).nullable().optional(),
 });
 
 // GET all clients
@@ -52,7 +57,9 @@ export async function GET(request: NextRequest) {
         { contactPerson: { contains: searchTerm, mode: 'insensitive' } },
         { companyName: { contains: searchTerm, mode: 'insensitive' } },
         { email: { contains: searchTerm, mode: 'insensitive' } },
-        { phone: { contains: searchTerm, mode: 'insensitive' } }
+        { phone: { contains: searchTerm, mode: 'insensitive' } },
+        { responsibleName: { contains: searchTerm, mode: 'insensitive' } },
+        { responsiblePhone: { contains: searchTerm, mode: 'insensitive' } }
       ];
     }
     
@@ -146,6 +153,16 @@ export async function POST(req: NextRequest) {
     }
 
     const clientData = validationResult.data;
+    const contactProblem = contactsError(clientData);
+    if (contactProblem) return NextResponse.json({ error: contactProblem }, { status: 400 });
+    const contacts = contactsData(clientData);
+    const phone = contacts.phone !== undefined ? contacts.phone : clientData.phone;
+    // Only billing managers and Admin set the Tally ledger; a client added by
+    // anyone else without one is flagged for the billing manager
+    const mayLedger = await canSetTallyLedger(session.user.id);
+    if (clientData.tallyLedgerName && !mayLedger) {
+      return NextResponse.json({ error: "Only the billing manager or Admin can set the Tally ledger" }, { status: 403 });
+    }
 
     // For guest clients, ensure expiry date is set
     if (clientData.isGuest && !clientData.accessExpiry) {
@@ -156,7 +173,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Ensure at least one contact method is provided
-    if (!clientData.email && !clientData.phone) {
+    if (!clientData.email && !phone) {
       return NextResponse.json(
         { error: "At least one contact method (email or phone) is required" },
         { status: 400 }
@@ -169,10 +186,14 @@ export async function POST(req: NextRequest) {
         contactPerson: clientData.contactPerson,
         companyName: clientData.companyName,
         email: clientData.email,
-        phone: clientData.phone,
+        ...contacts,
+        phone,
         address: clientData.address,
         notes: clientData.notes,
         gstin: clientData.gstin,
+        connectorId: clientData.connectorId || null,
+        tallyLedgerName: mayLedger ? clientData.tallyLedgerName || null : null,
+        tallyLedgerPending: !mayLedger && !clientData.isGuest && !clientData.connectorId,
         isGuest: clientData.isGuest || false,
         accessExpiry: clientData.accessExpiry ? new Date(clientData.accessExpiry) : null,
         managerId: session.user.id,

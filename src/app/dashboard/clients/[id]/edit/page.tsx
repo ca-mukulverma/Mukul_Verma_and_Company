@@ -38,10 +38,21 @@ import { ArrowLeft, CalendarIcon, Loader2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { canEditClient } from "@/lib/permissions";
 import { useSession } from "next-auth/react";
+import {
+  BillingValue,
+  ClientBillingFields,
+  ClientContactsFields,
+  ContactsValue,
+  contactsOf,
+  contactsPayload,
+  contactsProblem,
+  emptyContacts,
+  useBillingOptions,
+} from "@/components/clients/client-extra-fields";
 
 // Form schema with conditional validation
 const clientFormSchema = z.object({
-  contactPerson: z.string().min(2, "Contact person name is required"),
+  contactPerson: z.string().min(2, "Owner's name is required"),
   companyName: z.string().optional(),
   email: z.string().email("Please enter a valid email").optional().or(z.literal('')),
   phone: z.string().optional(),
@@ -65,6 +76,13 @@ interface Client {
   gstin: string | null;
   isGuest: boolean;
   accessExpiry: string | null;
+  phones: unknown;
+  ownerIsResponsible: boolean;
+  responsibleName: string | null;
+  responsiblePhone: string | null;
+  responsibleEmail: string | null;
+  connectorId: string | null;
+  tallyLedgerName: string | null;
 }
 
 // Fix any types
@@ -92,6 +110,9 @@ export default function EditClientPage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<ContactsValue>(emptyContacts);
+  const [billing, setBilling] = useState<BillingValue>({ connectorId: null, tallyLedgerName: "" });
+  const billingOptions = useBillingOptions();
 
   // Setup form with default values
   const form = useForm<ClientFormValues>({
@@ -128,6 +149,8 @@ export default function EditClientPage({
         setLoading(true);
         const response = await axios.get(`/api/clients/${clientId}`);
         setClient(response.data);
+        setContacts(contactsOf(response.data));
+        setBilling({ connectorId: response.data.connectorId ?? null, tallyLedgerName: response.data.tallyLedgerName ?? "" });
 
         // Set form values from fetched client data
         form.reset({
@@ -157,9 +180,15 @@ export default function EditClientPage({
 
   // Form submission handler
   const onSubmit = async (data: ClientFormValues) => {
+    const contactsData = contactsPayload(contacts);
     // Ensure at least one contact method is provided
-    if (!data.email && !data.phone) {
+    if (!data.email && contactsData.phones.length === 0) {
       toast.error("Please provide either an email or phone number");
+      return;
+    }
+    const problem = contactsProblem(contacts);
+    if (problem) {
+      toast.error(problem);
       return;
     }
 
@@ -169,6 +198,11 @@ export default function EditClientPage({
       // Prepare data for submission (convert Date to ISO string)
       const clientData = {
         ...data,
+        ...contactsData,
+        phone: contactsData.phones[0]?.number ?? null,
+        email: data.email || null,
+        connectorId: billing.connectorId,
+        ...(billingOptions?.canSetLedger && { tallyLedgerName: billing.tallyLedgerName.trim() || null }),
         accessExpiry: data.isGuest && data.accessExpiry
           ? data.accessExpiry.toISOString()
           : null
@@ -258,7 +292,7 @@ export default function EditClientPage({
                 name="contactPerson"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Contact Person *</FormLabel>
+                    <FormLabel>Owner Name *</FormLabel>
                     <FormControl>
                       <Input placeholder="John Smith" {...field} />
                     </FormControl>
@@ -281,7 +315,7 @@ export default function EditClientPage({
                 )}
               />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <FormField
                   control={form.control}
                   name="email"
@@ -299,20 +333,16 @@ export default function EditClientPage({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone Number</FormLabel>
-                      <FormControl>
-                        <Input placeholder="+1 (555) 123-4567" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
+
+              <ClientContactsFields value={contacts} onChange={setContacts} />
+
+              <ClientBillingFields
+                value={billing}
+                onChange={setBilling}
+                options={billingOptions}
+                clientName={form.watch("companyName") || form.watch("contactPerson")}
+              />
 
               <FormField
                 control={form.control}

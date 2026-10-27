@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivities } from "@/lib/activity-logger";
 import { BillingAccess, getBillingManagerIds, hasBillTo, managesCompany, notifyBillingUsers } from "@/lib/billing";
 import { MvcBillTypeValue, financialYearOf, formatBillNumber } from "@/lib/billing-constants";
+import { clientLedger, ledgerClientSelect, ledgersAtApproval } from "@/lib/connectors";
 
 type Tx = Prisma.TransactionClient;
 type Actor = { id: string; name: string };
@@ -115,6 +116,8 @@ export async function finalApprove(ids: string[], actor: Actor): Promise<BatchRe
     return !!bill.type;
   });
   if (candidates.length === 0) return result;
+  // The ledger and connector each bill goes to, fixed now
+  const ledgers = await ledgersAtApproval(candidates.map((b) => b.id));
 
   let approved: { bills: { id: string; company: string; billNumber: string }[]; closedTasks: ClosedTask[] };
   try {
@@ -141,10 +144,14 @@ export async function finalApprove(ids: string[], actor: Actor): Promise<BatchRe
 
         await tx.$executeRaw`
           UPDATE "Bill" AS b
-          SET "financialYear" = v."financialYear", "sequence" = v."sequence", "billNumber" = v."billNumber"
+          SET "financialYear" = v."financialYear", "sequence" = v."sequence", "billNumber" = v."billNumber",
+              "tallyLedgerName" = v."tallyLedgerName", "connectorId" = v."connectorId"
           FROM (VALUES ${Prisma.join(
-            numbered.map((n) => Prisma.sql`(${n.id}, ${n.financialYear}, ${n.sequence}::int, ${n.billNumber})`)
-          )}) AS v("id", "financialYear", "sequence", "billNumber")
+            numbered.map((n) => {
+              const ledger = ledgers.get(n.id);
+              return Prisma.sql`(${n.id}, ${n.financialYear}, ${n.sequence}::int, ${n.billNumber}, ${ledger?.tallyLedgerName ?? null}::varchar, ${ledger?.connectorId ?? null}::char(36))`;
+            })
+          )}) AS v("id", "financialYear", "sequence", "billNumber", "tallyLedgerName", "connectorId")
           WHERE b."id" = v."id"`;
         await tx.billEvent.createMany({
           data: numbered.map((n) => ({ billId: n.id, action: "approved", userId: actor.id, remark: `Bill no. ${n.billNumber}` })),
@@ -363,6 +370,13 @@ export async function decideChangeRequest(
       const type: BillType = current.company === "BEDGE" ? "BEDGE" : (changes.type ?? current.type ?? "NON_GST");
       const now = new Date();
       const number = await assignBillNumber(tx, type, now);
+      // A new client: its ledger and connector now; same client: as before
+      const newClient = changes.clientId
+        ? await tx.client.findUnique({ where: { id: changes.clientId }, select: ledgerClientSelect })
+        : null;
+      const ledger = newClient
+        ? { tallyLedgerName: clientLedger(newClient), connectorId: newClient.connector?.id ?? null, showGstin: false }
+        : { tallyLedgerName: current.tallyLedgerName, connectorId: current.connectorId, showGstin: current.showGstin };
       await tx.bill.create({
         data: {
           company: current.company,
@@ -389,6 +403,7 @@ export async function decideChangeRequest(
           billNumber: number.billNumber,
           billDate: now,
           reissuedFromId: current.id,
+          ...ledger,
           events: {
             create: { action: "reissued", userId: actor.id, remark: `Replaces bill no. ${current.billNumber}: ${request.reason}` },
           },

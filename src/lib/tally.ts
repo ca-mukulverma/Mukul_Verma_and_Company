@@ -5,6 +5,7 @@ import { GST_STATES, billTotals } from "@/lib/bill-document";
 import { MVC_GST_STATE_CODE } from "@/lib/bill-formats";
 import { BillingAccess } from "@/lib/billing";
 import { billTypesOf } from "@/lib/billing-constants";
+import { billShowsGstin, clientLedger } from "@/lib/connectors";
 
 // Tally import file (XML) of sales vouchers, one file per billing entity,
 // since each entity is a separate company in Tally.
@@ -59,21 +60,59 @@ export function pendingTallyWhere(type: BillType): Prisma.BillWhereInput {
 }
 
 const tallyBillInclude = {
-  client: { select: { id: true, contactPerson: true, companyName: true, gstin: true, tallyLedgerName: true } },
+  client: {
+    select: {
+      id: true,
+      contactPerson: true,
+      companyName: true,
+      gstin: true,
+      tallyLedgerName: true,
+      connectorId: true,
+      connector: { select: { id: true, name: true, tallyLedgerName: true } },
+    },
+  },
+  connector: { select: { name: true } },
+  reissuedFrom: { select: { billNumber: true } },
 } satisfies Prisma.BillInclude;
 
 type TallyBill = Prisma.BillGetPayload<{ include: typeof tallyBillInclude }>;
 
-// The party ledger in Tally: the client's (or its Tally name), or the name
-// entered under "Other"
-export function partyLedgerName(bill: Pick<TallyBill, "client" | "billToName">) {
+// The party ledger in Tally: the one fixed at final approval (the connector's
+// for a connector's client), else the client's (or its Tally name), or the
+// name entered under "Other"
+export function partyLedgerName(bill: Pick<TallyBill, "client" | "billToName" | "tallyLedgerName">) {
+  if (bill.tallyLedgerName) return bill.tallyLedgerName;
   const client = bill.client;
   if (!client) return bill.billToName || "";
-  return client.tallyLedgerName || client.companyName || client.contactPerson;
+  return clientLedger(client);
 }
 
+// The client's GSTIN, used for place of supply and IGST vs CGST + SGST
 function partyGstin(bill: Pick<TallyBill, "client" | "billToGstin">) {
   return bill.client ? bill.client.gstin : bill.billToGstin;
+}
+
+// The GSTIN sent to Tally, which makes the voucher B2B in GSTR-1: not for a
+// connector's client unless the bill shows it (then it is B2C)
+function reportedGstin(bill: TallyBill) {
+  return billShowsGstin(bill, bill.client?.connectorId ?? null) ? partyGstin(bill) : null;
+}
+
+// What the voucher says: the work, the client (and GSTIN when shown), the
+// bill number, the connector and the bill a reissue replaces
+export function voucherNarration(bill: TallyBill) {
+  const client = bill.client ? bill.client.companyName || bill.client.contactPerson : bill.billToName;
+  const gstin = reportedGstin(bill);
+  const connector = bill.connector?.name ?? (bill.billNumber ? null : bill.client?.connector?.name) ?? null;
+  return [
+    bill.description.replace(/\s*\n\s*/g, "; "),
+    client ? `Client: ${client}${gstin ? ` (GSTIN ${gstin})` : ""}` : null,
+    bill.billNumber ? `Bill no. ${bill.billNumber}` : null,
+    connector ? `Via connector: ${connector}` : null,
+    bill.reissuedFrom?.billNumber ? `Reissue of bill no. ${bill.reissuedFrom.billNumber}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
 }
 
 function escapeXml(value: string) {
@@ -148,8 +187,9 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
     }
     const clientState = gstin?.slice(0, 2);
     const stateName = (clientState && GST_STATES[clientState]) || GST_STATES[entity?.stateCode || MVC_GST_STATE_CODE] || null;
+    const reported = reportedGstin(bill);
     gstTags = [
-      ...(gstin ? [tag("PARTYGSTIN", gstin)] : []),
+      ...(reported ? [tag("PARTYGSTIN", reported)] : []),
       ...(stateName ? [tag("STATENAME", stateName), tag("PLACEOFSUPPLY", stateName)] : []),
     ];
   }
@@ -164,7 +204,7 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
     tag("REFERENCE", bill.billNumber ?? ""),
     tag("PARTYLEDGERNAME", party),
     ...gstTags,
-    tag("NARRATION", bill.description.replace(/\s*\n\s*/g, "; ")),
+    tag("NARRATION", voucherNarration(bill)),
     tag("PERSISTEDVIEW", "Accounting Voucher View"),
     ledgerEntry(party, total, true, true),
     ledgerEntry(ledgers.salesLedger, fee, false),
