@@ -439,6 +439,10 @@ which is several years of return PDFs.
 
    Use your own domain instead if the app runs on one. For the preview bucket
    use `"AllowedOrigins": ["*"]` (it only ever holds test files).
+   Keep `Content-Encoding` in `AllowedHeaders`: JSON and CSV files are sent
+   gzipped, and without it the browser blocks them ("Failed to fetch"). The
+   app then falls back to sending them uncompressed, so they still upload,
+   just larger.
 5. **Access key**: R2 → **Manage R2 API Tokens** → **Create API token** →
    permission **Object Read & Write**, applied to **those two buckets only**.
    Copy the **Access Key ID**, **Secret Access Key** and your **Account ID**
