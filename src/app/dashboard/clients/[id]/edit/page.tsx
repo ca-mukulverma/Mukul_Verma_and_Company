@@ -42,6 +42,7 @@ import {
   BillingValue,
   ClientBillingFields,
   ClientContactsFields,
+  ClientRegistrationFields,
   ContactsValue,
   contactsOf,
   contactsPayload,
@@ -49,6 +50,7 @@ import {
   emptyContacts,
   useBillingOptions,
 } from "@/components/clients/client-extra-fields";
+import { RegistrationValues, emptyRegistrations, registrationsOf, registrationsPayload, registrationsProblem } from "@/lib/client-documents";
 
 // Form schema with conditional validation
 const clientFormSchema = z.object({
@@ -111,6 +113,7 @@ export default function EditClientPage({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<ContactsValue>(emptyContacts);
+  const [registrations, setRegistrations] = useState<RegistrationValues>(emptyRegistrations);
   const [billing, setBilling] = useState<BillingValue>({ connectorId: null, tallyLedgerName: "" });
   const billingOptions = useBillingOptions();
 
@@ -150,6 +153,7 @@ export default function EditClientPage({
         const response = await axios.get(`/api/clients/${clientId}`);
         setClient(response.data);
         setContacts(contactsOf(response.data));
+        setRegistrations(registrationsOf(response.data));
         setBilling({ connectorId: response.data.connectorId ?? null, tallyLedgerName: response.data.tallyLedgerName ?? "" });
 
         // Set form values from fetched client data
@@ -186,7 +190,7 @@ export default function EditClientPage({
       toast.error("Please provide either an email or phone number");
       return;
     }
-    const problem = contactsProblem(contacts);
+    const problem = contactsProblem(contacts) ?? registrationsProblem(registrations);
     if (problem) {
       toast.error(problem);
       return;
@@ -199,6 +203,7 @@ export default function EditClientPage({
       const clientData = {
         ...data,
         ...contactsData,
+        ...registrationsPayload(registrations),
         phone: contactsData.phones[0]?.number ?? null,
         email: data.email || null,
         connectorId: billing.connectorId,
@@ -334,6 +339,8 @@ export default function EditClientPage({
                 />
 
               </div>
+
+              <ClientRegistrationFields value={registrations} onChange={setRegistrations} />
 
               <ClientContactsFields value={contacts} onChange={setContacts} />
 

@@ -42,6 +42,7 @@ import {
   LayoutList,
   Mail,
   Phone,
+  Send,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -415,6 +416,12 @@ const refresh = useCallback(() => {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
+                  <Link href={`/dashboard/clients/${client.id}/send`}>
+                    <Send className="mr-2 h-4 w-4" />
+                    Send to Client
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <Link href={`/dashboard/clients/${client.id}/edit`}>
                     <Edit className="mr-2 h-4 w-4" />
                     Edit Client
@@ -432,17 +439,25 @@ const refresh = useCallback(() => {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            // Show just a View button for users without write access
-            <Button 
-              variant="ghost" 
-              size="sm"
-              asChild
-            >
-              <Link href={`/dashboard/clients/${client.id}`}>
-                <Eye className="mr-1 h-4 w-4" />
-                View
-              </Link>
-            </Button>
+            // View and Send for users without write access
+            <div className="flex gap-1">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                asChild
+              >
+                <Link href={`/dashboard/clients/${client.id}`}>
+                  <Eye className="mr-1 h-4 w-4" />
+                  View
+                </Link>
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href={`/dashboard/clients/${client.id}/send`}>
+                  <Send className="mr-1 h-4 w-4" />
+                  Send
+                </Link>
+              </Button>
+            </div>
           )}
         </div>
       ),

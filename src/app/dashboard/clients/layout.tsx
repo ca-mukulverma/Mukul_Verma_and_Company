@@ -36,6 +36,9 @@ export default function ClientsLayout({ children }: { children: React.ReactNode 
       else if (pathParts[3] === 'guest' && pathParts[4] === 'create') {
         segments.push({ name: "Add Guest Client", href: pathname });
       }
+      else if (pathParts[3] === 'requests') {
+        segments.push({ name: "Send to Client requests", href: pathname });
+      }
       // Client ID path
       else if (pathParts[3]) {
         // This is a client ID
@@ -45,6 +48,10 @@ export default function ClientsLayout({ children }: { children: React.ReactNode 
             segments.push({ name: "Client Details", href: `/dashboard/clients/${pathParts[3]}` });
             segments.push({ name: "Edit", href: pathname });
           } 
+          else if (pathParts[4] === 'send') {
+            segments.push({ name: "Client Details", href: `/dashboard/clients/${pathParts[3]}` });
+            segments.push({ name: "Send to Client", href: pathname });
+          }
           else if (pathParts[4] === 'documents' && pathParts[5] === 'upload') {
             segments.push({ name: "Client Details", href: `/dashboard/clients/${pathParts[3]}` });
             segments.push({ name: "Upload Document", href: pathname });

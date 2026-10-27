@@ -32,7 +32,7 @@ async function gzip(data: ArrayBuffer): Promise<ArrayBuffer> {
 
 export async function uploadComplianceFile(
   file: File,
-  target: { clientId: string; itemId?: string | null; kind: string }
+  target: { clientId: string; itemId?: string | null; kind: string; docType?: string | null; financialYear?: number | null }
 ): Promise<SheetItem | null> {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   const contentType = CONTENT_TYPES[extension] ?? file.type;

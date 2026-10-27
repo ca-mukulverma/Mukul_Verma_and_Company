@@ -5,6 +5,7 @@ import { loadSheetItem } from "@/lib/compliance-sheet";
 import { badRequest, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 import { objectSize } from "@/lib/r2";
 import { checkUploadAllowed, storageKey, uploadSchema } from "@/lib/compliance-schemas";
+import { clientDocType } from "@/lib/client-documents";
 
 // POST /api/compliance/documents – records a file after the browser uploaded
 // it. Returns the updated item (an attached return may complete it).
@@ -22,8 +23,10 @@ export async function POST(request: NextRequest) {
   const size = await objectSize(key);
   if (size === null) return badRequest("The upload did not finish. Try again");
 
+  const docType = data.docType ?? null;
+  const financialYear = docType && clientDocType(docType)?.yearly ? data.financialYear ?? null : null;
   const existing = await prisma.complianceDocument.findFirst({
-    where: { clientId: data.clientId, itemId: data.itemId ?? null, sha256: data.sha256, kind: data.kind },
+    where: { clientId: data.clientId, itemId: data.itemId ?? null, sha256: data.sha256, kind: data.kind, docType, financialYear },
     select: { id: true },
   });
   if (!existing) {
@@ -38,6 +41,8 @@ export async function POST(request: NextRequest) {
         sha256: data.sha256,
         size,
         gzipped: data.gzipped,
+        docType,
+        financialYear,
         uploadedById: access.userId,
       },
     });

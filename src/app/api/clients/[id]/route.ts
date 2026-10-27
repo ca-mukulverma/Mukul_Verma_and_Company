@@ -5,9 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { contactsData, contactsError, contactsSchema } from "@/lib/client-contacts";
 import { canSetTallyLedger } from "@/lib/connectors";
+import { registrationsPayload, registrationsProblem, registrationsSchema } from "@/lib/client-documents";
 
 // Client update validation schema
-const clientUpdateSchema = contactsSchema.extend({
+const clientUpdateSchema = contactsSchema.merge(registrationsSchema).extend({
   contactPerson: z.string().optional(),
   companyName: z.string().optional().nullable(),
   email: z.string().email("Invalid email").optional().nullable(),
@@ -136,6 +137,8 @@ export async function PATCH(
     const input = validationResult.data;
     const contactProblem = contactsError(input);
     if (contactProblem) return NextResponse.json({ error: contactProblem }, { status: 400 });
+    const registrationProblem = registrationsProblem(input);
+    if (registrationProblem) return NextResponse.json({ error: registrationProblem }, { status: 400 });
     const contacts = contactsData(input);
     const mayLedger = await canSetTallyLedger(session.user.id);
     if (input.tallyLedgerName !== undefined && !mayLedger && (input.tallyLedgerName || null) !== existingClient.tallyLedgerName) {
@@ -173,6 +176,7 @@ export async function PATCH(
         address: data.address,
         notes: data.notes,
         gstin: data.gstin,
+        ...registrationsPayload(input),
         isGuest: data.isGuest,
         accessExpiry,
         ...(input.connectorId !== undefined && { connectorId: input.connectorId }),
