@@ -394,6 +394,65 @@ How it works:
   not land in their spam folder: servers don't report that. *Emailed*
   means it was accepted and no failure came back.
 
+## Connectors
+
+A connector brings clients to the firm, and their clients' fees are collected
+from the connector. Billing managers and Admin add connectors in **Billing →
+Connectors** (name, mobile, email, Tally ledger name; the ledger defaults to
+the name) and see each connector's clients and numbered bills with the fees
+per financial year. A client's connector is chosen on the client form and
+applies to all of the client's bills.
+
+- The bill is **made out to the client** as usual.
+- In Tally it goes to the **connector's ledger**, with the client in the
+  narration.
+- It is **emailed to the connector** by default; *Also copy the client* adds
+  the client's saved email.
+- GST bills of a connector's client **don't show the client's GSTIN** and are
+  sent to Tally without it, so they count as **B2C**. Ticking *Show the
+  client's GSTIN on this bill* (Edit details, before approval) prints it and
+  sends it to Tally, so the bill is **B2B**, still in the connector's ledger.
+  Place of supply and CGST + SGST / IGST always follow the client's GSTIN.
+
+The ledger and connector are **fixed on the bill at final approval**, so a
+later change of the client's connector or ledger doesn't move numbered bills.
+Correcting a ledger name in the Tally tab or on the connector also updates
+numbered bills not yet sent to Tally.
+
+## Tally ledger on the client
+
+Only billing managers and Admin see the client form's *Tally ledger name*:
+pick a name already in use (from clients, connectors and bills) or type a new
+one; empty means the client's name. A client added by anyone else is listed as
+*New clients without a Tally ledger* in the billing manager's daily reminder
+until the ledger is set (in the client form or the Tally tab).
+
+Every Tally voucher's narration has the work, the client (and GSTIN when it is
+shown), the bill number, the connector, and for a reissue the bill it replaces.
+
+## Daily reminder and red alert
+
+At **11:58 AM India time every day, Sundays included** (the
+`/api/cron/billing-reminders` job, 06:28 UTC in `vercel.json`), everyone with
+pending billing work gets one push and in-app notification listing it:
+
+| Who | What is listed |
+|---|---|
+| Admin and Partners allowed to enter amounts | Bills waiting for their amount |
+| Billing managers (each company) | New work to bill, amounts entered waiting for approval, bills to send to Tally, failed bill emails, new clients without a Tally ledger |
+| Admin | Bills waiting for final approval (from the 25th with the month-end note), edit/cancel/reissue requests |
+
+Work waiting **more than 3 calendar days** at its stage (counted from when it
+reached the stage, or was sent to that person for the amount) is **overdue**:
+
+- Admin gets a push and in-app notification of everyone's overdue work, by
+  person.
+- A **red alert** at the top of the dashboard and the Billing page shows each
+  person their own overdue work, and Admin everyone's.
+
+People with billing work who haven't turned on phone notifications see a
+banner asking them to (Settings → Notifications).
+
 ## Dashboards
 
 - **Admin and allowed Partners:** "Bills awaiting your amount" for bills sent to them.
@@ -415,7 +474,8 @@ Notifications appear in the app and as push notifications.
 | Admin final approval / rejection | | ✔ | |
 | Edit/cancel/reissue requested | ✔ | | |
 | Request approved / rejected | | ✔ | |
-| Month-end reminder (from the 25th) | ✔ | | |
+| Daily 11:58 AM list of pending work | ✔ | ✔ | ✔ |
+| Work over 3 days (everyone's) | ✔ | | |
 | Amount changed by Admin | | ✔ | ✔ |
 
 For B Edge bills, "billing manager" means the B Edge billing manager.

@@ -117,6 +117,11 @@ export async function everyonesPendingWork(now = new Date()): Promise<PersonPend
   return people;
 }
 
+// The label as Admin reads it about someone else ("your amount" → "their amount")
+export function labelForOthers(label: string) {
+  return label.replace(/\byour\b/g, "their");
+}
+
 function line(g: PendingGroup) {
   return `${g.label}: ${g.count}${g.overdue ? ` (${g.overdue} over ${ESCALATE_DAYS} days)` : ""}`;
 }
@@ -153,7 +158,7 @@ export async function sendDailyBillingReminders(now = new Date()) {
     await notifyBillingUsers([admin.id], {
       title: `Billing overdue: ${others.length} ${others.length === 1 ? "person" : "people"}`,
       content: others
-        .map((p) => `${p.name} – ${p.groups.map((g) => `${g.label.toLowerCase()}: ${g.overdue} (oldest ${g.oldestDays} days)`).join("; ")}`)
+        .map((p) => `${p.name} – ${p.groups.map((g) => `${labelForOthers(g.label).toLowerCase()}: ${g.overdue} (oldest ${g.oldestDays} days)`).join("; ")}`)
         .join(". "),
       sentById: admin.id,
     });

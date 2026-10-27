@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getBillingAccess } from "@/lib/billing";
-import { everyonesPendingWork, pendingBillingWork } from "@/lib/billing-pending";
+import { everyonesPendingWork, labelForOthers, pendingBillingWork } from "@/lib/billing-pending";
 
 // GET /api/bills/alerts – the red alert on the dashboard: the user's billing
 // work waiting more than 3 days, and for Admin everyone else's too; and
@@ -24,7 +24,7 @@ export async function GET() {
   ]);
   const others = everyone
     .filter((p) => p.userId !== user.id)
-    .map((p) => ({ name: p.name, groups: p.groups.filter((g) => g.overdue > 0) }))
+    .map((p) => ({ name: p.name, groups: p.groups.filter((g) => g.overdue > 0).map((g) => ({ ...g, label: labelForOthers(g.label) })) }))
     .filter((p) => p.groups.length > 0);
 
   return NextResponse.json({ billingRole, mine, others, pushEnabled: devices > 0 });
