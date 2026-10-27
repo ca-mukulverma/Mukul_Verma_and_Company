@@ -27,6 +27,7 @@ import {
 } from "./types";
 import { uploadComplianceFile } from "./upload";
 import { OldPeriods } from "./old-periods";
+import { ReturnUpload } from "./return-upload";
 
 interface ClientListItem {
   id: string;
@@ -39,7 +40,7 @@ interface ClientListItem {
 
 interface ClientDetail {
   fy: number;
-  client: { id: string; name: string; gstin: string | null; phone: string | null; email: string | null };
+  client: { id: string; name: string; gstin: string | null; tan: string | null; phone: string | null; email: string | null };
   subscriptions: {
     id: string;
     workTypeId: string;
@@ -194,35 +195,58 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
 
 const num = (v: string) => (v.trim() === "" ? null : Number(v));
 
-function AddWorkDialog({ clientIds, workTypes, onClose, onDone }: { clientIds: string[]; workTypes: WorkType[]; onClose: () => void; onDone: () => void }) {
+// Adds one or more works to one or many clients. Works a single client
+// already has are shown ticked and can't be changed here.
+function AddWorkDialog({
+  clientIds,
+  workTypes,
+  existing = [],
+  onClose,
+  onDone,
+}: {
+  clientIds: string[];
+  workTypes: WorkType[];
+  existing?: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const active = workTypes.filter((w) => w.active);
-  const [workTypeId, setWorkTypeId] = useState(active[0]?.id ?? "");
-  const workType = active.find((w) => w.id === workTypeId);
-  const [frequency, setFrequency] = useState<string>(workType?.frequency ?? "MONTHLY");
+  const [ticked, setTicked] = useState<string[]>([]);
+  const chosen = active.filter((w) => ticked.includes(w.id));
+  const [quarterly, setQuarterly] = useState(false);
   const [startPeriod, setStartPeriod] = useState(currentMonthKey());
-  const [feeNonNil, setFeeNonNil] = useState("");
-  const [feeNil, setFeeNil] = useState("");
+  const [fees, setFees] = useState<Record<string, { nonNil: string; nil: string }>>({});
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (workType) setFrequency(workType.frequency);
-  }, [workType]);
+  const toggle = (id: string, on: boolean) => setTicked((t) => (on ? [...t, id] : t.filter((x) => x !== id)));
+  const fee = (id: string) => fees[id] ?? { nonNil: "", nil: "" };
+  const setFee = (id: string, patch: Partial<{ nonNil: string; nil: string }>) => setFees((f) => ({ ...f, [id]: { ...fee(id), ...patch } }));
+  const frequencyOf = (w: WorkType) => (w.allowQuarterly && quarterly ? "QUARTERLY" : w.frequency);
 
+  // One work at a time, so GSTR-1 and GSTR-3B are each checked against the other
   const save = async () => {
     setSaving(true);
+    const done: string[] = [];
+    const notes: string[] = [];
     try {
-      const { data } = await axios.post("/api/compliance/subscriptions", {
-        clientIds,
-        workTypeId,
-        frequency,
-        startPeriod,
-        feeNonNil: num(feeNonNil),
-        feeNil: num(feeNil),
-      });
-      toast.success(`${workType?.name} added to ${data.added} client(s)${data.skipped.length ? `; ${data.skipped.length} skipped (${data.skipped[0].reason})` : ""}`);
+      for (const w of chosen) {
+        const { data } = await axios.post("/api/compliance/subscriptions", {
+          clientIds,
+          workTypeId: w.id,
+          frequency: frequencyOf(w),
+          startPeriod,
+          feeNonNil: num(fee(w.id).nonNil),
+          feeNil: num(fee(w.id).nil),
+        });
+        if (data.added) done.push(clientIds.length > 1 ? `${w.name} (${data.added})` : w.name);
+        if (data.skipped.length) notes.push(`${w.name}: ${data.skipped.length} skipped (${data.skipped[0].reason})`);
+      }
+      if (done.length) toast.success(`Added ${done.join(", ")}${notes.length ? `. ${notes.join("; ")}` : ""}`);
+      else toast.error(notes.join("; ") || "Nothing added");
       onDone();
     } catch (error) {
-      toast.error(apiError(error));
+      toast.error(`${done.length ? `Added ${done.join(", ")}. ` : ""}${apiError(error)}`);
+      if (done.length) onDone();
     } finally {
       setSaving(false);
     }
@@ -230,25 +254,33 @@ function AddWorkDialog({ clientIds, workTypes, onClose, onDone }: { clientIds: s
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add a work to {clientIds.length} client(s)</DialogTitle>
-          <DialogDescription>Periods appear in the sheets from the first period you choose. Older periods can be entered later as past periods.</DialogDescription>
+          <DialogTitle>Add work to {clientIds.length} client(s)</DialogTitle>
+          <DialogDescription>Tick every work to add. Periods appear in the sheets from the first period you choose. Older periods can be entered later as past periods.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label>Work</Label>
-            <Select value={workTypeId} onValueChange={setWorkTypeId}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {active.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Label>Works</Label>
+            <div className="grid gap-1 rounded-md border p-2 sm:grid-cols-2">
+              {active.map((w) => {
+                const has = existing.includes(w.id);
+                return (
+                  <label key={w.id} className={cn("flex items-center gap-2 rounded p-1 text-sm", has ? "opacity-60" : "cursor-pointer hover:bg-muted/50")}>
+                    <Checkbox checked={has || ticked.includes(w.id)} disabled={has} onCheckedChange={(c) => toggle(w.id, c === true)} />
+                    <span>
+                      {w.name}
+                      {has && <span className="text-xs text-muted-foreground"> (already added)</span>}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
-          {workType?.allowQuarterly && (
+          {chosen.some((w) => w.allowQuarterly) && (
             <div className="space-y-1">
-              <Label>Filing frequency</Label>
-              <Select value={frequency} onValueChange={setFrequency}>
+              <Label>GST filing frequency</Label>
+              <Select value={quarterly ? "QUARTERLY" : "MONTHLY"} onValueChange={(v) => setQuarterly(v === "QUARTERLY")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="MONTHLY">Monthly</SelectItem>
@@ -262,23 +294,25 @@ function AddWorkDialog({ clientIds, workTypes, onClose, onDone }: { clientIds: s
             <Label>First period to track</Label>
             <Input type="month" value={startPeriod} onChange={(e) => setStartPeriod(e.target.value)} />
           </div>
-          {workType?.billable && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Fee (non-nil)</Label>
-                <Input type="number" min={0} placeholder={workType.defaultFeeNonNil !== null ? `Default ${workType.defaultFeeNonNil}` : ""} value={feeNonNil} onChange={(e) => setFeeNonNil(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Fee (nil return)</Label>
-                <Input type="number" min={0} placeholder={workType.defaultFeeNil !== null ? `Default ${workType.defaultFeeNil}` : ""} value={feeNil} onChange={(e) => setFeeNil(e.target.value)} />
-              </div>
-              <p className="text-xs text-muted-foreground sm:col-span-2">Leave empty to use the work&apos;s default fee. Each client&apos;s fee can be changed later.</p>
+          {chosen.some((w) => w.billable) && (
+            <div className="space-y-2">
+              <Label>Fees</Label>
+              {chosen.filter((w) => w.billable).map((w) => (
+                <div key={w.id} className="grid grid-cols-[1fr_6rem_6rem] items-center gap-2">
+                  <span className="truncate text-sm">{w.name}</span>
+                  <Input type="number" min={0} aria-label={`${w.name} fee (non-nil)`} placeholder={w.defaultFeeNonNil !== null ? `${w.defaultFeeNonNil}` : "Non-nil"} value={fee(w.id).nonNil} onChange={(e) => setFee(w.id, { nonNil: e.target.value })} />
+                  <Input type="number" min={0} aria-label={`${w.name} fee (nil)`} placeholder={w.defaultFeeNil !== null ? `${w.defaultFeeNil}` : "Nil"} value={fee(w.id).nil} onChange={(e) => setFee(w.id, { nil: e.target.value })} />
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">Non-nil and nil return fees. Leave empty to use the work&apos;s default fee. Each client&apos;s fee can be changed later.</p>
             </div>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={saving || !workTypeId}>{saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Add</Button>
+          <Button onClick={save} disabled={saving || chosen.length === 0}>
+            {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Add {chosen.length > 1 ? `${chosen.length} works` : "work"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -325,6 +359,14 @@ function ClientDetailView({ clientId, workTypes, isManager, onChanged }: { clien
       </div>
 
       <Works data={data} workTypes={workTypes} isManager={isManager} onChanged={reload} />
+      <Box title="Upload returns">
+        <ReturnUpload
+          client={data.client}
+          subscribed={data.subscriptions.filter((s) => s.active).map((s) => s.workTypeId)}
+          workTypes={workTypes}
+          onChanged={reload}
+        />
+      </Box>
       <Obligations data={data} onChanged={reload} />
       <YearView data={data} workTypes={workTypes} fy={data.fy} setFy={setFy} />
       <PastPeriods data={data} workTypes={workTypes} onChanged={reload} />
@@ -397,7 +439,7 @@ function Works({ data, workTypes, isManager, onChanged }: { data: ClientDetail; 
           </table>
         </div>
       )}
-      {adding && <AddWorkDialog clientIds={[data.client.id]} workTypes={workTypes} onClose={() => setAdding(false)} onDone={() => { setAdding(false); onChanged(); }} />}
+      {adding && <AddWorkDialog clientIds={[data.client.id]} workTypes={workTypes} existing={data.subscriptions.filter((s) => s.active).map((s) => s.workTypeId)} onClose={() => setAdding(false)} onDone={() => { setAdding(false); onChanged(); }} />}
       {editing && <EditSubscription sub={editing} workTypes={workTypes} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onChanged(); }} />}
     </Box>
   );
@@ -654,7 +696,7 @@ function PastPeriods({ data, workTypes, onChanged }: { data: ClientDetail; workT
       {open ? (
         <OldPeriods clientId={data.client.id} workTypes={ordered} onChanged={onChanged} />
       ) : (
-        <p className="text-xs text-muted-foreground">Enter the months or quarters before tracking started, each with its filing date, ARN and files.</p>
+        <p className="text-xs text-muted-foreground">Enter the months or quarters before tracking started, each with its filing date, ARN and files. To add many return files at once, use Upload returns above.</p>
       )}
     </Box>
   );

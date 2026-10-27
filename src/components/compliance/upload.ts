@@ -21,6 +21,11 @@ const CONTENT_TYPES: Record<string, string> = {
 
 const COMPRESSIBLE = ["application/json", "text/csv"];
 
+// Whether a file of this name can be kept (the server takes these types only)
+export function canStore(fileName: string) {
+  return (fileName.split(".").pop()?.toLowerCase() ?? "") in CONTENT_TYPES;
+}
+
 async function sha256Hex(data: ArrayBuffer) {
   const hash = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");

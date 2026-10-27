@@ -21,6 +21,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       contactPerson: true,
       companyName: true,
       gstin: true,
+      tan: true,
       phone: true,
       email: true,
       complianceSubscriptions: { include: { workType: { select: { name: true, sortOrder: true, kind: true } } } },
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
   return NextResponse.json({
     fy,
-    client: { id: client.id, name: partyName(client), gstin: client.gstin, phone: client.phone, email: client.email },
+    client: { id: client.id, name: partyName(client), gstin: client.gstin, tan: client.tan, phone: client.phone, email: client.email },
     subscriptions: client.complianceSubscriptions
       .sort((a, b) => a.workType.sortOrder - b.workType.sortOrder)
       .map((s) => ({

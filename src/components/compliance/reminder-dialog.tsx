@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Check, Loader2, Mail, MessageCircle } from "lucide-react";
+import { Check, Download, Loader2, Mail, MessageCircle, Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,6 +11,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { apiError } from "./types";
+import {
+  type ChatMode,
+  downloadExtension,
+  extensionInstalled,
+  type ExtensionJob,
+  onExtensionProgress,
+  openChat as openWhatsApp,
+  saveChatMode,
+  savedChatMode,
+  sendAllWithExtension,
+  stopExtension,
+} from "./whatsapp-send";
 
 export interface ReminderTarget {
   clientId: string;
@@ -29,9 +41,17 @@ interface Result {
   text?: string;
 }
 
+const MODES: { mode: ChatMode; label: string }[] = [
+  { mode: "web", label: "WhatsApp Web (window beside this one)" },
+  { mode: "desktop", label: "WhatsApp app on this computer" },
+  { mode: "phone", label: "Phone" },
+];
+
 // Reminders for one or many clients. WhatsApp: the app prepares one message
-// per client and opens each chat in turn (you press Send in WhatsApp). Email:
-// sent straight away from the company's Gmail.
+// per client and opens each chat in turn (in WhatsApp Web beside the app, the
+// WhatsApp desktop app or a phone; you press Send), or the firm's browser
+// extension sends them all through WhatsApp Web. Email: sent straight away
+// from the company's Gmail.
 export function ReminderDialog({
   targets,
   template,
@@ -50,6 +70,15 @@ export function ReminderDialog({
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState<Result[] | null>(null);
   const [opened, setOpened] = useState<string[]>([]);
+  const [mode, setMode] = useState<ChatMode>("web");
+  const [hasExtension, setHasExtension] = useState(false);
+  const [job, setJob] = useState<ExtensionJob | null>(null);
+
+  useEffect(() => {
+    setMode(savedChatMode());
+    setHasExtension(extensionInstalled());
+    return onExtensionProgress(setJob);
+  }, []);
 
   const send = async () => {
     setSending(true);
@@ -73,12 +102,29 @@ export function ReminderDialog({
     }
   };
 
-  // One browser tab named "whatsapp" is reused for every chat
   const openChat = (r: Result) => {
-    window.open(`https://wa.me/${r.phone}?text=${encodeURIComponent(r.text ?? "")}`, "whatsapp");
+    openWhatsApp(mode, r.phone!, r.text ?? "");
     setOpened((o) => [...o, r.key]);
   };
+  const chooseMode = (m: ChatMode) => {
+    setMode(m);
+    saveChatMode(m);
+  };
   const next = results?.find((r) => r.ok && r.phone && !opened.includes(r.key));
+  const sendable = results?.filter((r) => r.ok && r.phone) ?? [];
+  const jobStatus = (key: string) => job?.messages.find((m) => m.key === key);
+  const sendAll = () => {
+    setJob(null);
+    sendAllWithExtension(sendable.map((r) => ({ key: r.key, phone: r.phone!, text: r.text ?? "" })));
+    setOpened(sendable.map((r) => r.key));
+  };
+  const getExtension = async () => {
+    try {
+      await downloadExtension();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The extension couldn't be downloaded");
+    }
+  };
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -129,16 +175,67 @@ export function ReminderDialog({
         ) : (
           <div className="space-y-3">
             {channel === "WHATSAPP" && (
-              <div className="rounded-md bg-muted/50 p-3 text-sm">
+              <div className="space-y-2 rounded-md bg-muted/50 p-3 text-sm">
+                {sendable.length > 1 && (
+                  <div className="space-y-1 border-b pb-2">
+                    {hasExtension ? (
+                      job && !job.done ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span>
+                            <Loader2 className="mr-1 inline h-4 w-4 animate-spin" />
+                            Sending through WhatsApp Web: {job.messages.filter((m) => m.status === "sent").length} of {job.messages.length} sent
+                          </span>
+                          <Button size="sm" variant="outline" onClick={stopExtension}><Square className="mr-1 h-3 w-3" /> Stop</Button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span>
+                            {job
+                              ? `${job.note ?? "Finished"}: ${job.messages.filter((m) => m.status === "sent").length} sent, ${job.messages.filter((m) => m.status === "failed").length} not sent.`
+                              : "Send all of them through WhatsApp Web, one at a time with a short pause."}
+                          </span>
+                          <Button size="sm" onClick={sendAll}><Send className="mr-1 h-4 w-4" /> {job ? "Send all again" : `Send all ${sendable.length} automatically`}</Button>
+                        </div>
+                      )
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        To send them all with one click, install the firm&apos;s WhatsApp extension in Chrome or Edge on this computer:{" "}
+                        <button type="button" className="inline-flex items-center gap-0.5 text-primary underline" onClick={getExtension}>
+                          <Download className="h-3 w-3" /> download it
+                        </button>
+                        , unzip it, open chrome://extensions, turn on Developer mode, choose &quot;Load unpacked&quot; and pick the unzipped folder. Then
+                        reload this page.
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Open chats in</span>
+                  <div className="flex flex-wrap gap-1">
+                    {MODES.map((m) => (
+                      <button
+                        key={m.mode}
+                        type="button"
+                        onClick={() => chooseMode(m.mode)}
+                        className={cn("rounded border px-2 py-0.5 text-xs", mode === m.mode ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted")}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {next ? (
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span>Next: <b>{next.name}</b></span>
-                    <Button size="sm" onClick={() => openChat(next)}>
+                    <Button size="sm" onClick={() => openChat(next)} autoFocus>
                       <MessageCircle className="mr-1 h-4 w-4" /> Open WhatsApp
                     </Button>
                   </div>
                 ) : (
                   <span>All chats opened. Press Send in each WhatsApp chat.</span>
+                )}
+                {mode === "web" && next && (
+                  <p className="text-xs text-muted-foreground">WhatsApp Web opens in a window on the right. Press Enter there to send, then click Open WhatsApp here for the next client.</p>
                 )}
               </div>
             )}
@@ -150,6 +247,11 @@ export function ReminderDialog({
                     {r.name}
                     {!r.ok && <span className="text-red-600"> – {r.error}</span>}
                   </span>
+                  {channel === "WHATSAPP" && jobStatus(r.key) && (
+                    <span className={cn("text-xs", jobStatus(r.key)!.status === "failed" ? "text-red-600" : "text-muted-foreground")}>
+                      {jobStatus(r.key)!.status === "sent" ? "Sent" : jobStatus(r.key)!.status === "failed" ? jobStatus(r.key)!.error ?? "Not sent" : jobStatus(r.key)!.status === "sending" ? "Sending…" : "Waiting"}
+                    </span>
+                  )}
                   {channel === "WHATSAPP" && r.ok && (
                     <Button size="sm" variant={opened.includes(r.key) ? "ghost" : "outline"} onClick={() => openChat(r)}>
                       {opened.includes(r.key) ? "Open again" : "Open"}
