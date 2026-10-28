@@ -1,10 +1,9 @@
-import { prisma } from "@/lib/prisma";
-import { deleteOldNotifications, NOTIFICATION_RETENTION_DAYS, sendInAppNotification } from "@/lib/notifications";
+import { deleteOldNotifications, NOTIFICATION_RETENTION_DAYS } from "@/lib/notifications";
 import { pruneOldBillHistory } from "@/lib/billing";
 import { ensureItemsAround, resolveTdsReturns } from "@/lib/compliance";
-import { todayIST } from "@/lib/compliance-periods";
 import { checkBillEmailDelivery } from "@/lib/bill-email-bounces";
 import { sendDailyBillingReminders } from "@/lib/billing-pending";
+import { sendDailyDigests } from "@/lib/daily-digest";
 
 /**
  * The daily background jobs, as plain functions.
@@ -34,58 +33,24 @@ export async function runCleanupNotifications() {
 }
 
 /**
- * Creates the coming periods' compliance items, settles TDS returns of
- * quarters without challans, and sends each team member one short summary of
- * what is due and overdue in their works.
+ * Creates the coming periods' compliance items and settles TDS returns of
+ * quarters without challans. What each team member has due goes into their
+ * daily digest (runDailyDigest).
  */
 export async function runCompliance() {
   await ensureItemsAround(null);
   await resolveTdsReturns();
+  return { message: "Items created" };
+}
 
-  const today = todayIST();
-  const soon = new Date(today.getTime() + 3 * 86_400_000);
-  const [members, admin] = await Promise.all([
-    prisma.complianceTeamMember.findMany({
-      where: { toDate: null, user: { isActive: true } },
-      select: { userId: true, workTypeId: true },
-    }),
-    prisma.user.findFirst({ where: { role: "ADMIN", isActive: true }, select: { id: true } }),
-  ]);
-  if (!admin || members.length === 0) return { message: "Items created; no teams to notify" };
-
-  const open = { in: ["pending", "data_received"] as ("pending" | "data_received")[] };
-  const [overdue, dueSoon, docsPending] = await Promise.all([
-    prisma.complianceItem.groupBy({ by: ["workTypeId"], where: { status: open, historical: false, dueDate: { lt: today } }, _count: true }),
-    prisma.complianceItem.groupBy({ by: ["workTypeId"], where: { status: open, historical: false, dueDate: { gte: today, lte: soon } }, _count: true }),
-    prisma.complianceItem.groupBy({ by: ["workTypeId"], where: { status: "filed", historical: false }, _count: true }),
-  ]);
-  const sumFor = (rows: { workTypeId: string; _count: number }[], ids: string[]) =>
-    rows.filter((r) => ids.includes(r.workTypeId)).reduce((s, r) => s + r._count, 0);
-
-  const byUser = new Map<string, string[]>();
-  for (const m of members) byUser.set(m.userId, [...(byUser.get(m.userId) ?? []), m.workTypeId]);
-
-  let notified = 0;
-  for (const [userId, workTypeIds] of byUser) {
-    const o = sumFor(overdue, workTypeIds);
-    const d = sumFor(dueSoon, workTypeIds);
-    const p = sumFor(docsPending, workTypeIds);
-    if (o + d + p === 0) continue;
-    const parts = [
-      d && `${d} due in the next 3 days`,
-      o && `${o} overdue`,
-      p && `${p} filed but waiting for files or steps`,
-    ].filter(Boolean);
-    await sendInAppNotification({
-      title: "Compliance work today",
-      content: `Your compliance work: ${parts.join(", ")}. Open Compliance to see the sheets.`,
-      sentById: admin.id,
-      sentToId: userId,
-    });
-    notified++;
-  }
-
-  return { message: `Items created; ${notified} team member(s) notified` };
+/**
+ * Each staff member's morning summary in one notification: their tasks,
+ * compliance work and billing work. The single notifications (task assigned,
+ * bill awaiting your amount …) still go out as things happen; this is the
+ * overview on top. Admins also get the separate billing escalation.
+ */
+export async function runDailyDigest() {
+  return sendDailyDigests();
 }
 
 /** Reads bounce notices from the billing mailbox so failed bill emails are recorded. */
@@ -94,9 +59,8 @@ export async function runBillingEmailDelivery() {
 }
 
 /**
- * Everyone with pending billing work gets a push and in-app notification
- * listing it; work waiting more than 3 days is also sent to Admin. From the
- * 25th, Admin is reminded that bills are dated on the day of final approval.
+ * Billing reminders on their own (each person's pending work and the
+ * escalation to Admin). The daily job sends these inside the digest instead.
  */
 export async function runBillingReminders() {
   const { reminded, escalated } = await sendDailyBillingReminders();

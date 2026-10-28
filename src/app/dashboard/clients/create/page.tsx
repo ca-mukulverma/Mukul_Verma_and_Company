@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { z } from "zod";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -118,6 +119,9 @@ export default function ClientCreatePage() {
       gstin: "",
     },
   });
+
+  // Asks before Cancel or closing the tab throws away what was typed
+  const confirmLeave = useUnsavedChanges(form.formState.isDirty && !isSubmitting);
 
   // Prevent rendering the form for non-admin users
   if (status === "loading" || isLoading) {
@@ -377,7 +381,7 @@ export default function ClientCreatePage() {
                     type="button" 
                     variant="outline"
                     className="w-full sm:w-auto"
-                    onClick={() => router.push("/dashboard/clients")}
+                    onClick={() => confirmLeave() && router.push("/dashboard/clients")}
                   >
                     Cancel
                   </Button>

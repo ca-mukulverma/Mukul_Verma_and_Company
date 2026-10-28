@@ -3,7 +3,6 @@
 import { useState, useEffect} from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
@@ -21,7 +20,7 @@ import { DashboardContentSkeleton } from "@/components/loading/dashboard-skeleto
 import { RecentNotificationsCard } from "@/components/dashboard/recent-notifications-card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import router from "next/router";
+import { useRouter } from "next/navigation";
 interface JuniorDashboardData {
   stats: {
     activeTasks: number;
@@ -96,22 +95,8 @@ function getDaysRemaining(date: Date): number {
 function JuniorDashboardContent() {
   const [dashboardData, setDashboardData] = useState<JuniorDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [statsLoaded, setStatsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("overview");
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const url = new URL(window.location.href);
-        const tab = url.searchParams.get('tab');
-        if (tab && ['overview', 'analytics', 'activity'].includes(tab)) {
-          setActiveTab(tab);
-        }
-      } catch (error) {
-        console.error("Error parsing URL parameters:", error);
-      }
-    }
-  }, []);
+  const router = useRouter();
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -144,63 +129,6 @@ function JuniorDashboardContent() {
     fetchDashboardData();
   }, []);
 
-  // Load analytics data when needed
-  useEffect(() => {
-    if (activeTab === 'analytics' && !statsLoaded) {
-      loadAnalyticsData();
-    }
-  }, [activeTab, statsLoaded]);
-
-  const loadAnalyticsData = async () => {
-    if (statsLoaded) return;
-    
-    try {
-      setLoading(true);
-      
-      // You would typically fetch extended analytics data here
-      // For now, we'll simulate a delayed response with the existing data
-      
-      setTimeout(() => {
-        if (dashboardData) {
-          // Extend stats with additional analytics
-          const enhancedData = {
-            ...dashboardData,
-            stats: {
-              ...dashboardData.stats,
-              onTimeCompletionRate: 85,
-              weeklyCompletionRate: 78,
-              highPriorityTasks: dashboardData.tasks?.filter(t => t.priority === 'high').length || 0,
-              totalTasksAssigned: (dashboardData.stats.activeTasks + dashboardData.stats.completedTasks)
-            },
-            timeTracking: {
-              thisWeek: 38,
-              lastWeek: 35,
-              weeklyTarget: 40,
-              dailyAverage: 7.6
-            }
-          };
-          
-          setDashboardData(enhancedData);
-          setStatsLoaded(true);
-        }
-        setLoading(false);
-      }, 500);
-      
-    } catch (err) {
-      console.error('Failed to load analytics data:', err);
-      setLoading(false);
-    }
-  };
-
-  const handleTabChange = (value: string) => {
-    setActiveTab(value);
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      url.searchParams.set('tab', value);
-      window.history.pushState({}, '', url.toString());
-    }
-  };
-
   const stats = dashboardData?.stats || {
     activeTasks: 0,
     completedTasks: 0,
@@ -223,13 +151,18 @@ function JuniorDashboardContent() {
 
   return (
     <div className="flex flex-col gap-5">
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-        </TabsList>
-        
-        {/* OVERVIEW TAB */}
-        <TabsContent value="overview" className="space-y-4">
+      {/* The day's list of everything waiting is on My work → Today */}
+      <Card className="border-primary/30 bg-primary/5">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <p className="text-sm">
+            Your tasks, compliance work and billing in one list, with Start and Mark done buttons, are on <strong>Today</strong>.
+          </p>
+          <Button asChild size="sm">
+            <Link href="/dashboard/my-work">Open Today</Link>
+          </Button>
+        </CardContent>
+      </Card>
+      <div className="space-y-4">
           {loading ? (
             <>
               <DashboardContentSkeleton />
@@ -548,8 +481,7 @@ function JuniorDashboardContent() {
               </div>
             </>
           )}
-        </TabsContent>
-      </Tabs>
+      </div>
     </div>
   );
 }

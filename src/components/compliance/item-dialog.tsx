@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { AlertTriangle, Check, Download, FileUp, History, Loader2, Lock, Mail, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, FileUp, History, Loader2, Lock, Mail, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EVENT_LABELS } from "./event-labels";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -43,41 +44,6 @@ interface Details {
   fee?: number | null;
 }
 
-const EVENT_LABELS: Record<string, string> = {
-  data_received: "Data received",
-  data_received_undone: "Data received undone",
-  filed: "Filed",
-  filing_updated: "Filing details changed",
-  filing_undone: "Filing undone",
-  completed: "Completed",
-  sent_to_billing: "Sent to billing",
-  reopened: "Reopened",
-  tax_payable: "Tax payable",
-  figures_updated: "Figures changed",
-  gstr1a_filed: "GSTR-1A filed",
-  gstr1a_removed: "GSTR-1A removed",
-  line_confirmed: "Line confirmed",
-  line_skipped: "Line skipped",
-  line_pending: "Line set back",
-  challan_added: "Challan added",
-  challan_removed: "Challan removed",
-  tds_paid: "TDS month closed",
-  no_tds: "No TDS this month",
-  not_required: "Not required",
-  certificates_requested: "Form 16/16A requested",
-  certificates_request_undone: "Form 16/16A request undone",
-  certificates_emailed: "Form 16/16A emailed",
-  documents_emailed: "Files emailed",
-  sent_to_client: "Sent to client (Send to Client)",
-  document_added: "File added",
-  document_removed: "File removed",
-  fee_set: "Fee set",
-  past_period_entered: "Past period entered",
-  past_period_updated: "Past period changed",
-  signed_off: "Sign-off",
-  completer_changed: "Completed-by changed",
-  obligation_stopped: "Monthly payment stopped",
-};
 
 // Reasons offered when an RCM/TDS line is skipped
 const SKIP_REASONS = [
@@ -180,6 +146,8 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
   const [busy, setBusy] = useState<string | null>(null);
   const [details, setDetails] = useState<Details | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  // Occasional steps (GSTR-1A, the fee) stay folded under "More options"
+  const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,6 +178,11 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
   const locked = !!item.lockReason;
   const readOnly = !item.canEdit;
   const open = item.status === "pending" || item.status === "data_received";
+  const moreLabels = [
+    item.kind === "GSTR1" && (item.status === "filed" || item.status === "completed") && "GSTR-1A",
+    isManager && details && "fee" in details && item.kind !== "TDS_PAYMENT" && item.kind !== "GSTR1" && "fee",
+  ].filter((l): l is string => !!l);
+  const hasMore = moreLabels.length > 0;
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -274,15 +247,15 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
             <Filing item={item} disabled={readOnly || (locked && open)} busy={busy} run={run} />
           )}
 
-          {item.kind === "GSTR1" && (item.status === "filed" || item.status === "completed") && (
-            <Gstr1A item={item} client={client} disabled={readOnly} busy={busy} run={run} onChange={onChange} />
-          )}
-
           {item.needsCertificates && (item.status === "filed" || item.status === "completed") && (
             <Certificates item={item} client={client} disabled={readOnly} busy={busy} run={run} onChange={onChange} />
           )}
 
           <Files item={item} client={client} disabled={readOnly} onChange={onChange} />
+
+          {showMore && item.kind === "GSTR1" && (item.status === "filed" || item.status === "completed") && (
+            <Gstr1A item={item} client={client} disabled={readOnly} busy={busy} run={run} onChange={onChange} />
+          )}
 
           {item.status === "completed" && item.kind !== "TDS_PAYMENT" && !readOnly && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
@@ -300,8 +273,15 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
             </div>
           )}
 
-          {isManager && details && "fee" in details && item.kind !== "TDS_PAYMENT" && item.kind !== "GSTR1" && (
+          {showMore && isManager && details && "fee" in details && item.kind !== "TDS_PAYMENT" && item.kind !== "GSTR1" && (
             <Fee item={item} fee={details.fee ?? null} busy={busy} run={run} />
+          )}
+
+          {hasMore && (
+            <Button variant="outline" size="sm" className="w-full" onClick={() => setShowMore((v) => !v)}>
+              {showMore ? <ChevronUp className="mr-1 h-4 w-4" /> : <ChevronDown className="mr-1 h-4 w-4" />}
+              {showMore ? "Fewer options" : `More options (${moreLabels.join(", ")})`}
+            </Button>
           )}
 
           <div>

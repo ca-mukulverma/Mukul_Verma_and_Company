@@ -33,6 +33,8 @@ import {
 import { useEffect, useState, useRef, useCallback, memo, Suspense } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
+import { useNotifications } from "@/components/notifications/notification-system";
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -438,6 +440,19 @@ function ChatPageContent() {
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+
+  // Being on Team Chat reads its message notifications (the sidebar count)
+  const { unreadChat, markChatRead } = useNotifications();
+  useEffect(() => {
+    if (unreadChat > 0) markChatRead();
+  }, [unreadChat, markChatRead]);
+
+  // "Discuss in chat" on a task or client opens chat with the message started
+  const searchParams = useSearchParams();
+  const about = searchParams.get("about");
+  useEffect(() => {
+    if (about) setInput((prev) => prev || `Re: ${about.slice(0, 200)} – `);
+  }, [about]);
 
 
 

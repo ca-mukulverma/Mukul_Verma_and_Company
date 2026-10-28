@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import { apiErrorMessage } from "./bill-types";
+import { getRecentClients, rememberClient } from "@/lib/recent-clients";
 
 export interface ClientOption {
   id: string;
@@ -54,6 +55,17 @@ export function ClientPicker({
   const debouncedSearch = useDebounce(search, 300);
   const [options, setOptions] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(false);
+  // Picked lately on this device, shown first while nothing is typed
+  const [recent, setRecent] = useState<ClientOption[]>([]);
+  useEffect(() => {
+    if (open) setRecent(getRecentClients());
+  }, [open]);
+  const pick = (client: ClientOption) => {
+    rememberClient(client);
+    onChange(client);
+    setOpen(false);
+  };
+  const showRecent = !search.trim() && recent.length > 0;
   // Admins and partners may add clients to the client master
   const { data: session } = useSession();
   const canAddClient = session?.user?.role === "ADMIN" || session?.user?.role === "PARTNER";
@@ -120,15 +132,22 @@ export function ClientPicker({
               ) : (
                 <>
                   <CommandEmpty>{onOther ? "No saved client found" : "No clients found"}</CommandEmpty>
-                  <CommandGroup>
+                  {showRecent && (
+                    <CommandGroup heading="Recent">
+                      {recent.map((client) => (
+                        <CommandItem key={`recent-${client.id}`} value={`recent-${client.id}`} onSelect={() => pick(client)}>
+                          <span className="truncate">{clientLabel(client)}</span>
+                          {value?.id === client.id && <Check className="ml-auto h-4 w-4" />}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                  <CommandGroup heading={showRecent ? "All clients" : undefined}>
                     {options.map((client) => (
                       <CommandItem
                         key={client.id}
                         value={client.id}
-                        onSelect={() => {
-                          onChange(client);
-                          setOpen(false);
-                        }}
+                        onSelect={() => pick(client)}
                       >
                         <span className="truncate">{clientLabel(client)}</span>
                         {value?.id === client.id && <Check className="ml-auto h-4 w-4" />}
@@ -175,6 +194,7 @@ export function ClientPicker({
           onClose={() => setAdding(null)}
           onAdded={(client) => {
             setAdding(null);
+            rememberClient(client);
             onChange(client);
           }}
         />

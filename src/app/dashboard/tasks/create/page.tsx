@@ -49,8 +49,12 @@ import { SearchableMultiSelect } from "@/components/tasks/searchable-multi-selec
 import { SearchableSelect } from "@/components/tasks/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DayPicker } from "react-day-picker";
-import { getSession } from "next-auth/react";
+import { getSession, useSession } from "next-auth/react";
 import { CompanySelect } from "@/components/billing/company-select";
+import { Badge } from "@/components/ui/badge";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { TASK_TEMPLATES, TaskTemplate, templateDescription } from "@/lib/task-templates";
+import { apiErrorMessage } from "@/components/billing/bill-types";
 
 // Update the task form schema
 const taskFormSchema = z.object({
@@ -90,6 +94,8 @@ export default function CreateTaskPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const { data: session } = useSession();
   
   // Get URL parameters using window.location on mount
   useEffect(() => {
@@ -118,6 +124,22 @@ export default function CreateTaskPage() {
       company: "MVC",
     },
   });
+
+  // Asks before Cancel or closing the tab throws away what was typed
+  const confirmLeave = useUnsavedChanges(form.formState.isDirty && !isLoading);
+
+  const applyTemplate = (template: TaskTemplate) => {
+    setTemplateId(template.id);
+    const opts = { shouldDirty: true, shouldValidate: false };
+    if (!form.getValues("title").trim() || TASK_TEMPLATES.some((t) => t.title === form.getValues("title"))) {
+      form.setValue("title", template.title, opts);
+    }
+    form.setValue("priority", template.priority, opts);
+    form.setValue("description", templateDescription(template), opts);
+    if (template.dueInDays && !form.getValues("dueDate")) {
+      form.setValue("dueDate", new Date(Date.now() + template.dueInDays * 86_400_000), opts);
+    }
+  };
 
   // Update form when clientIdParam changes
   useEffect(() => {
@@ -213,14 +235,16 @@ const onSubmit = async (data: TaskFormValues) => {
     
     // Submit to API
     await axios.post("/api/tasks", taskData);
-    
-    toast.success("Task created successfully");
-    
+
+    toast.success("Task created");
+    // The form is saved: leaving no longer needs a warning
+    form.reset(data);
+
     // Always redirect to tasks list page
     router.push("/dashboard/tasks");
   } catch (error) {
     console.error("Error creating task:", error);
-    toast.error("Failed to create task");
+    toast.error(`Task not created: ${apiErrorMessage(error)}`);
   } finally {
     setIsLoading(false);
   }
@@ -271,7 +295,34 @@ const onSubmit = async (data: TaskFormValues) => {
         </CardHeader>
         <CardContent className="pt-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form
+              onSubmit={form.handleSubmit(onSubmit, () => toast.error("Please fill in the fields marked in red"))}
+              className="space-y-6"
+            >
+              {/* Templates for jobs done again and again */}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Start from a template (optional)</p>
+                <div className="flex flex-wrap gap-2">
+                  {TASK_TEMPLATES.map((template) => (
+                    <Button
+                      key={template.id}
+                      type="button"
+                      size="sm"
+                      variant={templateId === template.id ? "default" : "outline"}
+                      className="h-8 rounded-full"
+                      onClick={() => applyTemplate(template)}
+                    >
+                      {template.label}
+                    </Button>
+                  ))}
+                </div>
+                {templateId && (
+                  <p className="text-xs text-muted-foreground">
+                    The title, priority, due date and checklist are filled in. Change anything before creating the task.
+                  </p>
+                )}
+              </div>
+
               {/* Task Title with animation on focus */}
               <FormField
                 control={form.control}
@@ -315,7 +366,7 @@ const onSubmit = async (data: TaskFormValues) => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-primary-foreground/90 font-medium">Priority</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="transition-all focus:border-primary focus:ring-2 focus:ring-primary/20">
                             <SelectValue placeholder="Select priority" />
@@ -468,7 +519,20 @@ const onSubmit = async (data: TaskFormValues) => {
                 name="assignedToIds"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-primary-foreground/90 font-medium">Assign To</FormLabel>
+                    <div className="flex items-center justify-between gap-2">
+                      <FormLabel className="text-primary-foreground/90 font-medium">Assign To</FormLabel>
+                      {session?.user?.id && users.some((u) => u.id === session.user.id) && !field.value?.includes(session.user.id) && (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs"
+                          onClick={() => field.onChange([...(field.value ?? []), session.user.id])}
+                        >
+                          + Assign to me
+                        </Button>
+                      )}
+                    </div>
                     <FormControl>
                       <SearchableMultiSelect
                         options={users.map(user => ({
@@ -496,7 +560,10 @@ const onSubmit = async (data: TaskFormValues) => {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-primary-foreground/90 font-medium">Description (Optional)</FormLabel>
+                    <FormLabel className="text-primary-foreground/90 font-medium">
+                      Description (Optional)
+                      {templateId && <Badge variant="secondary" className="ml-2">Checklist from template</Badge>}
+                    </FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder="Enter task description"
@@ -514,7 +581,7 @@ const onSubmit = async (data: TaskFormValues) => {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => router.back()}
+                  onClick={() => confirmLeave() && router.back()}
                   className="transition-colors hover:bg-destructive/10"
                 >
                   Cancel

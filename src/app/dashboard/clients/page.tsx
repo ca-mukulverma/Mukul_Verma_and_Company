@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpLink } from "@/components/help/help-link";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -624,7 +625,10 @@ const deleteClient = async () => {
       {/* Title and action buttons */}
       <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Client Management</h1>
+          <div className="flex items-center gap-1">
+            <h1 className="text-2xl font-bold tracking-tight">Client Management</h1>
+            <HelpLink section="clients" />
+          </div>
           <p className="text-muted-foreground">
             {hasWriteAccess 
               ? "Manage client information and tasks" 

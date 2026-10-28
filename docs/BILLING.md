@@ -100,6 +100,12 @@ that the work was done without billing, and the Admins, the task's
 creator and its assignees are notified. For task bills, No billing
 replaces *Not billable*; work logged directly keeps *Not billable*.
 
+**The amount setter can stop a bill.** When a bill is sent to someone for the
+amount and they feel the work should not be billed, they click **Not
+billable** (next to *Enter amount* and *Send back*) and say why. The bill is
+set aside as Not billable, and Admin and the billing managers are notified
+with the reason; they can **Reopen** it if they disagree.
+
 Each task or work entry becomes **one bill**. Bills are never combined.
 
 Bills never show expenses. They show the professional fee only, plus GST on
@@ -113,7 +119,7 @@ GST bills.
 | MVC billing manager | Selected Partner(s)/Admin | All MVC bills and amounts. Sets GST/Non-GST, enters or requests amounts, approves, requests edit/cancel/reissue, exports |
 | B Edge billing manager | Selected Partner(s)/Admin | Same as above, but only for B Edge bills |
 | Billing List viewer | Partner(s) Admin allows | The whole Billing List of MVC and B Edge: amounts, bill numbers, downloads and emailing bills to clients. Can't change bills, approve or export to Tally |
-| Amount setter | Admin, or a Partner Admin has allowed to enter amounts, that a bill is sent to | Only the bills sent to them. Enters the amount or sends the bill back with a remark |
+| Amount setter | Admin, or a Partner Admin has allowed to enter amounts, that a bill is sent to | Only the bills sent to them. Enters the amount, sends the bill back with a remark, or marks it Not billable with a reason |
 | Everyone else | Executives, consultants and the other Partners | Can log work done. Never sees amounts, bill numbers or the Billing List |
 
 Amounts are removed **on the server** for anyone without permission. Hiding them
@@ -445,9 +451,13 @@ shown), the bill number, the connector, and for a reissue the bill it replaces.
 
 ## Daily reminder and red alert
 
-At **11:58 AM India time every day, Sundays included** (the
-`/api/cron/billing-reminders` job, 06:28 UTC in `vercel.json`), everyone with
-pending billing work gets one push and in-app notification listing it:
+At **11:58 AM India time every day, Sundays included** (the daily job,
+06:28 UTC in `vercel.json`), everyone's pending billing work is listed in
+their **daily digest**, one push and in-app notification that also covers
+their tasks and compliance work (see `src/lib/daily-digest.ts`). Single
+billing notifications (sent for your amount, approved …) still arrive as
+they happen. `/api/cron/billing-reminders` still sends the billing-only
+reminder when run by hand. The digest lists:
 
 | Who | What is listed |
 |---|---|
@@ -474,13 +484,18 @@ banner asking them to (Settings → Notifications).
 
 ## Notifications
 
-Notifications appear in the app and as push notifications.
+Notifications appear in the app and as push notifications. Billing pushes are
+sent with high priority so phones show them at once, and tapping one opens the
+tab the bill is waiting in. Each time the app is opened it re-registers the
+device for push, so a phone whose push address changed keeps getting them.
 
 | Event | Admin | Billing manager | Amount setter |
 |---|---|---|---|
 | Work logged (plus the partners ticked on the form) | ✔ | ✔ | |
 | Sent for amount | | | ✔ |
 | Sent back with remark | ✔ | ✔ | |
+| Marked not billable by the amount setter | ✔ | ✔ | |
+| Task completed (its bill is waiting) | ✔ | ✔ | |
 | Amount entered by someone else | ✔ | ✔ | ✔ |
 | Amount entered by billing manager/Admin (awaiting final approval) | ✔ | | ✔ |
 | Billing manager approved | ✔ | | |

@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import {
   isAuthorizedCron,
   runBillingEmailDelivery,
-  runBillingReminders,
   runCleanupNotifications,
   runCompliance,
+  runDailyDigest,
   runStep,
 } from "@/lib/cron-jobs";
 
@@ -18,7 +18,8 @@ export const maxDuration = 60;
 // compute. Running them together, inside office hours when the database is
 // usually already awake, costs at most one short wake a day.
 //
-// Order: the jobs people see first (reminders, compliance summary), then
+// Order: the jobs people see first (new compliance periods, then each
+// person's daily digest of tasks, compliance and billing), then
 // housekeeping, then the mailbox check (slowest, talks to IMAP) last. Each step
 // is isolated: one failing does not stop the rest.
 //
@@ -30,8 +31,9 @@ export async function GET(request: Request) {
 
   // Sequential on purpose: one database connection, predictable run time.
   const steps = [
-    await runStep("billing-reminders", runBillingReminders),
+    // New periods first, so the digest counts them
     await runStep("compliance", runCompliance),
+    await runStep("daily-digest", runDailyDigest),
     await runStep("cleanup-notifications", runCleanupNotifications),
     await runStep("billing-email-delivery", runBillingEmailDelivery),
   ];

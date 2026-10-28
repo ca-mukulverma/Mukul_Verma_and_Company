@@ -109,13 +109,9 @@ export default function LoginPage() {
         router.push("/dashboard/admin");
       } else if (sessionData?.user?.role === "PARTNER") {
         router.push("/dashboard/partner");
-      } else if (["PERMANENT_CLIENT", "GUEST_CLIENT"].includes(sessionData?.user?.role)) {
-        router.push("/dashboard/client");
-      } else if (["BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"].includes(sessionData?.user?.role)) {
-        // Redirect junior staff to their specific dashboard
-        router.push("/dashboard/junior");
       } else {
-        router.push("/dashboard");
+        // Staff start on My work → Today
+        router.push("/dashboard/my-work");
       }
 
       router.refresh();

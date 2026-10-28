@@ -126,29 +126,22 @@ function line(g: PendingGroup) {
   return `${g.label}: ${g.count}${g.overdue ? ` (${g.overdue} over ${ESCALATE_DAYS} days)` : ""}`;
 }
 
-// The daily reminder: each person gets their own pending work; Admins also
-// get everyone's work that has waited more than ESCALATE_DAYS
-export async function sendDailyBillingReminders(now = new Date()) {
-  const people = await everyonesPendingWork(now);
-  const admins = (await billingUsers()).filter((u) => u.role === "ADMIN");
-  const sender = admins[0]?.id ?? people[0]?.userId;
-  if (!sender) return { reminded: 0, escalated: 0 };
-
+// One line per kind of pending billing work, for the daily digest
+export function billingDigestText(person: PersonPending, now = new Date()) {
+  const total = person.groups.reduce((sum, g) => sum + g.count, 0);
   const dayOfMonth = Number(new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric" }).format(now));
-  for (const person of people) {
-    const total = person.groups.reduce((sum, g) => sum + g.count, 0);
-    const monthEnd =
-      dayOfMonth >= 25 && person.groups.some((g) => g.key === "final")
-        ? " Bills are dated on the day of final approval, so approve them before the month ends."
-        : "";
-    await notifyBillingUsers([person.userId], {
-      title: `Billing: ${total} item${total === 1 ? "" : "s"} pending with you`,
-      content: `${person.groups.map(line).join(". ")}.${monthEnd}`,
-      sentById: sender,
-    });
-  }
+  const monthEnd =
+    dayOfMonth >= 25 && person.groups.some((g) => g.key === "final")
+      ? " Bills are dated on the day of final approval, so approve them before the month ends."
+      : "";
+  return { total, text: `${person.groups.map(line).join(". ")}.${monthEnd}` };
+}
 
-  // Overdue work of others goes to every Admin
+// Each person's own pending billing work goes into their daily digest
+// (lib/daily-digest.ts). This sends what stays separate: every Admin is told
+// about other people's work that has waited more than ESCALATE_DAYS.
+export async function sendBillingEscalations(people: PersonPending[]) {
+  const admins = (await billingUsers()).filter((u) => u.role === "ADMIN");
   const overdue = people
     .map((p) => ({ ...p, groups: p.groups.filter((g) => g.overdue > 0) }))
     .filter((p) => p.groups.length > 0);
@@ -163,5 +156,21 @@ export async function sendDailyBillingReminders(now = new Date()) {
       sentById: admin.id,
     });
   }
-  return { reminded: people.length, escalated: overdue.length };
+  return overdue.length;
+}
+
+// The billing reminder on its own (/api/cron/billing-reminders, run by hand):
+// each person's pending work, then the escalation to Admin
+export async function sendDailyBillingReminders(now = new Date()) {
+  const people = await everyonesPendingWork(now);
+  for (const person of people) {
+    const { total, text } = billingDigestText(person, now);
+    await notifyBillingUsers([person.userId], {
+      title: `Billing: ${total} item${total === 1 ? "" : "s"} pending with you`,
+      content: text,
+      sentById: person.userId,
+    });
+  }
+  const escalated = await sendBillingEscalations(people);
+  return { reminded: people.length, escalated };
 }

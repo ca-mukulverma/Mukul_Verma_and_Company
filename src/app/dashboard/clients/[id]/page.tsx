@@ -35,12 +35,15 @@ import {
   Hash,
   Users,
   Send,
+  MessageSquare,
+  Plus,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UnifiedHistoryTab } from "@/components/clients/unified-history-tab";
+import { RecentActivity } from "@/components/clients/recent-activity";
 import { canCreateTask, canEditClient, canModifyClient } from "@/lib/permissions";
 import { CredentialsTab } from "@/components/clients/credentials-tab";
 import { ClientDocumentsTab } from "@/components/clients/client-documents-tab";
@@ -230,6 +233,20 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link href={`/dashboard/chat?about=${encodeURIComponent(`client ${client.companyName || client.contactPerson}`)}`}>
+              <MessageSquare className="mr-2 h-4 w-4" />
+              Discuss in chat
+            </Link>
+          </Button>
+          {canEdit && (
+            <Button variant="outline" asChild>
+              <Link href={`/dashboard/tasks/create?clientId=${client.id}`}>
+                <Plus className="mr-2 h-4 w-4" />
+                New task
+              </Link>
+            </Button>
+          )}
           <Button variant={canEdit ? "outline" : "default"} asChild>
             <Link href={`/dashboard/clients/${client.id}/send`}>
               <Send className="mr-2 h-4 w-4" />
@@ -258,6 +275,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
 
         {/* Details Tab */}
         <TabsContent value="details" className="space-y-4">
+          <RecentActivity clientId={client.id} />
           <Card>
             <CardHeader>
               <CardTitle>Client Information</CardTitle>

@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpLink } from "@/components/help/help-link";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -762,7 +763,10 @@ export default function TasksPage() {
       {/* Title and action buttons */}
       <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Task Management</h1>
+          <div className="flex items-center gap-1">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Task Management</h1>
+            <HelpLink section="tasks" />
+          </div>
           <p className="text-muted-foreground">Manage projects and track task progress</p>
         </div>
 
@@ -921,8 +925,10 @@ export default function TasksPage() {
                   {searchTerm
                     ? "No tasks match your search criteria"
                     : statusFilter !== "all"
-                    ? `No ${statusFilter} tasks found`
-                    : "No tasks have been created yet"}
+                    ? `No ${statusFilter.replace("_", " ")} tasks. Choose "All" in the status filter to see the rest.`
+                    : canManageTasks
+                    ? "No tasks yet. Create one, or start from a template (ITR, GST notice, ROC …)."
+                    : "No tasks are assigned to you. New ones appear here and on Today, and you get a notification."}
                 </p>
                 {canManageTasks && (
                   <Button asChild>

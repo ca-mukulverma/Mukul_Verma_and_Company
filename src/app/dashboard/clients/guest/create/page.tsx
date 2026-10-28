@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { z } from "zod";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -102,6 +103,9 @@ export default function CreateGuestClientPage() {
       accessExpiry: defaultExpiryDate,
     },
   });
+
+  // Asks before Cancel or closing the tab throws away what was typed
+  const confirmLeave = useUnsavedChanges(form.formState.isDirty && !isSubmitting);
 
   // Handle form submission
   const onSubmit = async (data: GuestClientFormValues) => {
@@ -384,7 +388,7 @@ export default function CreateGuestClientPage() {
                 <Button 
                   type="button" 
                   variant="outline"
-                  onClick={() => router.push("/dashboard/clients")}
+                  onClick={() => confirmLeave() && router.push("/dashboard/clients")}
                 >
                   Cancel
                 </Button>

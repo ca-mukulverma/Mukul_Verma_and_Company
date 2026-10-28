@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import axios from "axios";
 import { useDebounce } from "@/hooks/use-debounce";
+import { getRecentClients, rememberClient } from "@/lib/recent-clients";
 
 interface Option {
   value: string;
@@ -48,6 +49,28 @@ export function SearchableSelect({
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
   const [filteredOptions, setFilteredOptions] = useState<Option[]>(options);
+  // Clients picked lately on this device, shown first while nothing is typed
+  const [recent, setRecent] = useState<Option[]>([]);
+  useEffect(() => {
+    if (open) {
+      setRecent(
+        getRecentClients().map((c) => ({
+          value: c.id,
+          label: c.companyName ? `${c.companyName} (${c.contactPerson})` : c.contactPerson,
+        }))
+      );
+    }
+  }, [open]);
+  const choose = (option: Option) => {
+    const [first, ...rest] = option.label.split(" (");
+    rememberClient(
+      rest.length
+        ? { id: option.value, companyName: first, contactPerson: rest.join(" (").replace(/\)$/, "") }
+        : { id: option.value, contactPerson: option.label }
+    );
+    onChange(option.value);
+    setOpen(false);
+  };
 
   useEffect(() => {
     if (debouncedSearch && debouncedSearch.length >= 2) {
@@ -123,7 +146,17 @@ export function SearchableSelect({
           />
           <CommandList>
             <CommandEmpty>No matches found</CommandEmpty>
-            <CommandGroup>
+            {!searchInput.trim() && recent.length > 0 && (
+              <CommandGroup heading="Recent">
+                {recent.map((option) => (
+                  <CommandItem key={`recent-${option.value}`} value={`recent ${option.label}`} onSelect={() => choose(option)}>
+                    <span className="truncate">{option.label}</span>
+                    {selected === option.value && <Check className="ml-auto h-4 w-4" />}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            <CommandGroup heading={!searchInput.trim() && recent.length > 0 ? "All clients" : undefined}>
               <CommandItem
                 value="null"
                 onSelect={() => {
@@ -139,10 +172,7 @@ export function SearchableSelect({
                 <CommandItem
                   key={option.value}
                   value={option.label}
-                  onSelect={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
+                  onSelect={() => choose(option)}
                 >
                   <div className="flex items-center gap-2">
                     <Avatar className="h-6 w-6 mr-2">

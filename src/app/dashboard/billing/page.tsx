@@ -3,7 +3,10 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
-import { CalendarClock, Loader2 } from "lucide-react";
+import { CalendarClock, ChevronDown, Loader2, Settings2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { HelpLink } from "@/components/help/help-link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BillList } from "@/components/billing/bill-list";
 import { BillingRegister } from "@/components/billing/billing-register";
@@ -148,6 +151,20 @@ function BillingPageContent() {
             : "log";
   const requestedTab = searchParams.get("tab");
   const tab = requestedTab && tabs.includes(requestedTab) ? requestedTab : defaultTab;
+  const goTo = (value: string) => router.replace(`/dashboard/billing?tab=${value}`, { scroll: false });
+  // Used now and then: kept out of the tab bar
+  const settingsTabs = [
+    ...(isManager ? [{ value: "tally", label: "Tally export" }, { value: "connectors", label: "Connectors" }] : []),
+    ...(summary.isAdmin
+      ? [
+          { value: "series", label: "Number series" },
+          { value: "profiles", label: "Company profiles" },
+          { value: "emails", label: "Bill emails" },
+          { value: "clear", label: "Clear data" },
+        ]
+      : []),
+  ];
+  const activeSetting = settingsTabs.find((s) => s.value === tab);
 
   const pendingCount = (company: CompanyValue) => {
     const counts = summary.counts[company] || {};
@@ -157,18 +174,19 @@ function BillingPageContent() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Billing</h1>
+        <div className="flex items-center gap-1">
+          <h1 className="text-2xl font-bold tracking-tight">Billing</h1>
+          <HelpLink section="billing" />
+        </div>
         <p className="text-muted-foreground">Work done for clients, on its way to a bill.</p>
       </div>
       <BillingAlert />
 
-      <Tabs value={tab} onValueChange={(value) => router.replace(`/dashboard/billing?tab=${value}`, { scroll: false })}>
-        {/* w-0 + min-w-full: the tab bar scrolls sideways on phones instead of widening the page */}
-        <div className="w-0 min-w-full overflow-x-auto">
+      <Tabs value={tab} onValueChange={goTo}>
+        {/* Everyday work in the tabs; setup and Tally in the Billing settings menu.
+            w-0 + min-w-full: the bar scrolls sideways on phones instead of widening the page */}
+        <div className="flex w-0 min-w-full items-center gap-2 overflow-x-auto">
           <TabsList>
-            {summary.isAdmin && (
-              <TabsTrigger value="final">Final approval<CountBadge count={summary.awaitingFinalCount} /></TabsTrigger>
-            )}
             {summary.canEnterAmounts && (
               <TabsTrigger value="amounts">
                 Awaiting my amount<CountBadge count={summary.awaitingMyAmountCount} />
@@ -180,19 +198,34 @@ function BillingPageContent() {
             {summary.manages.includes("BEDGE") && (
               <TabsTrigger value="bedge">B Edge bills<CountBadge count={pendingCount("BEDGE")} /></TabsTrigger>
             )}
-            {seesList && <TabsTrigger value="list">Billing list</TabsTrigger>}
-            {isManager && <TabsTrigger value="tally">Tally</TabsTrigger>}
-            {isManager && <TabsTrigger value="connectors">Connectors</TabsTrigger>}
+            {summary.isAdmin && (
+              <TabsTrigger value="final">Final approval<CountBadge count={summary.awaitingFinalCount} /></TabsTrigger>
+            )}
             {isManager && (
               <TabsTrigger value="requests">Change requests<CountBadge count={summary.pendingChangeRequests} /></TabsTrigger>
             )}
+            {seesList && <TabsTrigger value="list">Billing list</TabsTrigger>}
             <TabsTrigger value="log">Log work</TabsTrigger>
             <TabsTrigger value="mine">My entries</TabsTrigger>
-            {summary.isAdmin && <TabsTrigger value="series">Number series</TabsTrigger>}
-            {summary.isAdmin && <TabsTrigger value="profiles">Company profiles</TabsTrigger>}
-            {summary.isAdmin && <TabsTrigger value="emails">Bill emails</TabsTrigger>}
-            {summary.isAdmin && <TabsTrigger value="clear">Clear data</TabsTrigger>}
           </TabsList>
+          {settingsTabs.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant={activeSetting ? "secondary" : "outline"} size="sm" className="shrink-0">
+                  <Settings2 className="mr-1 h-4 w-4" />
+                  {activeSetting ? activeSetting.label : "Billing settings"}
+                  <ChevronDown className="ml-1 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {settingsTabs.map((s) => (
+                  <DropdownMenuItem key={s.value} onClick={() => goTo(s.value)}>
+                    {s.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {summary.isAdmin && (

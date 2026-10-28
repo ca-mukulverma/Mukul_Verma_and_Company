@@ -3,15 +3,18 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { CheckSquare, Loader2, MessageCircle, RefreshCw, Search } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { CheckSquare, Loader2, MessageCircle, RefreshCw, Search, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { ItemDialog } from "./item-dialog";
 import { ReminderDialog, ReminderTarget } from "./reminder-dialog";
 import {
+  ColourKey,
   DataReceivedCell,
   DocsCell,
   ItemCell,
@@ -88,25 +91,67 @@ function defaultMonth(view: View) {
   return date.toISOString().slice(0, 7);
 }
 
+// Each person's last filter on each sheet, kept in this browser
+function savedFilter(view: View): { filter: RowFilter; mine: boolean } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(`compliance-filter-${view}`) || "null");
+    if (saved && ROW_FILTERS.some((f) => f.value === saved.filter)) return { filter: saved.filter, mine: !!saved.mine };
+  } catch {
+    // Nothing saved, or storage blocked
+  }
+  return { filter: "all", mine: false };
+}
+
 export function ComplianceSheet({
   view,
   workTypes,
   isManager,
   initialWorkTypeId,
+  initialMonth,
+  initialItemId,
 }: {
   view: View;
   workTypes: WorkTypeInfo[];
   isManager: boolean;
   initialWorkTypeId?: string | null;
+  // Opened from a link (My work → Open): this period, with this item's popup open
+  initialMonth?: string | null;
+  initialItemId?: string | null;
 }) {
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
   const genericTypes = workTypes.filter((w) => w.active && w.kind === "GENERIC");
-  const [month, setMonth] = useState(() => defaultMonth(view));
+  const [month, setMonth] = useState(() => (initialMonth && /^\d{4}-\d{2}$/.test(initialMonth) ? initialMonth : defaultMonth(view)));
   const [workTypeId, setWorkTypeId] = useState<string>(initialWorkTypeId ?? "");
   const [rows, setRows] = useState<Row[]>([]);
   const [meta, setMeta] = useState<SheetMeta>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<RowFilter>("all");
+  const [filter, setFilterState] = useState<RowFilter>("all");
+  const [mine, setMineState] = useState(false);
+  const [pendingItemId, setPendingItemId] = useState(initialItemId ?? null);
+
+  useEffect(() => {
+    const saved = savedFilter(view);
+    setFilterState(saved.filter);
+    setMineState(saved.mine);
+  }, [view]);
+
+  const remember = (next: { filter: RowFilter; mine: boolean }) => {
+    try {
+      localStorage.setItem(`compliance-filter-${view}`, JSON.stringify(next));
+    } catch {
+      // Kept until the page is reloaded
+    }
+  };
+  const setFilter = (next: RowFilter) => {
+    setFilterState(next);
+    remember({ filter: next, mine });
+  };
+  const setMine = (next: boolean) => {
+    setMineState(next);
+    remember({ filter, mine: next });
+  };
   const [selected, setSelected] = useState<string[]>([]);
   const [dialog, setDialog] = useState<{ item: SheetItem; client: ClientCell } | null>(null);
   const [reminder, setReminder] = useState<ReminderTarget[] | null>(null);
@@ -138,6 +183,19 @@ export function ComplianceSheet({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Open the item asked for in the link once its sheet has loaded
+  useEffect(() => {
+    if (!pendingItemId || loading) return;
+    for (const row of rows) {
+      const item = rowItems(row).find((i) => i?.id === pendingItemId);
+      if (item) {
+        setDialog({ item, client: row.client });
+        break;
+      }
+    }
+    setPendingItemId(null);
+  }, [pendingItemId, loading, rows]);
 
   const updateItems = useCallback((updated: SheetItem[]) => {
     const byId = new Map(updated.map((i) => [i.id, i]));
@@ -172,14 +230,20 @@ export function ComplianceSheet({
     }
   };
 
-  const visible = useMemo(() => {
+  // Rows matching the search and "My clients", before the status filter
+  const searched = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter(
       (row) =>
         (!q || row.client.name.toLowerCase().includes(q) || row.client.gstin?.toLowerCase().includes(q)) &&
-        matchesFilter(rowItems(row), filter)
+        (!mine || row.client.managerId === userId)
     );
-  }, [rows, search, filter]);
+  }, [rows, search, mine, userId]);
+  const visible = useMemo(() => searched.filter((row) => matchesFilter(rowItems(row), filter)), [searched, filter]);
+  const filterCounts = useMemo(
+    () => Object.fromEntries(ROW_FILTERS.map((f) => [f.value, searched.filter((row) => matchesFilter(rowItems(row), f.value)).length])),
+    [searched]
+  );
 
   const templateFor = (items: SheetItem[]) => {
     const first = [...items].sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
@@ -331,12 +395,6 @@ export function ComplianceSheet({
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input className="w-56 pl-8" placeholder="Search client or GSTIN" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <Select value={filter} onValueChange={(v) => setFilter(v as RowFilter)}>
-          <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {ROW_FILTERS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
         <Button variant="ghost" size="icon" onClick={load} title="Refresh">
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </Button>
@@ -360,6 +418,35 @@ export function ComplianceSheet({
         </div>
       </div>
 
+      {/* Quick filters with how many clients each has; the choice is remembered */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          size="sm"
+          variant={mine ? "default" : "outline"}
+          className="h-7 rounded-full px-3 text-xs"
+          onClick={() => setMine(!mine)}
+          title="Only clients you manage"
+        >
+          <UserCheck className="mr-1 h-3.5 w-3.5" />My clients
+        </Button>
+        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+        {ROW_FILTERS.map((f) => (
+          <Button
+            key={f.value}
+            size="sm"
+            variant={filter === f.value ? "default" : "outline"}
+            className="h-7 rounded-full px-3 text-xs"
+            onClick={() => setFilter(f.value)}
+          >
+            {f.label}
+            <Badge variant="secondary" className="ml-1.5 h-4 rounded-full px-1.5 text-[10px]">
+              {filterCounts[f.value] ?? 0}
+            </Badge>
+          </Button>
+        ))}
+      </div>
+      <ColourKey />
+
       {view !== "gst" && (meta.period || meta.months) && (
         <p className="text-sm text-muted-foreground">
           {meta.period ?? `Quarter: ${meta.months![0]} – ${meta.months![2]}`}
@@ -369,7 +456,8 @@ export function ComplianceSheet({
       {view === "work" && genericTypes.length === 0 ? (
         <p className="rounded-md border p-6 text-center text-sm text-muted-foreground">No other works yet. Admins and Partners can add them in Setup.</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
+        // Scrolls inside its own box so the header row and client column stay in view
+        <div className="max-h-[70vh] overflow-auto rounded-md border">
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-muted">
               <tr>
@@ -377,7 +465,7 @@ export function ComplianceSheet({
                   <SelectAll checked={allSelected} onChange={(c) => setSelected(c ? visible.map((r) => r.client.id) : [])} />
                 </th>
                 {headers.map((h, i) => (
-                  <th key={h + i} className={cn("whitespace-nowrap border-b p-2 text-left text-xs font-semibold", i === 0 && "sticky left-0 bg-muted")}>
+                  <th key={h + i} className={cn("whitespace-nowrap border-b p-2 text-left text-xs font-semibold", i === 0 && "sticky left-0 z-20 bg-muted")}>
                     {h}
                   </th>
                 ))}
@@ -408,7 +496,7 @@ export function ComplianceSheet({
                         aria-label={`Select ${row.client.name}`}
                       />
                     </td>
-                    <td className="sticky left-0 max-w-[14rem] bg-background p-2">
+                    <td className="sticky left-0 z-[1] max-w-[14rem] bg-background p-2">
                       <p className="truncate font-medium" title={row.client.name}>{row.client.name}</p>
                       {row.client.gstin && <p className="text-[11px] text-muted-foreground">{row.client.gstin}</p>}
                       {row.client.noWhatsapp && (
@@ -430,7 +518,7 @@ export function ComplianceSheet({
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        {visible.length} of {rows.length} clients · Click a cell to update it · Colours: grey pending, yellow data received, blue filed (files or steps pending), green completed, red overdue
+        {visible.length} of {rows.length} clients · Click a cell to update it · Tick clients to mark data received or remind them together
       </p>
 
       {dialog && (

@@ -19,6 +19,8 @@ export interface ClientCell {
   responsibleName: string | null;
   // The responsible person has no WhatsApp number: reminders can't go on WhatsApp
   noWhatsapp: boolean;
+  // The staff member who manages the client ("My clients" filter)
+  managerId?: string | null;
 }
 
 export const STATUS_LABELS: Record<ItemStatus, string> = {

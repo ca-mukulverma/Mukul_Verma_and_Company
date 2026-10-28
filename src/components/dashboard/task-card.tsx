@@ -121,7 +121,7 @@ export function TaskCard({
         </CardContent>
         <CardFooter className="p-3 pt-0">
           <Button asChild variant="ghost" size="sm" className="w-full h-8 text-xs">
-            <Link href={`/dashboard/junior/tasks/${id}`}>View</Link>
+            <Link href={`/dashboard/tasks/${id}`}>View</Link>
           </Button>
         </CardFooter>
       </Card>
@@ -187,7 +187,7 @@ export function TaskCard({
       </CardContent>
       <CardFooter>
         <Button asChild variant="outline" className="w-full">
-          <Link href={`/dashboard/junior/tasks/${id}`}>
+          <Link href={`/dashboard/tasks/${id}`}>
             View Details
           </Link>
         </Button>

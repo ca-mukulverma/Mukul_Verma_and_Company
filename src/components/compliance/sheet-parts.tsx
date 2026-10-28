@@ -127,7 +127,7 @@ export type RowFilter = "all" | "data_pending" | "to_file" | "files_pending" | "
 
 export const ROW_FILTERS: { value: RowFilter; label: string }[] = [
   { value: "all", label: "All clients" },
-  { value: "data_pending", label: "Data pending" },
+  { value: "data_pending", label: "Data not received" },
   { value: "to_file", label: "Data received, to file" },
   { value: "files_pending", label: "Filed, files/steps pending" },
   { value: "overdue", label: "Overdue" },
@@ -162,4 +162,32 @@ export function SelectAll({ checked, onChange }: { checked: boolean; onChange: (
 // Open items of the given rows, for reminders
 export function openItems(items: (SheetItem | null)[]) {
   return items.filter((i): i is SheetItem => !!i && !i.historical && (i.status === "pending" || i.status === "data_received"));
+}
+
+// The colour key above each sheet: what each cell colour means
+const COLOUR_KEY: { label: string; item: Pick<SheetItem, "status" | "overdue">; hint: string }[] = [
+  { label: "Pending", item: { status: "pending", overdue: false }, hint: "Waiting for the client's data" },
+  { label: "Data received", item: { status: "data_received", overdue: false }, hint: "Data is in: ready to file" },
+  { label: "Filed", item: { status: "filed", overdue: false }, hint: "Filed; files or steps may still be pending" },
+  { label: "Completed", item: { status: "completed", overdue: false }, hint: "Filed with every file and step done" },
+  { label: "Overdue", item: { status: "pending", overdue: true }, hint: "Past the due date and not filed" },
+  { label: "Not required", item: { status: "not_required", overdue: false }, hint: "Nothing to file this period" },
+];
+
+export function ColourKey() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="Colour key">
+      <span className="font-medium">Colours:</span>
+      {COLOUR_KEY.map((k) => (
+        <span key={k.label} className="flex items-center gap-1" title={k.hint}>
+          <span className={cn("inline-block h-3 w-5 rounded border", statusClasses(k.item))} />
+          {k.label}
+        </span>
+      ))}
+      <span className="flex items-center gap-1" title="An earlier period or step must be finished first">
+        <Lock className="h-3 w-3" />
+        Locked
+      </span>
+    </div>
+  );
 }
