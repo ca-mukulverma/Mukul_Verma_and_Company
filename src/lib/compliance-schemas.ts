@@ -84,7 +84,7 @@ export async function checkUploadAllowed(
       if (month < item.periodStart || month > item.periodEnd) return badRequest(`This is a ${label}, not of this period`);
     }
   } else if (data.gst) {
-    return badRequest("A GST return goes to its period: upload it under Upload returns or in the period");
+    return badRequest("A GST return goes to its period: upload it under the client's Upload documents or in the period");
   }
   const client = await prisma.client.findUnique({ where: { id: data.clientId }, select: { gstin: true } });
   if (!client) return notFound("Client not found");

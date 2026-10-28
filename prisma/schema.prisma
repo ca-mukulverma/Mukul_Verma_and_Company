@@ -171,6 +171,11 @@ model Client {
   iec            String?      @db.VarChar(10)
   tallyLedgerPending Boolean  @default(false)
   tallyLedgerName String?     @db.VarChar(100) // Party ledger in Tally, if not the client's name
+  // Another state's GST registration of a party: its own GSTIN, returns and
+  // GST working, under the party's main record (Compliance → Clients)
+  parentClientId String?      @db.Char(36)
+  parentClient   Client?      @relation("ClientRegistrations", fields: [parentClientId], references: [id], onDelete: SetNull)
+  registrations  Client[]     @relation("ClientRegistrations")
   isGuest        Boolean      @default(false) // Whether this is a temporary guest client
   accessExpiry   DateTime?    // When guest client access expires
   createdAt      DateTime     @default(now())
@@ -195,6 +200,7 @@ model Client {
   @@index([managerId])
   @@index([contactPerson]) // Index for searching by contact person name
   @@index([connectorId])
+  @@index([parentClientId])
 }
 
 // Someone who brings clients to the firm. Fees of their clients are collected

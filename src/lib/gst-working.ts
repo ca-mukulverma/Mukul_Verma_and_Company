@@ -131,14 +131,6 @@ export function periodTitle(p: Pick<PeriodResult, "start" | "quarterly">) {
 
 const fyStart = (fy: number) => utcDate(fy, 4);
 
-// The figures a sign-off was given on, against today's (the database may
-// store the keys in another order)
-function sameSnapshot(saved: unknown, now: Record<string, number>) {
-  const a = (saved ?? {}) as Record<string, number>;
-  const keys = new Set([...Object.keys(a), ...Object.keys(now)]);
-  return [...keys].every((k) => Math.abs((a[k] ?? 0) - (now[k] ?? 0)) < 0.005);
-}
-
 // A client's working for a financial year (2026 = FY 2026-27)
 export async function clientWorking(clientId: string, fy: number) {
   const client = await prisma.client.findUnique({
@@ -149,10 +141,6 @@ export async function clientWorking(clientId: string, fy: number) {
   // Three earlier periods are loaded for the swing check
   const all = (await loadPeriods([clientId], addMonths(fyStart(fy), -9), utcDate(fy + 1, 3))).get(clientId) ?? [];
   const periods = all.filter((p) => p.start >= monthKey(fyStart(fy)));
-  const checks = await prisma.gstWorkingCheck.findMany({
-    where: { clientId, periodStart: { gte: fyStart(fy), lt: utcDate(fy + 1, 4) } },
-    include: { checkedBy: { select: { name: true } } },
-  });
   const total = sumRows(periods);
   const today = monthKey(todayIST());
   return {
@@ -163,94 +151,13 @@ export async function clientWorking(clientId: string, fy: number) {
       email: (client.ownerIsResponsible ? client.email : client.responsibleEmail ?? client.email) ?? null,
     },
     fy,
-    periods: periods.map((p) => {
-      const check = checks.find((c) => dateKey(c.periodStart).slice(0, 7) === p.start);
-      return {
-        ...p,
-        title: periodTitle(p),
-        over: p.months[p.months.length - 1] < today,
-        check: check
-          ? {
-              by: check.checkedBy?.name ?? "?",
-              at: check.createdAt.toISOString(),
-              remark: check.remark,
-              outdated: !sameSnapshot(check.snapshot, p.snapshot),
-            }
-          : null,
-      };
-    }),
+    periods: periods.map((p) => ({ ...p, title: periodTitle(p), over: p.months[p.months.length - 1] < today })),
     total,
     hasCess: Object.values(total).some((h) => h && Math.abs(h.cess) >= 0.01),
   };
 }
 
 export type ClientWorking = NonNullable<Awaited<ReturnType<typeof clientWorking>>>;
-
-// Clients with GST work (active)
-async function gstClients() {
-  const subs = await prisma.clientCompliance.findMany({
-    where: { active: true, workType: { kind: { in: ["GSTR1", "GSTR3B"] }, active: true } },
-    select: { client: { select: { id: true, contactPerson: true, companyName: true, gstin: true } } },
-  });
-  const clients = new Map(subs.map((s) => [s.client.id, s.client]));
-  return [...clients.values()].sort((a, b) => partyName(a).localeCompare(partyName(b)));
-}
-
-// Every GST client's period ending in the month, with what needs attention;
-// differences first, largest first
-export async function gstExceptions(month: Date) {
-  const clients = await gstClients();
-  const periods = await loadPeriods(clients.map((c) => c.id), addMonths(month, -11), month);
-  const key = monthKey(month);
-  const checks = await prisma.gstWorkingCheck.findMany({
-    where: { clientId: { in: clients.map((c) => c.id) }, periodStart: { gte: addMonths(month, -2), lte: month } },
-    select: { clientId: true, periodStart: true, snapshot: true },
-  });
-  const rows: {
-    clientId: string;
-    client: string;
-    gstin: string | null;
-    period: string;
-    start: string;
-    magnitude: number;
-    hasDifference: boolean;
-    issues: PeriodResult["issues"];
-    checked: boolean;
-  }[] = [];
-  for (const client of clients) {
-    const p = periods.get(client.id)?.find((x) => x.months[x.months.length - 1] === key);
-    if (!p || p.issues.length === 0) continue;
-    const check = checks.find((c) => c.clientId === client.id && monthKey(c.periodStart) === p.start);
-    rows.push({
-      clientId: client.id,
-      client: partyName(client),
-      gstin: client.gstin,
-      period: periodTitle(p),
-      start: p.start,
-      magnitude: p.magnitude,
-      hasDifference: p.hasDifference,
-      issues: p.issues,
-      checked: !!check && sameSnapshot(check.snapshot, p.snapshot),
-    });
-  }
-  const rank = (r: (typeof rows)[number]) => (r.hasDifference ? 0 : r.issues.some((i) => i.severity === "missing") ? 1 : 2);
-  return rows.sort((a, b) => rank(a) - rank(b) || b.magnitude - a.magnitude || a.client.localeCompare(b.client));
-}
-
-// Which files each GST client has for each period of the year so far
-export async function gstCompleteness(fy: number) {
-  const clients = await gstClients();
-  const to = [utcDate(fy + 1, 3), addMonths(todayIST(), -1)].sort((a, b) => a.getTime() - b.getTime())[0];
-  const periods = to < fyStart(fy) ? new Map<string, PeriodResult[]>() : await loadPeriods(clients.map((c) => c.id), fyStart(fy), to);
-  return clients.map((c) => ({
-    clientId: c.id,
-    client: partyName(c),
-    gstin: c.gstin,
-    periods: (periods.get(c.id) ?? [])
-      .filter((p) => p.months[p.months.length - 1] <= monthKey(to))
-      .map((p) => ({ start: p.start, title: periodTitle(p), files: p.files, hasDifference: p.hasDifference })),
-  }));
-}
 
 // ─── Uploads ────────────────────────────────────────────────────────────────
 

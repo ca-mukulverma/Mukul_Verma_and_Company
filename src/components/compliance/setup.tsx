@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiError, rupees } from "./types";
+import { SwingSetting } from "./gst-working";
 
 export interface WorkType {
   id: string;
@@ -102,6 +103,7 @@ export function ComplianceSetup({ workTypes, onChanged }: { workTypes: WorkType[
           </tbody>
         </table>
       </div>
+      <SwingSetting />
       {editing && <EditWorkType workType={editing} staff={staff} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onChanged(); }} />}
       {adding && <AddWorkType onClose={() => setAdding(false)} onSaved={() => { setAdding(false); onChanged(); }} />}
     </div>

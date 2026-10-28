@@ -3,9 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { partyName } from "@/lib/compliance";
 import { dateKey, monthKey, periodLabel, utcDate } from "@/lib/compliance-periods";
 import { notFound, requireComplianceAccess } from "@/lib/compliance-api";
+import { gstState } from "@/lib/gst-states";
 
 // GET /api/compliance/clients/[id]?fy=2026 – everything about one client:
-// recurring work, monthly obligations, the year's items and all files
+// recurring work, monthly obligations, the year's items and all files, and
+// the party's GST registrations in every state (main record first)
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { access, error } = await requireComplianceAccess();
   if (error) return error;
@@ -22,8 +24,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       companyName: true,
       gstin: true,
       tan: true,
+      pan: true,
       phone: true,
       email: true,
+      parentClientId: true,
       complianceSubscriptions: { include: { workType: { select: { name: true, sortOrder: true, kind: true } } } },
       obligations: { orderBy: [{ kind: "asc" }, { createdAt: "asc" }] },
       complianceDocuments: {
@@ -53,11 +57,48 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     },
   });
   if (!client) return notFound("Client not found");
+  const mainId = client.parentClientId ?? client.id;
+  const party = await prisma.client.findMany({
+    where: { OR: [{ id: mainId }, { parentClientId: mainId }] },
+    select: {
+      id: true,
+      contactPerson: true,
+      companyName: true,
+      gstin: true,
+      tan: true,
+      pan: true,
+      parentClientId: true,
+      complianceSubscriptions: { where: { active: true }, select: { workTypeId: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
 
   const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
   return NextResponse.json({
     fy,
-    client: { id: client.id, name: partyName(client), gstin: client.gstin, tan: client.tan, phone: client.phone, email: client.email },
+    client: {
+      id: client.id,
+      name: partyName(client),
+      gstin: client.gstin,
+      tan: client.tan,
+      pan: client.pan,
+      phone: client.phone,
+      email: client.email,
+      state: gstState(client.gstin),
+      mainId,
+    },
+    registrations: party
+      .sort((a, b) => (a.id === mainId ? -1 : b.id === mainId ? 1 : 0))
+      .map((r) => ({
+        id: r.id,
+        name: partyName(r),
+        gstin: r.gstin,
+        tan: r.tan,
+        pan: r.pan,
+        state: gstState(r.gstin),
+        main: r.id === mainId,
+        subscribed: r.complianceSubscriptions.map((s) => s.workTypeId),
+      })),
     subscriptions: client.complianceSubscriptions
       .sort((a, b) => a.workType.sortOrder - b.workType.sortOrder)
       .map((s) => ({

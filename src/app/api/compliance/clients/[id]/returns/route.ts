@@ -5,7 +5,7 @@ import { canWorkOn, frequencyAt, logEvent } from "@/lib/compliance";
 import { dueDateFor, monthKey, parseDateKey, parseMonthKey, periodContaining, periodLabel, todayIST } from "@/lib/compliance-periods";
 import { badRequest, dateString, monthString, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 
-// Upload returns (Compliance → Clients → a client): where each file the
+// Upload documents (Compliance → Clients → a client): where each file the
 // browser read goes. With place: false it only says what each period is; with
 // place: true it creates the past periods that don't exist yet (completed,
 // with the ARN and filing date read from the file) and returns their ids.

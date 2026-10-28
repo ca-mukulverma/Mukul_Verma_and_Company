@@ -161,3 +161,21 @@ export async function POST(request: NextRequest) {
   await logEvent(prisma, item.id, "past_period_entered", access.userId);
   return NextResponse.json({ itemId: item.id }, { status: 201 });
 }
+
+// DELETE /api/compliance/history?itemId=… – removes a past period that has no
+// files: one created for an upload that then failed, so it doesn't show as done
+export async function DELETE(request: NextRequest) {
+  const { access, error } = await requireComplianceAccess();
+  if (error) return error;
+  const itemId = new URL(request.url).searchParams.get("itemId") ?? "";
+  const item = await prisma.complianceItem.findUnique({
+    where: { id: itemId },
+    select: { historical: true, workTypeId: true, _count: { select: { documents: true } } },
+  });
+  if (!item) return notFound("Period not found");
+  if (!canWorkOn(access, item.workTypeId)) return forbidden();
+  if (!item.historical) return badRequest("Periods tracked in the sheet are changed there");
+  if (item._count.documents > 0) return badRequest("This period has files; remove them first");
+  await prisma.complianceItem.delete({ where: { id: itemId } });
+  return NextResponse.json({ ok: true });
+}

@@ -52,7 +52,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 }
 
 // PATCH /api/compliance/documents/[id] – figures read from a GST return
-// uploaded before the app read them (GST working → Read earlier files)
+// uploaded before the app read them (the client's GST working → Read their figures)
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { access, error } = await requireComplianceAccess();
   if (error) return error;
