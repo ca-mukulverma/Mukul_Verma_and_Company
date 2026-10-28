@@ -36,6 +36,7 @@ import {
   Receipt,
   Download,
   ClipboardCheck,
+  MessageSquare,
 } from "lucide-react";
 import { StartComplianceDialog, isRegistrationTask } from "@/components/compliance/start-compliance-dialog";
 import { TaskComments } from "@/components/tasks/task-comments";
@@ -266,28 +267,43 @@ export default function TaskDetailPage({
   const [startCompliance, setStartCompliance] = useState(false);
   const canStartCompliance = isAdmin || session?.user?.role === "PARTNER";
 
-  const updateTaskStatus = async () => {
-    if (!newStatus || newStatus === task?.status) return;
-  
+  const updateTaskStatus = async (target?: string, isUndo = false) => {
+    const nextStatus = target ?? newStatus;
+    // An undo runs from the toast with the task as it was before the change
+    if (!nextStatus || (!isUndo && nextStatus === task?.status)) return;
+    const previousStatus = task?.status;
+
     try {
       setUpdating(true);
       // Make the API call and store the response
       const response = await axios.patch(`/api/tasks/${taskId}/status`, {
-        status: newStatus,
+        status: nextStatus,
       });
   
       // Update the task with ALL the updated data from the response
       // This will include lastStatusUpdatedBy and lastStatusUpdatedAt
       setTask((prev) => prev ? { 
         ...prev, 
-        status: newStatus,
+        status: nextStatus,
         lastStatusUpdatedBy: response.data.lastStatusUpdatedBy || currentUser,
         lastStatusUpdatedAt: new Date().toISOString()
       } : null);
       
-      toast.success("Task status updated successfully");
+      setNewStatus(nextStatus);
+      if (isUndo) {
+        toast.success("Status change undone");
+      } else {
+        // A few seconds to take back a wrong click (a completed task's bill is
+        // withdrawn again and billing is not told)
+        toast.success(`Status changed to ${nextStatus.replace("_", " ")}`, {
+          duration: 7000,
+          action: previousStatus
+            ? { label: "Undo", onClick: () => updateTaskStatus(previousStatus, true) }
+            : undefined,
+        });
+      }
       // A finished registration: offer to put the client into Compliance
-      if (newStatus === "completed" && task?.client && canStartCompliance && isRegistrationTask(task.title)) {
+      if (!isUndo && nextStatus === "completed" && task?.client && canStartCompliance && isRegistrationTask(task.title)) {
         setStartCompliance(true);
       }
     } catch (error) {
@@ -346,6 +362,11 @@ export default function TaskDetailPage({
           onClick={() => router.push(getTaskListUrl())}
         >
           <ArrowLeftIcon className="h-4 w-4 mr-2" /> Back to Tasks
+        </Button>
+        <Button asChild variant="outline" size="sm" className="mb-4 ml-2">
+          <Link href={`/dashboard/chat?about=${encodeURIComponent(`task "${task.title}"`)}`}>
+            <MessageSquare className="h-4 w-4 mr-2" /> Discuss in chat
+          </Link>
         </Button>
       </div>
 
@@ -532,7 +553,7 @@ export default function TaskDetailPage({
               </div>
 
               <Button
-                onClick={updateTaskStatus}
+                onClick={() => updateTaskStatus()}
                 disabled={
                   !newStatus ||
                   newStatus === task.status ||

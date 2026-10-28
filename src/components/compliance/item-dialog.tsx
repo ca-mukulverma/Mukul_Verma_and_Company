@@ -5,6 +5,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, FileUp, History, Loader2, Lock, Mail, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EVENT_LABELS } from "./event-labels";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -43,41 +44,6 @@ interface Details {
   fee?: number | null;
 }
 
-const EVENT_LABELS: Record<string, string> = {
-  data_received: "Data received",
-  data_received_undone: "Data received undone",
-  filed: "Filed",
-  filing_updated: "Filing details changed",
-  filing_undone: "Filing undone",
-  completed: "Completed",
-  sent_to_billing: "Sent to billing",
-  reopened: "Reopened",
-  tax_payable: "Tax payable",
-  figures_updated: "Figures changed",
-  gstr1a_filed: "GSTR-1A filed",
-  gstr1a_removed: "GSTR-1A removed",
-  line_confirmed: "Line confirmed",
-  line_skipped: "Line skipped",
-  line_pending: "Line set back",
-  challan_added: "Challan added",
-  challan_removed: "Challan removed",
-  tds_paid: "TDS month closed",
-  no_tds: "No TDS this month",
-  not_required: "Not required",
-  certificates_requested: "Form 16/16A requested",
-  certificates_request_undone: "Form 16/16A request undone",
-  certificates_emailed: "Form 16/16A emailed",
-  documents_emailed: "Files emailed",
-  sent_to_client: "Sent to client (Send to Client)",
-  document_added: "File added",
-  document_removed: "File removed",
-  fee_set: "Fee set",
-  past_period_entered: "Past period entered",
-  past_period_updated: "Past period changed",
-  signed_off: "Sign-off",
-  completer_changed: "Completed-by changed",
-  obligation_stopped: "Monthly payment stopped",
-};
 
 // Reasons offered when an RCM/TDS line is skipped
 const SKIP_REASONS = [
