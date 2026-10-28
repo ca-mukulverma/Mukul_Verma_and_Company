@@ -19,8 +19,8 @@ Clients + their works        appear in the sheets             Tick "Data receive
 Fees (nil / non-nil)         Locks worked out                 Mark filed + figures
 Monthly RCM / TDS            TDS returns without              Attach PDF / JSON
 Past periods                 challans → "Not required"        Form 16/16A steps
-                             One summary to each               │
-                             team member                      ▼
+                             Each person's daily               │
+                             digest lists their work          ▼
                                                      Completed ──► Draft bill with the
                                                                    suggested fee ──►
                                                                    billing manager ──►
@@ -102,12 +102,20 @@ Everything is done **on the sheet**:
   fill in by themselves.
 - **Header buttons**: *Remind all with data pending*, and for ticked rows
   *Remind selected* and *Data received*.
-- **Filter**: data pending, to file, files pending, overdue, locked, completed;
-  and search by name or GSTIN.
+- **Filter buttons** above the sheet, each with its count: Data not received,
+  To file, Filed – files pending, Overdue, Locked, Completed; **My clients**
+  (clients you manage) on top of any of them; and search by name or GSTIN. Your
+  last filter on each sheet is remembered on your device.
+- The **header row and client column stay in view** while the sheet scrolls.
+- The GST, TDS and Other work tabs show how many items are **overdue**.
+- In a cell's window, the everyday steps come first; GSTR-1A and the fee are
+  under **More options**.
+- A link with `?tab=…&month=YYYY-MM&item=<id>` opens a sheet on that period
+  with the item's window open (used by *My work → Today*).
 
-Colours: **grey** pending · **yellow** data received · **blue** filed, files or
-steps still pending · **green** completed · **red** overdue · 🔒 locked (hover
-to see why).
+Colours (the key is shown above each sheet): **grey** pending · **yellow**
+data received · **blue** filed, files or steps still pending · **green**
+completed · **red** overdue · 🔒 locked (hover to see why).
 
 Sheets load only when opened and there is no constant refreshing, so the
 database can sleep when nobody is using it.
@@ -383,10 +391,11 @@ live and free.
 
 - **Overview** shows, for each work, overdue, due in 7 days, data pending, data
   received, files pending and done this month. The user's own works come first.
-- **Every morning at about 07:00** (the `/api/cron/compliance` job in
-  `vercel.json`) the app creates the coming periods, settles TDS returns
-  without challans, and sends **each team member one notification** with what
-  is due in 3 days, overdue and waiting for files in their works.
+- **Every day at about 11:58** (the daily job in `vercel.json`) the app
+  creates the coming periods and settles TDS returns without challans. What is
+  due in 3 days, overdue and waiting for files in each person's works goes into
+  their **daily digest**, one notification that also lists their tasks and
+  billing work. The same list is always on **My work → Today**.
 
 ## Past periods, frequency changes, stopping
 

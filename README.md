@@ -64,7 +64,8 @@ Access the live demo: [https://mvcompany.vercel.app/](https://mvcompany.vercel.a
 
 ### 💬 Communication System
 - Integrated team chat
-- Real-time notifications with keyboard shortcuts (alt+T)
+- Real-time notifications (bell with unread count, phone push) and one daily digest per person
+- Header search (Ctrl+K) and keyboard shortcuts (press ? in the app)
 - Detailed task comments with attachment support
 - Client communication records
 
@@ -531,7 +532,7 @@ MV Company features a thoughtfully crafted user interface:
 - **Responsive Sidebar**: Collapsible for space efficiency
 - **Breadcrumbs**: For complex navigation paths
 - **Search**: Quick access to system resources
-- **Keyboard Shortcuts**: For power users (alt+T for notifications)
+- **Keyboard Shortcuts**: Ctrl+K or / to search, G + letter to open a page, ? for the list
 - **Context Preservation**: Maintaining state during navigation
 
 ## 🚢 Deployment & CI/CD

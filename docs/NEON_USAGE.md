@@ -43,8 +43,10 @@ The database compute starts when a query arrives and suspends after
 ### In this repository
 
 1. **One daily cron instead of several** (`/api/cron/daily`, 06:28 UTC =
-   11:58 IST). It runs, in order: billing reminders, compliance items and
-   summary, notification/bill-history cleanup, and the bounce-mailbox check.
+   11:58 IST). It runs, in order: compliance items, each person's daily digest
+   (tasks, compliance and billing in one notification, plus the billing
+   escalation to Admin), notification/bill-history cleanup, and the
+   bounce-mailbox check.
    Each step is isolated and timed; the response lists every step's result.
    Job logic lives in `src/lib/cron-jobs.ts`; the old `/api/cron/*` routes
    stay for running a single job by hand (GET with

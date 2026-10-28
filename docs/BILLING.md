@@ -451,9 +451,13 @@ shown), the bill number, the connector, and for a reissue the bill it replaces.
 
 ## Daily reminder and red alert
 
-At **11:58 AM India time every day, Sundays included** (the
-`/api/cron/billing-reminders` job, 06:28 UTC in `vercel.json`), everyone with
-pending billing work gets one push and in-app notification listing it:
+At **11:58 AM India time every day, Sundays included** (the daily job,
+06:28 UTC in `vercel.json`), everyone's pending billing work is listed in
+their **daily digest**, one push and in-app notification that also covers
+their tasks and compliance work (see `src/lib/daily-digest.ts`). Single
+billing notifications (sent for your amount, approved …) still arrive as
+they happen. `/api/cron/billing-reminders` still sends the billing-only
+reminder when run by hand. The digest lists:
 
 | Who | What is listed |
 |---|---|
