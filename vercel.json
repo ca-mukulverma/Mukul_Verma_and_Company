@@ -6,28 +6,8 @@
   },
   "crons": [
     {
-      "path": "/api/cron/expired-clients",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/cleanup-notifications",
-      "schedule": "30 0 * * *"
-    },
-    {
-      "path": "/api/cron/cache-warmup",
-      "schedule": "0 7 * * 1-5"
-    },
-    {
-      "path": "/api/cron/billing-reminders",
+      "path": "/api/cron/daily",
       "schedule": "28 6 * * *"
-    },
-    {
-      "path": "/api/cron/billing-email-delivery",
-      "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/cron/compliance",
-      "schedule": "30 1 * * *"
     }
   ],
   "headers": [
