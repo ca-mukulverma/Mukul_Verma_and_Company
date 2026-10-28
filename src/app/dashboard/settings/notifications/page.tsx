@@ -10,6 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Bell, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PushNotificationSettings } from "@/components/notifications/push-notification-settings";
+import { useNotifications } from "@/components/notifications/notification-system";
+import { notificationLink, notificationText } from "@/lib/notification-links";
+import { useRouter } from "next/navigation";
 
 // How many notifications to load at a time
 const PAGE_SIZE = 50;
@@ -21,10 +24,13 @@ interface Notification {
   isRead: boolean;
   createdAt: string;
   sentByName?: string;
+  taskId?: string | null;
 }
 
 function NotificationsContent() {
   useSession();
+  const router = useRouter();
+  const { markAsRead, markAllAsRead, unreadCount } = useNotifications();
   const [recentNotifications, setRecentNotifications] = useState<Notification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -73,15 +79,18 @@ function NotificationsContent() {
     }).format(date);
   };
 
-  // Add this function to strip taskIds from content
-  const stripTaskIdFromContent = (content: string): string => {
-    // Replace all taskId patterns with empty string
-    return content
-      .replace(/\[taskId:\s*[a-f0-9-]+\]/g, "")
-      .replace(/taskId:\s*[a-f0-9-]+/g, "")
-      .replace(/\(taskId:\s*[a-f0-9-]+\)/g, "")
-      .replace(/Task ID:\s*[a-f0-9-]+/gi, "")
-      .trim();
+  const open = (notification: Notification) => {
+    if (!notification.isRead) {
+      markAsRead(notification.id);
+      setRecentNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n)));
+    }
+    const link = notificationLink(notification);
+    if (link) router.push(link);
+  };
+
+  const readAll = async () => {
+    await markAllAsRead();
+    setRecentNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
   };
 
   return (
@@ -99,6 +108,11 @@ function NotificationsContent() {
                 : "Notifications are kept for 90 days"}
             </CardDescription>
           </div>
+          {unreadCount > 0 && (
+            <Button variant="outline" size="sm" onClick={readAll}>
+              Mark all read
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {notificationsLoading ? (
@@ -116,9 +130,11 @@ function NotificationsContent() {
           ) : recentNotifications.length > 0 ? (
             <div className="space-y-4 overflow-y-auto max-h-[60vh] pr-2">
               {recentNotifications.map((notification) => (
-                <div 
+                <button
+                  type="button"
                   key={notification.id}
-                  className={`flex gap-3 p-3 border rounded-md ${!notification.isRead ? 'bg-muted/30' : ''}`}
+                  onClick={() => open(notification)}
+                  className={`flex w-full gap-3 p-3 border rounded-md text-left hover:bg-muted/50 ${!notification.isRead ? 'bg-muted/30' : ''}`}
                 >
                   <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                     <Bell className="h-5 w-5 text-primary" />
@@ -130,19 +146,13 @@ function NotificationsContent() {
                         <Badge variant="default" className="h-1.5 w-1.5 rounded-full p-0" />
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {notification.title === "New Task Assigned" ||
-                       notification.title === "Task Status Updated" ||
-                       notification.title === "New Comment on Task"
-                        ? stripTaskIdFromContent(notification.content)
-                        : notification.content}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{notificationText(notification.content)}</p>
                     <p className="text-xs text-muted-foreground mt-1">
                       {formatDate(notification.createdAt)}
                       {notification.sentByName && ` · From: ${notification.sentByName}`}
                     </p>
                   </div>
-                </div>
+                </button>
               ))}
               {page < pageCount && (
                 <div className="flex justify-center pt-2">

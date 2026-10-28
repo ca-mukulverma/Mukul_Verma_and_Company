@@ -48,7 +48,10 @@ export function BillingRegister({ companies, onChanged }: { companies: CompanyVa
   const [emailed, setEmailed] = useState("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [search, setSearch] = useState("");
+  // ?q= from the header search opens the list filtered to that bill number
+  const [search, setSearch] = useState(() =>
+    typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("q") ?? ""
+  );
   const debouncedSearch = useDebounce(search, 300);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ bills: Bill[]; total: number; totals: { type: BillTypeValue; amount: number }[] } | null>(null);

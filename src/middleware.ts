@@ -178,11 +178,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/dashboard/admin", request.url));
     } else if (userRole === "PARTNER") {
       return NextResponse.redirect(new URL("/dashboard/partner", request.url)); 
-    } else if (["BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"].includes(userRole)) {
-      // Redirect junior staff
-      return NextResponse.redirect(new URL("/dashboard/junior", request.url));
     } else {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+      // Staff start on My work → Today
+      return NextResponse.redirect(new URL("/dashboard/my-work", request.url));
     }
   }
 
