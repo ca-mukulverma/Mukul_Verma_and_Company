@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Check, Download, FileUp, Loader2, Search } from "lucide-react";
+import { AlertTriangle, Check, Download, FileUp, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import { returnFileKind } from "./old-period-files";
 
 // Past periods of one work for a client, one row per month or quarter, each
 // with its filing details and return PDF / JSON. Saving a row completes it;
-// missing files show as tags. Many files at once go through Upload returns,
+// missing files show as tags. Many files at once go through Upload documents,
 // which reads each file for its period.
 
 interface Row {
@@ -119,26 +119,40 @@ export function OldPeriods({ clientId, workTypes, onChanged }: { clientId: strin
     }
   };
 
+  // Uploads each file to the row's period (saving the period first if it is
+  // new). A period saved only for this upload is removed again when none of
+  // its files could be added, so a failed upload never shows as done.
   const uploadTo = async (row: Row, files: File[]) => {
-    let itemId = row.item?.id ?? null;
-    if (!itemId) itemId = await saveRow(row);
-    if (!itemId) return;
+    const created = !row.item;
+    const itemId = row.item?.id ?? (await saveRow(row));
+    if (!itemId) return { added: 0, problems: ["The period couldn't be saved"] };
+    let added = 0;
+    const problems: string[] = [];
     for (const file of files) {
-      const kind = returnFileKind(file.name) ?? "OTHER";
-      await uploadComplianceFile(file, { clientId, itemId, kind });
+      try {
+        await uploadComplianceFile(file, { clientId, itemId, kind: returnFileKind(file.name) ?? "OTHER" });
+        added++;
+      } catch (error) {
+        problems.push(`${file.name}: ${error instanceof Error && !axios.isAxiosError(error) ? error.message : apiError(error)}`);
+      }
     }
+    if (created && added === 0) await axios.delete("/api/compliance/history", { params: { itemId } }).catch(() => undefined);
+    return { added, problems };
   };
 
   const uploadRow = async (row: Row, files: FileList | null) => {
     if (!files?.length) return;
     setBusy(row.month);
     try {
-      await uploadTo(row, Array.from(files));
-      toast.success(`${files.length} file(s) added to ${row.period}`);
-      await load();
-      onChanged();
+      const { added, problems } = await uploadTo(row, Array.from(files));
+      if (added) toast.success(`${added} file(s) added to ${row.period}`);
+      if (problems.length) toast.error(`Not uploaded: ${problems.join("; ")}`);
+      if (added || row.item) {
+        await load();
+        onChanged();
+      }
     } catch (error) {
-      toast.error(error instanceof Error && !axios.isAxiosError(error) ? error.message : apiError(error));
+      toast.error(apiError(error));
     } finally {
       setBusy(null);
     }
@@ -234,12 +248,15 @@ function PeriodRow({
   const hasJson = docs.some((d) => d.kind === "RETURN_JSON");
   const saved = !!row.item;
   const disabled = !editable || busy !== null;
+  // Done only when saved with every file the work needs
+  const filesMissing = row.item?.status === "completed" && ((workType.requirePdf && !hasPdf) || (workType.requireJson && !hasJson));
 
   return (
     <tr className={cn("border-t", !editable && "opacity-60")}>
       <td className="whitespace-nowrap p-2 font-medium">
         {row.period}
-        {saved && editable && <Check className="ml-1 inline h-3.5 w-3.5 text-emerald-600" />}
+        {saved && editable && !filesMissing && <Check className="ml-1 inline h-3.5 w-3.5 text-emerald-600" />}
+        {saved && editable && filesMissing && <AlertTriangle className="ml-1 inline h-3.5 w-3.5 text-amber-600" aria-label="Files missing" />}
         {!editable && <span className="block text-[11px] font-normal text-muted-foreground">In the sheet</span>}
       </td>
       <td className="p-2">

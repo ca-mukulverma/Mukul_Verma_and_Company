@@ -117,10 +117,6 @@ export interface PeriodResult {
   issues: Issue[];
   files: FileCheck[];
   hasDifference: boolean;
-  // Sum of the differences (for sorting the exceptions)
-  magnitude: number;
-  // What a reviewer's sign-off is compared with
-  snapshot: Record<string, number>;
   // Figures for the swing check and the reconciliation figures on the items
   netSales: number | null;
   netSalesTax: number | null;
@@ -182,8 +178,6 @@ function headsText(h: Heads, withTaxable = true) {
   if (Math.abs(h.cess) >= 1) parts.push(`cess ${rupees(h.cess)}`);
   return parts.join(", ");
 }
-
-const absSum = (h: Heads | undefined) => (h ? Math.abs(h.taxable) + Math.abs(h.igst) + Math.abs(h.cgst) + Math.abs(h.sgst) + Math.abs(h.cess) : 0);
 
 function daysLate(filedAt: string | null, due: string | null) {
   if (!filedAt || !due) return 0;
@@ -333,21 +327,10 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
     ["itc_diff", rows.itc_diff && totalTax(rows.itc_diff) > 0 ? "ITC claimed is more than GSTR-2B" : "ITC claimed is less than GSTR-2B"],
     ["inel_diff", "Ineligible ITC in 3B (4D) differs from ITC not available in 2B"],
   ];
-  let magnitude = 0;
   for (const [key, text] of diffs) {
     const d = rows[key];
     if (d && !isNil(d)) {
       issues.unshift({ severity: "difference", text: `${text}: ${headsText(d, key === "diff_sales")}` });
-      magnitude += absSum(d);
-    }
-  }
-
-  const pick = (h: Heads | undefined, k: keyof Heads) => (h ? h[k] : 0);
-  const snapshot: Record<string, number> = {};
-  for (const key of ["net_after_1a", "g3_sales", "rcm_out", "rcm_in", "itc_net", "itc_2b", "inel_3b", "inel_2b"] as RowKey[]) {
-    for (const k of ["taxable", "igst", "cgst", "sgst", "cess"] as (keyof Heads)[]) {
-      const v = pick(rows[key], k);
-      if (v) snapshot[`${key}.${k}`] = v;
     }
   }
 
@@ -359,8 +342,6 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
     issues,
     files,
     hasDifference: issues.some((i) => i.severity === "difference"),
-    magnitude: round2(magnitude),
-    snapshot,
     netSales: rows.net_after_1a?.taxable ?? null,
     netSalesTax: rows.net_after_1a ? totalTax(rows.net_after_1a) : null,
     itcNet: rows.itc_net ? totalTax(rows.itc_net) : null,

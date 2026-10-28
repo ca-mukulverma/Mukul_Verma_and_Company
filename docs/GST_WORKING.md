@@ -1,9 +1,11 @@
 # GST working
 
-Compliance → **GST working**. The firm's sales/ITC working for every GST
-client, month by month (or quarter by quarter for QRMP clients), built only
-from the return files downloaded from the GST portal. **No figure is typed
-in**: to correct one, upload the corrected file.
+Compliance → **Clients** → a client → **GST working**. The firm's sales/ITC
+working for the client's GSTIN, month by month (or quarter by quarter for QRMP
+clients), built only from the return files uploaded on the same page. **No
+figure is typed in**: to correct one, upload the corrected file. A party with
+GSTINs in several states has a working per GSTIN (switch with the state
+buttons at the top of the page).
 
 ## Which files, and what is taken from each
 
@@ -30,17 +32,17 @@ the working asks for the PDF.
 
 ## Uploading
 
-- **All clients at once**: GST working → *Upload returns for all clients*.
-  Choose files, ZIPs or **RARs**, choose a folder, or drop a whole folder
-  (e.g. `GST RETURNS/<client>/<month>/…`). Each file goes to the client with
-  its **GSTIN** (or TAN) and to the **period in the file itself**.
-- **One client**: Compliance → Clients → the client → *Upload returns* (same
-  table), or the period's own window (Files).
+On the client's page, **Upload documents**: choose files, ZIPs or **RARs**,
+choose a folder, or drop a whole folder (e.g. `GST RETURNS/<client>/<month>/…`)
+with everything together. Each file goes to the party's GSTIN in it and to the
+**period in the file itself**, and is uploaded straight away; the working
+below updates.
 
-Before anything is uploaded, the table shows for every file what was read
-(e.g. *Net ₹1,91,04,221.42 · tax ₹34,38,761.66*) and leaves unticked:
+The table shows for every file what was read (e.g. *Net ₹1,91,04,221.42 · tax
+₹34,38,761.66*). These are not uploaded but left unticked to check:
 
-- a file of another GSTIN, or of a GSTIN no client has;
+- a file of another party's GSTIN (a GSTIN of the same PAN in a state not
+  added yet offers *Add … GSTIN to this party*);
 - a file in a folder named after another month (`Apr 26` holding an April
   2025 return);
 - the same file twice (by its content, whatever its name).
@@ -50,11 +52,12 @@ filed** with the ARN and date printed on it (completed by and checked by the
 person uploading; Admin can change it in the period), unless something locks
 it (earlier period not filed, RCM line pending…). After a batch, periods that
 were waiting for an earlier one are filed in order. A GSTR-1A PDF marks the
-GSTR-1A filed.
+GSTR-1A filed. A past period created for files that all failed to upload is
+removed again.
 
-Files uploaded before this feature: open the client's working and click
-**Read their figures**; the app reads them in the browser and files their
-periods the same way.
+Files uploaded before this feature: the client's working shows **Read their
+figures**; the app reads them in the browser and files their periods the same
+way.
 
 ## The working (firm's format)
 
@@ -67,13 +70,14 @@ ineligible ITC (4D(2) against 2B *ITC not available*) and ITC rejected in 2B.
 Columns: taxable value, IGST, CGST, SGST, cess (only when there is any), total
 tax and total value, for the year's **Total** and every month or quarter.
 
-On screen one column is shown at a time (*Show*); **Excel** and **PDF** have
-them all. *Email the working* sends both to the client from the firm's Gmail.
+Choose the financial year at the top of the working. On screen one column is
+shown at a time (*Show*); **Excel** and **PDF** have them all. *Email the
+working* sends both to the client from the firm's Gmail.
 
 ## Checks
 
-Shown under each period, in the Excel's *Checks* sheet and on the last PDF
-page:
+Shown under the working for each period with something to look at, in the
+Excel's *Checks* sheet and on the last PDF page:
 
 - **Difference**: GSTR-1 (+1A) vs 3B sales, RCM output vs input, ITC claimed
   vs 2B (more or less), ineligible ITC vs 2B, head by head.
@@ -82,18 +86,8 @@ page:
   to its own total, 3B tables that couldn't be read, 2B part files missing,
   late filing (filing date against the due date; IFF due on the 13th), and
   **swings**: sales, ITC or credit notes more than 50% away from the average
-  of the last 3 periods (Admins and Partners can change the 50%).
-
-**Needs attention this month** lists every client's period ending in the month
-with anything above, differences first, largest first. **Files uploaded**
-shows, for the year so far, which files each client still lacks.
-
-## Sign-off
-
-A reviewer (GST team, Admins, Partners) ticks **Mark checked** on each period.
-A period with a difference needs a remark saying why it is fine. The figures
-at the time are kept: if a later upload changes them, the period shows
-*Checked before the figures changed: check again*.
+  of the last 3 periods (Admins and Partners can change the 50% in
+  Compliance → Setup).
 
 ## Reconciliation tab and periods
 
@@ -114,12 +108,15 @@ compressed about 4×). Reading happens in the browser; nothing is paid for.
   `pdf-lines.ts` turns pdf.js text into lines and leaves out the rotated
   FILED/FINAL watermark); the working and checks: `src/lib/gst-read/working.ts`.
 - Browser: `src/components/compliance/gst-file.ts` (pdf.js, ZIP),
-  `return-detect.ts` (ZIP/RAR, folders), `return-upload.tsx`, `gst-working.tsx`.
-- Server: `src/lib/gst-working.ts` (periods, exceptions, files, item figures,
-  filing from uploads), `src/lib/gst-working-export.ts` (Excel, PDF), API
-  `src/app/api/compliance/gst-working/*`, `clients/lookup`, and the `gst`
+  `return-detect.ts` (ZIP/RAR, folders), `return-upload.tsx` (Upload
+  documents), `gst-working.tsx` (the client's working, shown in
+  `clients-panel.tsx`).
+- Server: `src/lib/gst-working.ts` (periods, item figures, filing from
+  uploads), `src/lib/gst-working-export.ts` (Excel, PDF), API
+  `src/app/api/compliance/gst-working/*` and the `gst`
   field on `documents` uploads (checked against the client's GSTIN and the
   period's work and months).
-- Tables: `ComplianceDocument.gst` / `gstMonth`, `GstWorkingCheck`,
-  `ComplianceSetting`; doc kind `GSTR2B_JSON`. Migration
+- Tables: `ComplianceDocument.gst` / `gstMonth`, `ComplianceSetting`; doc
+  kind `GSTR2B_JSON`. `GstWorkingCheck` keeps the period sign-offs given
+  before sign-off was removed; nothing reads or writes it now. Migration
   `20261101000000_add_gst_working`.

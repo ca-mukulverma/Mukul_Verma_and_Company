@@ -11,7 +11,6 @@ import { ComplianceOverview } from "@/components/compliance/overview";
 import { ComplianceSheet } from "@/components/compliance/sheet";
 import { ClientsPanel } from "@/components/compliance/clients-panel";
 import { ComplianceReco } from "@/components/compliance/reco";
-import { GstWorking } from "@/components/compliance/gst-working";
 import { ComplianceSetup, WorkType } from "@/components/compliance/setup";
 import { apiError } from "@/components/compliance/types";
 
@@ -25,7 +24,7 @@ export default function CompliancePage() {
   );
 }
 
-const TABS = ["overview", "gst", "tds", "work", "gstWorking", "reco", "clients", "setup"] as const;
+const TABS = ["overview", "gst", "tds", "work", "reco", "clients", "setup"] as const;
 type Tab = (typeof TABS)[number];
 
 function CompliancePageContent() {
@@ -85,7 +84,6 @@ function CompliancePageContent() {
             <TabsTrigger value="gst">GST sheet</TabsTrigger>
             <TabsTrigger value="tds">TDS sheet</TabsTrigger>
             <TabsTrigger value="work">Other work</TabsTrigger>
-            <TabsTrigger value="gstWorking">GST working</TabsTrigger>
             <TabsTrigger value="reco">Reconciliation</TabsTrigger>
             <TabsTrigger value="clients">Clients</TabsTrigger>
             {isManager && <TabsTrigger value="setup">Setup</TabsTrigger>}
@@ -101,9 +99,6 @@ function CompliancePageContent() {
           </TabsContent>
           <TabsContent value="work" className="mt-4">
             <ComplianceSheet key={workSheetType ?? "work"} view="work" workTypes={workTypes} isManager={isManager} initialWorkTypeId={workSheetType} />
-          </TabsContent>
-          <TabsContent value="gstWorking" className="mt-4">
-            <GstWorking workTypes={workTypes} isManager={isManager} />
           </TabsContent>
           <TabsContent value="reco" className="mt-4">
             <ComplianceReco isManager={isManager} />

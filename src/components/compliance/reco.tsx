@@ -55,7 +55,7 @@ function fyOf(month: string) {
 // TDS figures staff enter when they mark returns filed.
 // Worked out by the app itself (no AI), so it is always free and live.
 export function ComplianceReco({ isManager }: { isManager: boolean }) {
-  const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
+  const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null; state: string | null; parentId: string | null }[]>([]);
   const [clientId, setClientId] = useState("");
   const [fy, setFy] = useState(fyOf(currentMonthKey()));
   const [data, setData] = useState<ClientReco | null>(null);
@@ -129,7 +129,12 @@ export function ComplianceReco({ isManager }: { isManager: boolean }) {
             <Select value={clientId} onValueChange={setClientId}>
               <SelectTrigger className="w-72"><SelectValue placeholder="Choose a client" /></SelectTrigger>
               <SelectContent>
-                {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                    {(c.parentId || clients.some((r) => r.parentId === c.id)) && c.state ? ` (${c.state})` : ""}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

@@ -98,7 +98,6 @@ export async function workingExcel(working: ClientWorking): Promise<Buffer> {
   checks.getRow(1).font = { bold: true };
   for (const p of working.periods) {
     for (const issue of p.issues) checks.addRow([p.title, issue.severity === "difference" ? "Difference" : issue.severity === "missing" ? "Missing" : "Check", issue.text]);
-    if (p.check) checks.addRow([p.title, "Checked", `By ${p.check.by} on ${p.check.at.slice(0, 10)}${p.check.remark ? `: ${p.check.remark}` : ""}${p.check.outdated ? " (figures changed after the check)" : ""}`]);
   }
 
   const files = book.addWorksheet("Files");
@@ -193,7 +192,6 @@ export function workingPdf(working: ClientWorking): Buffer {
   // What needs attention, period by period
   const notes = working.periods.flatMap((p) => [
     ...p.issues.map((i) => `${p.title}: ${i.severity === "difference" ? "DIFFERENCE" : i.severity === "missing" ? "MISSING" : "CHECK"} – ${i.text}`),
-    ...(p.check ? [`${p.title}: checked by ${p.check.by}${p.check.remark ? ` – ${p.check.remark}` : ""}${p.check.outdated ? " (figures changed after the check)" : ""}`] : []),
   ]);
   if (notes.length) {
     pdf.addPage();

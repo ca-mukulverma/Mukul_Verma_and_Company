@@ -54,7 +54,7 @@ export async function uploadComplianceFile(
     kind: string;
     docType?: string | null;
     financialYear?: number | null;
-    // Already read (Upload returns); otherwise read here for return files of a period
+    // Already read (Upload documents); otherwise read here for return files of a period
     gst?: GstRead | null;
   }
 ): Promise<UploadResult> {

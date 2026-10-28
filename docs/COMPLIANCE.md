@@ -213,7 +213,7 @@ Past periods don't ask for these.
 
 ## GSTR-1A
 
-Upload the GSTR-1A PDF (Upload returns, or the GSTR-1 item's window): it marks
+Upload the GSTR-1A PDF (Upload documents, or the GSTR-1 item's window): it marks
 the GSTR-1A filed with its ARN and date and its figures go into the GST
 working. It can also be ticked by hand inside the GSTR-1 item. The sheet shows
 it in the **1A** column, the reconciliation adds it to GSTR-1, and there is no
@@ -224,10 +224,10 @@ separate fee.
 - Attach files from the cell window: **Return PDF**, **Return JSON** (GST
   JSON from the portal wherever available), **Challan**, **Form 16/16A**,
   **Other**. Client-level files go under the client's **Files**.
-- **Upload returns** (Compliance → Clients → a client, or for **all clients**
-  in Compliance → GST working): choose or drop any number of PDFs, JSONs,
-  ZIPs, RARs or a whole folder. ZIPs and RARs (and ZIPs inside them) are
-  opened and each file inside is read on its own. For each file the app reads:
+- **Upload documents** (Compliance → Clients → a client): choose or drop all
+  of the client's PDFs, JSONs, ZIPs, RARs or a whole folder together. ZIPs and
+  RARs (and ZIPs inside them) are opened and each file inside is read on its
+  own. For each file the app reads:
   - GST returns (GSTR-1/IFF JSON and PDF, GSTR-1A PDF, GSTR-3B PDF, GSTR-2B
     JSON): GSTIN, period, ARN, filing date and **all the figures** of the GST
     working (see [GST_WORKING.md](GST_WORKING.md)); a filed return's PDF marks
@@ -237,16 +237,23 @@ separate fee.
     the month is taken as the one before the deposit date, so check it);
   - otherwise the file name (e.g. `GSTR3B_…_102024.pdf`).
 
-  A table shows each file with the return found, whether the **GSTIN / TAN
-  matches the client**, the work, file type and period, and where it will go.
-  Everything can be changed (except the period and type of a GST return, read
-  from the file); rows to check are highlighted, and files of another GSTIN or
-  TAN, in a folder of another month, or uploaded twice are left unticked. **Upload** adds the ticked
-  files: periods in the sheet only get the file (their status is changed in
-  the sheet); a past period that doesn't exist yet is saved as completed with
-  the ARN and filing date read from the file. Scanned PDFs can't be read and
-  are placed by hand. Password-protected ZIPs (e.g. from TRACES) can't be
-  opened; they can be kept as they are as a client file.
+  Each file goes to the party's GSTIN in it (see
+  [Parties with GSTINs in several states](#parties-with-gstins-in-several-states))
+  and to the period in it, and is **uploaded straight away**: periods in the
+  sheet only get the file (their status is changed in the sheet, or filed by a
+  return's PDF); a past period that doesn't exist yet is saved as completed
+  with the ARN and filing date read from the file, and removed again if none
+  of its files could be uploaded. The GST working on the same page updates.
+
+  A table lists every file with the return found, whether the **GSTIN / TAN
+  matches**, the work, file type, period and where it went. Files that need a
+  look are **not** uploaded but left highlighted and unticked: another
+  party's GSTIN or TAN, a folder of another month, the same file twice, a
+  period guessed from the file name (e.g. a challan) or a file that wasn't
+  recognised. Fix the row (work, type, period), tick it and **Upload**.
+  Scanned PDFs can't be read and are placed by hand. Password-protected ZIPs
+  (e.g. from TRACES) can't be opened; they can be kept as they are as a
+  client file.
 - Files go **straight from the browser to Cloudflare R2**, not through the app
   server, so even large JSON files upload quickly.
 - To save space: **JSON and CSV are compressed** in the browser (about 10×
@@ -257,6 +264,34 @@ separate fee.
   Gmail; if they are larger than about 18 MB together, the email carries
   download links valid for 7 days instead.
 - A file can't be removed from a completed period; reopen it first (past periods excepted).
+
+## Parties with GSTINs in several states
+
+A party registered for GST in more than one state has one GSTIN per state,
+each with its own returns. On the party's page (Compliance → Clients), Admins
+and Partners click **GSTIN of another state**, enter the GSTIN (it must have
+the party's PAN) and optionally track its GSTR-1 and GSTR-3B from a month with
+the party's frequency and fees. Each GSTIN then has:
+
+- its own row in the GST sheet (the GSTIN shows under the name), periods,
+  locks, due dates (by its state), RCM lines, GST working and bills;
+- a button with its state at the top of the party's page to switch to it; in
+  the client list it is shown under the party (`↳ Maharashtra`).
+
+**Upload documents** on any of the party's GSTINs takes the files of all of
+them at once: each file goes to the GSTIN in it. A file with a GSTIN of the
+party's PAN that isn't added yet shows *Add Maharashtra GSTIN to this party*;
+one click adds it and uploads its files. The owner's name and contacts are
+copied to a new GSTIN; **Edit client** can keep them the same on all of the
+party's GSTINs.
+
+## Editing a client
+
+**Edit client** on a client's page in Compliance → Clients (or the pencil next
+to a client in the list) opens the same details as Clients → Edit: name,
+email, GSTIN, PAN/TAN and other numbers, phone numbers and the responsible
+person, connector and Tally ledger, address and notes. Admins and Partners can
+edit clients, as in Clients.
 
 ## Reminders
 
@@ -339,8 +374,8 @@ Compliance → **Reconciliation**:
   totals; and a TDS table with challans paid vs TDS deposited in each return.
 
 GST figures are read from the uploaded return files (they can't be typed in);
-the full working in the firm's format, with sign-off, Excel and PDF, is in
-**GST working** ([GST_WORKING.md](GST_WORKING.md)). TDS figures are entered
+the full working in the firm's format, with Excel and PDF, is on each
+client's page ([GST_WORKING.md](GST_WORKING.md)). TDS figures are entered
 when marking returns filed. It is plain arithmetic done by the app, always
 live and free.
 
@@ -360,8 +395,11 @@ live and free.
   over, each with filing date, ARN, nil, Completed / Not required and its
   return PDF and JSON. **Saving a row completes it**; a missing PDF or JSON
   shows as a tag ("PDF missing"), and files can be added or removed later.
-  To add a whole folder of downloads at once, use **Upload returns** (see
-  [Files](#files)): each file is read for its period. No RCM/TDS check,
+  To add a whole folder of downloads at once, use **Upload documents** (see
+  [Files](#files)): each file is read for its period. A period saved only for
+  a file upload that then failed is removed again, and the tick next to a
+  period shows only when its required PDF / JSON is there (a warning sign
+  otherwise). No RCM/TDS check,
   no reminders, no bills, and no completed/checked by.
 - **After a registration**: completing a task whose title is a registration
   (GST, company, partnership, LLP, TAN…) asks *Start compliance for this
@@ -548,6 +586,10 @@ which is several years of return PDFs.
   `ComplianceDocument`, `ClientObligation`, `ComplianceObligationLine`,
   `TdsChallan`, `ComplianceReminder`, `ComplianceNote`. Migration
   `20261029000000_add_compliance` also adds the default work types.
+- A party's other-state GSTINs are `Client` records with `parentClientId` set
+  to the party's main record (migration `20261102000000_add_client_gst_registrations`),
+  added by `POST /api/compliance/clients/[id]/registrations`; state names:
+  `src/lib/gst-states.ts`. Everything else treats them as ordinary clients.
 - Items are created by the daily job (previous, current and next period, once
   each should appear) and when a sheet is opened (that period, up to next
   month). Creating is idempotent.

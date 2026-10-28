@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Download, FileUp, Loader2, Mail, Plus, Search, Trash2, X } from "lucide-react";
+import { Download, FileUp, Loader2, Mail, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -27,7 +27,10 @@ import {
 } from "./types";
 import { uploadComplianceFile } from "./upload";
 import { OldPeriods } from "./old-periods";
-import { ReturnUpload } from "./return-upload";
+import { ClientRef, ReturnUpload } from "./return-upload";
+import { ClientGstWorking } from "./gst-working";
+import { EditClientDialog } from "./edit-client-dialog";
+import { GSTIN_PATTERN, gstState } from "@/lib/gst-states";
 
 interface ClientListItem {
   id: string;
@@ -35,12 +38,27 @@ interface ClientListItem {
   gstin: string | null;
   phone: string | null;
   email: string | null;
+  // Another state's GSTIN of the party with this main record
+  parentId: string | null;
+  state: string | null;
   works: { workTypeId: string; frequency: string }[];
 }
 
 interface ClientDetail {
   fy: number;
-  client: { id: string; name: string; gstin: string | null; tan: string | null; phone: string | null; email: string | null };
+  client: {
+    id: string;
+    name: string;
+    gstin: string | null;
+    tan: string | null;
+    pan: string | null;
+    phone: string | null;
+    email: string | null;
+    state: string | null;
+    mainId: string;
+  };
+  // The party's GST registrations, main record first
+  registrations: (ClientRef & { main: boolean })[];
   subscriptions: {
     id: string;
     workTypeId: string;
@@ -80,6 +98,9 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
   const [checked, setChecked] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initialClientId ?? null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // Bumped after an edit so the open client's page shows the new details
+  const [version, setVersion] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,15 +117,23 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
     load();
   }, [load]);
 
+  // A party's other-state GSTINs are listed under its main record
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return clients.filter(
+    const shown = clients.filter(
       (c) =>
-        (!q || c.name.toLowerCase().includes(q) || c.gstin?.toLowerCase().includes(q)) &&
+        (!q || c.name.toLowerCase().includes(q) || c.gstin?.toLowerCase().includes(q) || c.state?.toLowerCase().includes(q)) &&
         (workFilter === "all" ||
           (workFilter === "none" ? c.works.length === 0 : c.works.some((w) => w.workTypeId === workFilter)))
     );
+    const ids = new Set(shown.map((c) => c.id));
+    return shown.filter((c) => !c.parentId || !ids.has(c.parentId)).flatMap((c) => [c, ...shown.filter((r) => r.parentId === c.id)]);
   }, [clients, search, workFilter]);
+  const hasRegistrations = useMemo(() => new Set(clients.map((c) => c.parentId).filter(Boolean)), [clients]);
+  const othersOf = (id: string) => {
+    const mainId = clients.find((c) => c.id === id)?.parentId ?? id;
+    return clients.filter((c) => c.id !== id && (c.id === mainId || c.parentId === mainId)).map((c) => c.id);
+  };
   const nameOf = (id: string) => workTypes.find((w) => w.id === id)?.name ?? "";
 
   return (
@@ -143,7 +172,7 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
             visible.map((c) => (
               <div
                 key={c.id}
-                className={cn("flex cursor-pointer items-start gap-2 border-b p-2 text-sm last:border-0 hover:bg-muted/50", selectedId === c.id && "bg-muted")}
+                className={cn("group flex cursor-pointer items-start gap-2 border-b p-2 text-sm last:border-0 hover:bg-muted/50", c.parentId && "pl-6", selectedId === c.id && "bg-muted")}
                 onClick={() => setSelectedId(c.id)}
               >
                 {isManager && (
@@ -154,12 +183,30 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
                     />
                   </span>
                 )}
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{c.name}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">
+                    {c.parentId ? <span className="text-muted-foreground">↳ </span> : null}
+                    {c.parentId ? c.state ?? c.name : c.name}
+                    {(c.parentId || hasRegistrations.has(c.id)) && c.gstin && <span className="ml-1 text-xs font-normal text-muted-foreground">{c.parentId ? c.gstin : `${c.state} · ${c.gstin}`}</span>}
+                  </p>
                   <p className="truncate text-xs text-muted-foreground">
                     {c.works.length ? c.works.map((w) => nameOf(w.workTypeId)).join(", ") : "No recurring work"}
                   </p>
                 </div>
+                {isManager && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0 p-0 opacity-60 group-hover:opacity-100"
+                    aria-label={`Edit ${c.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingId(c.id);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
             ))
           )}
@@ -168,7 +215,7 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
 
       <div>
         {selectedId ? (
-          <ClientDetailView key={selectedId} clientId={selectedId} workTypes={workTypes} isManager={isManager} onChanged={load} />
+          <ClientDetailView key={`${selectedId}-${version}`} clientId={selectedId} workTypes={workTypes} isManager={isManager} onChanged={load} onSelect={setSelectedId} />
         ) : (
           <p className="rounded-md border p-8 text-center text-sm text-muted-foreground">
             Choose a client to see and set up their recurring work, monthly RCM/TDS payments, past periods and files.
@@ -177,6 +224,18 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
         )}
       </div>
 
+      {editingId && (
+        <EditClientDialog
+          clientId={editingId}
+          otherGstins={othersOf(editingId)}
+          onClose={() => setEditingId(null)}
+          onSaved={() => {
+            setEditingId(null);
+            load();
+            setVersion((v) => v + 1);
+          }}
+        />
+      )}
       {bulkOpen && (
         <AddWorkDialog
           clientIds={checked}
@@ -319,9 +378,25 @@ function AddWorkDialog({
   );
 }
 
-function ClientDetailView({ clientId, workTypes, isManager, onChanged }: { clientId: string; workTypes: WorkType[]; isManager: boolean; onChanged: () => void }) {
+function ClientDetailView({
+  clientId,
+  workTypes,
+  isManager,
+  onChanged,
+  onSelect,
+}: {
+  clientId: string;
+  workTypes: WorkType[];
+  isManager: boolean;
+  onChanged: () => void;
+  onSelect: (id: string) => void;
+}) {
   const [fy, setFy] = useState<number | null>(null);
   const [data, setData] = useState<ClientDetail | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [addingGstin, setAddingGstin] = useState(false);
+  // Bumped after an upload so the GST working reads the new files
+  const [uploads, setUploads] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -340,6 +415,17 @@ function ClientDetailView({ clientId, workTypes, isManager, onChanged }: { clien
     load();
     onChanged();
   };
+  const gstWorks = new Set(workTypes.filter((w) => w.kind === "GSTR1" || w.kind === "GSTR3B").map((w) => w.id));
+  const hasGst = !!data.client.gstin || data.subscriptions.some((s) => gstWorks.has(s.workTypeId));
+  const several = data.registrations.length > 1;
+  const others = data.registrations.filter((r) => r.id !== data.client.id).map((r) => r.id);
+
+  const addGstin = async (gstin: string): Promise<ClientRef | null> => {
+    const { data: added } = await axios.post(`/api/compliance/clients/${data.client.mainId}/registrations`, { gstin });
+    toast.success(`${added.state} GSTIN added to ${data.client.name}`);
+    reload();
+    return { id: added.id, name: data.client.name, gstin, tan: null, pan: data.client.pan, state: added.state, subscribed: [] };
+  };
 
   return (
     <div className="space-y-4">
@@ -347,31 +433,201 @@ function ClientDetailView({ clientId, workTypes, isManager, onChanged }: { clien
         <div>
           <h2 className="text-lg font-semibold">{data.client.name}</h2>
           <p className="text-xs text-muted-foreground">
-            {[data.client.gstin, data.client.phone, data.client.email].filter(Boolean).join(" · ") || "No GSTIN, phone or email saved"}
+            {[several && data.client.state, data.client.gstin, data.client.phone, data.client.email].filter(Boolean).join(" · ") || "No GSTIN, phone or email saved"}
           </p>
         </div>
-        {isManager && (
-          <AskClaudeButton
-            label="Ask Claude about this client"
-            question={`Make a compliance and reconciliation summary for the client "${data.client.name}"${data.client.gstin ? ` (GSTIN ${data.client.gstin})` : ""} for FY ${data.fy}-${String((data.fy + 1) % 100).padStart(2, "0")}: what is filed and pending, GSTR-1 (+1A) vs GSTR-3B by period, ITC claimed vs GSTR-2B, RCM, and TDS challans vs returns.`}
-          />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {isManager && (
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+              <Pencil className="mr-1 h-4 w-4" /> Edit client
+            </Button>
+          )}
+          {isManager && (
+            <AskClaudeButton
+              label="Ask Claude about this client"
+              question={`Make a compliance and reconciliation summary for the client "${data.client.name}"${data.client.gstin ? ` (GSTIN ${data.client.gstin})` : ""} for FY ${data.fy}-${String((data.fy + 1) % 100).padStart(2, "0")}: what is filed and pending, GSTR-1 (+1A) vs GSTR-3B by period, ITC claimed vs GSTR-2B, RCM, and TDS challans vs returns.`}
+            />
+          )}
+        </div>
       </div>
 
-      <Works data={data} workTypes={workTypes} isManager={isManager} onChanged={reload} />
-      <Box title="Upload returns">
+      {(several || (isManager && data.client.gstin)) && (
+        <div className="flex flex-wrap items-center gap-1.5 text-sm">
+          <span className="text-xs text-muted-foreground">GSTINs:</span>
+          {data.registrations.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => r.id !== data.client.id && onSelect(r.id)}
+              className={cn(
+                "rounded-md border px-2 py-0.5 text-xs",
+                r.id === data.client.id ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted"
+              )}
+              title={r.gstin ?? undefined}
+            >
+              {r.state ?? "No GSTIN"}
+              {r.gstin && <span className="ml-1 opacity-70">{r.gstin}</span>}
+              {r.main && several && <span className="ml-1 opacity-70">(main)</span>}
+            </button>
+          ))}
+          {isManager && (
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAddingGstin(true)}>
+              <Plus className="mr-1 h-3 w-3" /> GSTIN of another state
+            </Button>
+          )}
+        </div>
+      )}
+
+      <Box title={several ? `Upload documents (all ${data.registrations.length} GSTINs)` : "Upload documents"}>
         <ReturnUpload
-          client={data.client}
-          subscribed={data.subscriptions.filter((s) => s.active).map((s) => s.workTypeId)}
+          party={data.registrations}
           workTypes={workTypes}
-          onChanged={reload}
+          onChanged={() => {
+            reload();
+            setUploads((u) => u + 1);
+          }}
+          onAddGstin={isManager ? addGstin : undefined}
         />
       </Box>
+      {hasGst && (
+        <Box title={`GST working${several ? ` · ${data.client.state}` : ""}`}>
+          <ClientGstWorking clientId={data.client.id} email={data.client.email} refresh={uploads} />
+        </Box>
+      )}
+      <Works data={data} workTypes={workTypes} isManager={isManager} onChanged={reload} />
       <Obligations data={data} onChanged={reload} />
       <YearView data={data} workTypes={workTypes} fy={data.fy} setFy={setFy} />
       <PastPeriods data={data} workTypes={workTypes} onChanged={reload} />
       <Documents data={data} onChanged={reload} />
+
+      {editing && (
+        <EditClientDialog
+          clientId={data.client.id}
+          otherGstins={others}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            reload();
+          }}
+        />
+      )}
+      {addingGstin && (
+        <AddGstinDialog
+          party={data}
+          workTypes={workTypes}
+          onClose={() => setAddingGstin(false)}
+          onAdded={(id) => {
+            setAddingGstin(false);
+            onChanged();
+            onSelect(id);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// Another state's GSTIN of the party, optionally with its GSTR-1 and GSTR-3B
+// tracked from a month (same frequency as the party's own)
+function AddGstinDialog({
+  party,
+  workTypes,
+  onClose,
+  onAdded,
+}: {
+  party: ClientDetail;
+  workTypes: WorkType[];
+  onClose: () => void;
+  onAdded: (id: string) => void;
+}) {
+  const [gstin, setGstin] = useState("");
+  const gstWorkTypes = workTypes.filter((w) => w.active && (w.kind === "GSTR1" || w.kind === "GSTR3B"));
+  const ownGst = party.subscriptions.filter((s) => s.active && gstWorkTypes.some((w) => w.id === s.workTypeId));
+  const [track, setTrack] = useState(ownGst.length > 0);
+  const [quarterly, setQuarterly] = useState(ownGst[0]?.frequency === "QUARTERLY");
+  const [startPeriod, setStartPeriod] = useState(currentMonthKey());
+  const [saving, setSaving] = useState(false);
+  const value = gstin.trim().toUpperCase();
+  const valid = GSTIN_PATTERN.test(value);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await axios.post(`/api/compliance/clients/${party.client.mainId}/registrations`, { gstin: value });
+      const notes: string[] = [];
+      if (track) {
+        for (const w of gstWorkTypes) {
+          const own = ownGst.find((s) => s.workTypeId === w.id);
+          const { data: added } = await axios.post("/api/compliance/subscriptions", {
+            clientIds: [data.id],
+            workTypeId: w.id,
+            frequency: w.allowQuarterly && quarterly ? "QUARTERLY" : w.frequency,
+            startPeriod,
+            feeNonNil: own?.feeNonNil ?? null,
+            feeNil: own?.feeNil ?? null,
+          });
+          if (added.skipped.length) notes.push(`${w.name}: ${added.skipped[0].reason}`);
+        }
+      }
+      toast.success(`${data.state} GSTIN added${track ? " with its GST returns" : ""}${notes.length ? `. ${notes.join("; ")}` : ""}`);
+      onAdded(data.id);
+    } catch (error) {
+      toast.error(apiError(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>GSTIN of another state</DialogTitle>
+          <DialogDescription>
+            {party.client.name} is registered in another state too. That GSTIN gets its own returns, periods, GST working and bills; uploads on this page go to it by the GSTIN in each file.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label>GSTIN</Label>
+            <Input className="uppercase" maxLength={15} placeholder="27AAACM1234A1Z5" value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} />
+            {valid && <p className="text-xs text-muted-foreground">{gstState(value)}</p>}
+          </div>
+          {gstWorkTypes.length > 0 && (
+            <div className="space-y-2 rounded-md border p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={track} onCheckedChange={(c) => setTrack(c === true)} />
+                Track its {gstWorkTypes.map((w) => w.name).join(" and ")} in the GST sheet
+              </label>
+              {track && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Frequency</Label>
+                    <Select value={quarterly ? "QUARTERLY" : "MONTHLY"} onValueChange={(v) => setQuarterly(v === "QUARTERLY")}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MONTHLY">Monthly</SelectItem>
+                        <SelectItem value="QUARTERLY">Quarterly (QRMP)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">First period to track</Label>
+                    <Input type="month" value={startPeriod} onChange={(e) => setStartPeriod(e.target.value)} />
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">Fees are copied from the party&apos;s own GST work. Earlier months come in as past periods when their returns are uploaded.</p>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving || !valid}>
+            {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Add GSTIN
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -696,7 +952,7 @@ function PastPeriods({ data, workTypes, onChanged }: { data: ClientDetail; workT
       {open ? (
         <OldPeriods clientId={data.client.id} workTypes={ordered} onChanged={onChanged} />
       ) : (
-        <p className="text-xs text-muted-foreground">Enter the months or quarters before tracking started, each with its filing date, ARN and files. To add many return files at once, use Upload returns above.</p>
+        <p className="text-xs text-muted-foreground">Enter the months or quarters before tracking started, each with its filing date, ARN and files. To add many return files at once, use Upload documents above.</p>
       )}
     </Box>
   );
