@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Bell } from "lucide-react";
@@ -17,7 +17,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { isUserActive } from "@/hooks/use-active-polling";
+import { useActivePolling } from "@/hooks/use-active-polling";
+
+// How often the bell refreshes while the user is active. Push notifications
+// still arrive instantly; this only refreshes the in-app list and badge.
+const POLL_INTERVAL_MS = 60_000;
+// Returning to the app refreshes the list, but not more often than this, so
+// switching apps back and forth on a phone doesn't query the database each time.
+const REFRESH_ON_RETURN_MIN_GAP_MS = 30_000;
+// Guards against near-simultaneous fetches.
+const MIN_FETCH_GAP_MS = 5_000;
 
 // Define notification types
 export interface Notification {
@@ -63,23 +72,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastFetched, setLastFetched] = useState<number>(0);
+  // A ref, not state: keeps fetchNotifications stable, so the polling effect
+  // below doesn't tear down and restart after every fetch.
+  const lastFetchedRef = useRef<number>(0);
   const { status } = useSession();
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   // Fetch notifications - stabilize with useCallback
   const fetchNotifications = useCallback(async (): Promise<void> => {
-    // Prevent multiple near-simultaneous fetches (debounce-like behavior)
+    // Prevent multiple near-simultaneous fetches
     const now = Date.now();
-    if (now - lastFetched < 5000) {
-      return; // Skip if less than 5 seconds since last fetch
+    if (now - lastFetchedRef.current < MIN_FETCH_GAP_MS) {
+      return;
     }
-    
+
     try {
       setLoading(true);
       setError(null);
-      setLastFetched(now);
+      lastFetchedRef.current = now;
       
       const response = await axios.get("/api/notifications");
       const data = response.data as { data: Notification[] };
@@ -94,7 +105,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     } finally {
       setLoading(false);
     }
-  }, [lastFetched]); // Only depends on lastFetched
+  }, []);
 
   // Mark a notification as read - stabilized with useCallback
   const markAsRead = useCallback(async (id: string) => {
@@ -146,25 +157,27 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     // Initial fetch
     fetchNotifications();
-    
-    // Poll every 30 seconds while the app is in the foreground and the user
-    // is active (idle tabs stop polling so the database can sleep)
-    const interval = setInterval(() => {
-      if (isUserActive()) fetchNotifications();
-    }, 30000);
 
-    // Refresh as soon as the app comes back to the foreground
+    // Refresh when the app comes back to the foreground (e.g. after tapping a
+    // push notification), unless it was refreshed moments ago
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") fetchNotifications();
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastFetchedRef.current >= REFRESH_ON_RETURN_MIN_GAP_MS
+      ) {
+        fetchNotifications();
+      }
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
-    
-    // Cleanup
+
     return () => {
-      clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [fetchNotifications, status]); // Safe to include the memoized function
+  }, [fetchNotifications, status]);
+
+  // Poll while the app is in the foreground and the user is active; idle or
+  // background tabs stop polling so the database can sleep
+  useActivePolling(fetchNotifications, POLL_INTERVAL_MS, status === "authenticated");
 
   // Create a stable context value
   const contextValue = {

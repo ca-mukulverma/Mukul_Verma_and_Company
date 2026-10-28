@@ -15,7 +15,10 @@ import { useEffect, useRef } from "react";
  * paused poll runs once immediately so data is fresh.
  */
 
-export const IDLE_AFTER_MS = 10 * 60 * 1000; // 10 minutes
+// 5 minutes. Every minute polls keep running after the user stops adds a
+// minute of database time on top of Neon's own 5-minute suspend delay, so
+// this is kept short. Polls resume (and refresh at once) on any interaction.
+export const IDLE_AFTER_MS = 5 * 60 * 1000;
 
 let lastActivityAt = Date.now();
 let listenersAttached = false;
