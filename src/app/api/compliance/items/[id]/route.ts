@@ -112,7 +112,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   });
 }
 
+// GST figures are read from the uploaded returns (lib/gst-working.ts), never typed in
+const READ_FROM_FILES = ["GSTR1", "GSTR3B"];
+
 function cleanFigures(kind: keyof typeof FIGURE_FIELDS, input: Record<string, number> | undefined, existing: unknown) {
+  if (READ_FROM_FILES.includes(kind)) return (existing as Record<string, number>) ?? {};
   const allowed = new Set((FIGURE_FIELDS[kind] ?? []).map((f) => f.key));
   const result: Record<string, number> = { ...((existing as Record<string, number>) ?? {}) };
   for (const [key, value] of Object.entries(input ?? {})) if (allowed.has(key)) result[key] = value;
@@ -232,6 +236,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     case "figures": {
+      if (READ_FROM_FILES.includes(kind)) return badRequest("GST figures are read from the uploaded returns; upload the corrected file instead");
       await prisma.complianceItem.update({
         where: { id },
         data: { figures: cleanFigures(kind, input.figures, item.figures) as Prisma.InputJsonValue, ...touch },

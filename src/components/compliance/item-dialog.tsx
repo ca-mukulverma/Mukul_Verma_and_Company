@@ -522,12 +522,26 @@ function FigureInputs({
   );
 }
 
+// GST figures are read from the uploaded returns (Compliance → GST working), not typed in
+const readFromFiles = (kind: string) => kind === "GSTR1" || kind === "GSTR3B";
+
+function ReadFigures({ item, fields }: { item: SheetItem; fields: { key: string; label: string }[] }) {
+  const shown = fields.filter((f) => item.figures[f.key] !== undefined);
+  return (
+    <p className="text-xs text-muted-foreground">
+      {shown.length
+        ? <>From the uploaded returns: {shown.map((f) => `${f.label} ${rupees(item.figures[f.key])}`).join(" · ")}</>
+        : "Figures are read from the uploaded return files (JSON and PDF); none uploaded yet."}
+    </p>
+  );
+}
+
 function figuresPayload(values: Record<string, string>) {
   return Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim() !== "").map(([k, v]) => [k, Number(v)]));
 }
 
 function Filing({ item, disabled, busy, run }: { item: SheetItem; disabled: boolean; busy: string | null; run: Run }) {
-  const fields = FIGURE_FIELDS[item.kind] ?? [];
+  const fields = readFromFiles(item.kind) ? [] : FIGURE_FIELDS[item.kind] ?? [];
   const [filedAt, setFiledAt] = useState(item.filedAt ?? todayKey());
   const [arn, setArn] = useState(item.arn ?? "");
   const [isNil, setIsNil] = useState(item.isNil === true);
@@ -561,6 +575,7 @@ function Filing({ item, disabled, busy, run }: { item: SheetItem; disabled: bool
         </label>
       )}
       {!closed && !item.historical && <SignOff value={signOff} onChange={setSignOff} disabled={disabled} />}
+      {readFromFiles(item.kind) && <ReadFigures item={item} fields={FIGURE_FIELDS[item.kind] ?? []} />}
       {fields.length > 0 && (
         <>
           <p className="text-xs text-muted-foreground">
@@ -612,13 +627,7 @@ function Gstr1A({ item, client, disabled, busy, run, onChange }: { item: SheetIt
   const [filed, setFiled] = useState(item.gstr1aFiled);
   const [filedAt, setFiledAt] = useState(item.gstr1aFiledAt ?? todayKey());
   const [arn, setArn] = useState(item.gstr1aArn ?? "");
-  const [values, setValues] = useState<Record<string, string>>(
-    Object.fromEntries(GSTR1A_FIGURES.map((f) => [f.key, item.figures[f.key] !== undefined ? String(item.figures[f.key]) : ""]))
-  );
-  const save = async () => {
-    const ok = await run("1a", { action: "gstr1a", filed, filedAt: filed ? filedAt : null, arn: arn.trim() || null });
-    if (ok && filed) await run("1a-fig", { action: "figures", figures: figuresPayload(values) }, "GSTR-1A saved");
-  };
+  const save = () => run("1a", { action: "gstr1a", filed, filedAt: filed ? filedAt : null, arn: arn.trim() || null }, "GSTR-1A saved");
   return (
     <Section title="GSTR-1A (only if filed this period)">
       <label className="flex items-center gap-2 text-sm">
@@ -636,12 +645,12 @@ function Gstr1A({ item, client, disabled, busy, run, onChange }: { item: SheetIt
               <Input value={arn} disabled={disabled} onChange={(e) => setArn(e.target.value)} />
             </div>
           </div>
-          <FigureInputs fields={GSTR1A_FIGURES} values={values} setValues={setValues} disabled={disabled} />
+          <ReadFigures item={item} fields={GSTR1A_FIGURES} />
           <FileButtons item={item} client={client} kinds={["GSTR1A_PDF", "GSTR1A_JSON"]} disabled={disabled} onChange={onChange} />
         </>
       )}
       <Button size="sm" variant="outline" disabled={disabled || busy !== null} onClick={save}>
-        {(busy === "1a" || busy === "1a-fig") && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Save GSTR-1A
+        {busy === "1a" && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Save GSTR-1A
       </Button>
     </Section>
   );
@@ -816,9 +825,14 @@ function FileButtons({
     setUploading(true);
     try {
       let latest: SheetItem | null = null;
-      for (const file of Array.from(files)) latest = (await uploadComplianceFile(file, { clientId: client.id, itemId: item.id, kind })) ?? latest;
+      const filed: string[] = [];
+      for (const file of Array.from(files)) {
+        const result = await uploadComplianceFile(file, { clientId: client.id, itemId: item.id, kind });
+        latest = result.item ?? latest;
+        if (result.filed) filed.push(result.filed);
+      }
       if (latest) onChange(latest);
-      toast.success(files.length === 1 ? "File added" : `${files.length} files added`);
+      toast.success([files.length === 1 ? "File added" : `${files.length} files added`, ...filed].join(". "));
     } catch (error) {
       toast.error(error instanceof Error && !axios.isAxiosError(error) ? error.message : apiError(error));
     } finally {
@@ -847,7 +861,8 @@ function Files({ item, client, disabled, onChange }: { item: SheetItem; client: 
   const [sending, setSending] = useState(false);
   const kinds = [
     ...(item.kind !== "TDS_PAYMENT" ? ["RETURN_PDF"] : []),
-    ...(item.requireJson || item.kind === "GSTR1" || item.kind === "GSTR3B" ? ["RETURN_JSON"] : []),
+    ...(item.requireJson || item.kind === "GSTR1" ? ["RETURN_JSON"] : []),
+    ...(item.kind === "GSTR3B" ? ["GSTR2B_JSON"] : []),
     ...(item.kind === "TDS_PAYMENT" ? ["CHALLAN"] : []),
     "OTHER",
   ];

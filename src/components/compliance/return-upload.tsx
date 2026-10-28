@@ -3,37 +3,55 @@
 import { useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { AlertTriangle, Check, FileUp, Loader2, X } from "lucide-react";
+import { AlertTriangle, Check, FileUp, FolderUp, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { FORM_LABELS, Gstr2bRead, Gstr3bRead, GstRead, netSales, SalesRead, totalTax } from "@/lib/gst-read";
+import { monthLabel } from "@/lib/gst-read/working";
 import type { WorkType } from "./setup";
-import { apiError, DOC_KIND_LABELS, STATUS_LABELS } from "./types";
+import { apiError, DOC_KIND_LABELS, rupees, STATUS_LABELS } from "./types";
 import { canStore, uploadComplianceFile } from "./upload";
-import { detectReturn, expandFiles, type Detected, type ReturnFound } from "./return-detect";
+import { detectReturn, expandFiles, monthFromFolder, type Detected, type InputFile, type ReturnFound } from "./return-detect";
 
-// Upload returns for one client: drop PDFs, JSONs or ZIPs; each file is read
-// for its return, GSTIN/TAN, period, ARN and filing date, and shown in a table
-// to confirm (and correct) before anything is uploaded. Files of another
-// GSTIN or TAN are left unticked.
+// Upload returns: drop PDFs, JSONs, ZIPs, RARs or whole folders; each file
+// is read for its return, GSTIN/TAN, period, ARN and filing date (and a GST
+// return for its figures), and shown in a table to confirm before anything is
+// uploaded. For one client (client page) or for every client at once
+// (GST working), where each file goes to the client with its GSTIN or TAN.
+// Files of another GSTIN or TAN, files in a folder of another month and
+// repeated files are left unticked.
 
 type Place =
   | { ok: true; period: string; month: string; itemId: string | null; state: "sheet" | "past" | "new_past"; status: string | null }
   | { ok: false; period: string | null; error: string };
 
+interface ClientRef {
+  id: string;
+  name: string;
+  gstin: string | null;
+  tan: string | null;
+  subscribed: string[];
+}
+
 interface Row {
   id: number;
   file: File;
   from: string | null;
+  folder: string;
+  sha: string;
   error?: string;
   detected: Detected | null;
+  client: ClientRef | null;
   workTypeId: string;
   kind: string;
   month: string;
   idCheck: "match" | "mismatch" | "none";
   idNote: string | null;
+  // Folder of another month, or the same file twice
+  warning: string | null;
   place: Place | null;
   include: boolean;
   upload: "uploading" | "done" | "failed" | null;
@@ -41,8 +59,9 @@ interface Row {
 }
 
 interface Props {
-  client: { id: string; gstin: string | null; tan: string | null };
-  subscribed: string[];
+  // null: every client (files go to the client with their GSTIN or TAN)
+  client: { id: string; name?: string; gstin: string | null; tan: string | null } | null;
+  subscribed?: string[];
   workTypes: WorkType[];
   onChanged: () => void;
 }
@@ -52,6 +71,7 @@ const WORK_KIND: Record<ReturnFound, string> = {
   GSTR1: "GSTR1",
   GSTR1A: "GSTR1",
   GSTR3B: "GSTR3B",
+  GSTR2B: "GSTR3B",
   TDS_RETURN: "TDS_RETURN",
   TDS_CERTIFICATE: "TDS_RETURN",
   TDS_CHALLAN: "TDS_PAYMENT",
@@ -60,12 +80,18 @@ const FOUND_LABEL: Record<ReturnFound, string> = {
   GSTR1: "GSTR-1",
   GSTR1A: "GSTR-1A",
   GSTR3B: "GSTR-3B",
+  GSTR2B: "GSTR-2B",
   TDS_RETURN: "TDS return",
   TDS_CERTIFICATE: "Form 16/16A",
   TDS_CHALLAN: "TDS challan",
 };
 
 function docKind(d: Detected) {
+  if (d.gst) {
+    if (d.gst.form === "GSTR2B") return "GSTR2B_JSON";
+    if (d.gst.form === "GSTR1A") return d.format === "JSON" ? "GSTR1A_JSON" : "GSTR1A_PDF";
+    return d.format === "JSON" ? "RETURN_JSON" : "RETURN_PDF";
+  }
   if (d.found === "TDS_CERTIFICATE") return "CERTIFICATE";
   if (d.found === "TDS_CHALLAN") return "CHALLAN";
   if (d.format === "OTHER" || !d.found) return d.format === "OTHER" ? "OTHER" : d.format === "JSON" ? "RETURN_JSON" : "RETURN_PDF";
@@ -73,8 +99,25 @@ function docKind(d: Detected) {
   return d.format === "JSON" ? "RETURN_JSON" : "RETURN_PDF";
 }
 
+// The main figure of a GST return, to see at a glance what was read
+function gstSummary(g: GstRead): string {
+  if (g.form === "GSTR3B") {
+    const r = g as Gstr3bRead;
+    return `3.1(a) ${rupees(r.outward.taxable)} · net ITC ${rupees(totalTax(r.itc.net))}${r.unread.length ? ` · not read: ${r.unread.join(", ")}` : ""}`;
+  }
+  if (g.form === "GSTR2B") {
+    const r = g as Gstr2bRead;
+    if (r.part === "part") return `Part ${r.partNo ?? "?"}: documents only; the totals are in the summary file`;
+    return `ITC available ${rupees(totalTax(r.available!))}${r.part === "summary" ? ` · summary of ${r.fileCount} part file(s)` : ""}`;
+  }
+  const r = g as SalesRead;
+  const net = netSales(r.rows);
+  return `Net ${rupees(net.taxable)} · tax ${rupees(totalTax(net))}${r.notesNetted && r.source === "PDF" ? "" : ""}`;
+}
+
 // The GSTIN or TAN in the file against the client's
-function idCheck(d: Detected, client: Props["client"]): Pick<Row, "idCheck" | "idNote"> {
+function idCheck(d: Detected, client: { gstin: string | null; tan: string | null } | null): Pick<Row, "idCheck" | "idNote"> {
+  if (!client) return { idCheck: "none", idNote: null };
   const checks: [string, string | null, string | null][] = [
     ["GSTIN", d.gstin, client.gstin],
     ["TAN", d.tan, client.tan],
@@ -89,71 +132,174 @@ function idCheck(d: Detected, client: Props["client"]): Pick<Row, "idCheck" | "i
   return { idCheck: "none", idNote: null };
 }
 
-export function ReturnUpload({ client, subscribed, workTypes, onChanged }: Props) {
+// Months a file may be in a folder of: a quarterly 3B or 2B covers three
+function monthsCovered(d: Detected): string[] {
+  if (!d.month) return [];
+  if (!d.gst?.quarterly) return [d.month];
+  const [y, m] = d.month.split("-").map(Number);
+  return [2, 1, 0].map((back) => {
+    const date = new Date(Date.UTC(y, m - 1 - back, 1));
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
+async function sha256(file: File) {
+  const hash = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Files of a dropped folder, with their folder path
+async function droppedFiles(items: DataTransferItemList): Promise<InputFile[]> {
+  const out: InputFile[] = [];
+  const walk = async (entry: FileSystemEntry, folder: string): Promise<void> => {
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
+      out.push({ file, folder });
+    } else if (entry.isDirectory) {
+      const reader = (entry as FileSystemDirectoryEntry).createReader();
+      const path = [folder, entry.name].filter(Boolean).join("/");
+      // readEntries returns at most 100 entries per call
+      for (;;) {
+        const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!batch.length) break;
+        for (const child of batch) await walk(child, path);
+      }
+    }
+  };
+  const entries = Array.from(items)
+    .map((i) => i.webkitGetAsEntry())
+    .filter((e): e is FileSystemEntry => !!e);
+  for (const entry of entries) await walk(entry, "");
+  return out;
+}
+
+export function ReturnUpload({ client, subscribed = [], workTypes, onChanged }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
-  const [reading, setReading] = useState(false);
+  const [reading, setReading] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const nextId = useRef(1);
+  const firmWide = client === null;
 
   const active = workTypes.filter((w) => w.active);
   // The client's own works first
-  const works = [...active.filter((w) => subscribed.includes(w.id)), ...active.filter((w) => !subscribed.includes(w.id))];
+  const worksFor = (mine: string[]) => [...active.filter((w) => mine.includes(w.id)), ...active.filter((w) => !mine.includes(w.id))];
 
-  const workFor = (d: Detected) => {
+  const workFor = (d: Detected, mine: string[]) => {
     if (!d.found) return "";
-    let options = works.filter((w) => w.kind === WORK_KIND[d.found!]);
+    let options = worksFor(mine).filter((w) => w.kind === WORK_KIND[d.found!]);
     if (d.formNo && options.some((w) => w.returnType === d.formNo)) options = options.filter((w) => w.returnType === d.formNo);
     return options[0]?.id ?? "";
   };
 
+  // Where each row goes, asked of each client's returns
   const check = async (list: Row[]) => {
-    const asked = list.filter((r) => r.workTypeId && r.month);
-    if (!asked.length) return new Map<number, Place>();
-    const { data } = await axios.post<{ results: Place[] }>(`/api/compliance/clients/${client.id}/returns`, {
-      place: false,
-      rows: asked.map((r) => ({ workTypeId: r.workTypeId, month: r.month })),
-    });
-    return new Map(asked.map((r, i) => [r.id, data.results[i]]));
+    const places = new Map<number, Place>();
+    const asked = list.filter((r) => r.client && r.workTypeId && r.month);
+    for (const clientId of new Set(asked.map((r) => r.client!.id))) {
+      const mine = asked.filter((r) => r.client!.id === clientId);
+      const { data } = await axios.post<{ results: Place[] }>(`/api/compliance/clients/${clientId}/returns`, {
+        place: false,
+        rows: mine.map((r) => ({ workTypeId: r.workTypeId, month: r.month })),
+      });
+      mine.forEach((r, i) => places.set(r.id, data.results[i]));
+    }
+    return places;
   };
 
-  const read = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setReading(true);
+  const read = async (inputs: InputFile[]) => {
+    if (!inputs.length) return;
+    setReading("Opening the files…");
     try {
-      const expanded = await expandFiles(Array.from(files));
+      const expanded = await expandFiles(inputs);
       const fresh: Row[] = [];
-      for (const { file, from, error } of expanded) {
+      const seen = new Map(rows.filter((r) => r.upload !== "done").map((r) => [r.sha, r.file.name]));
+      let n = 0;
+      for (const { file, from, folder, error } of expanded) {
+        setReading(`Reading ${++n} of ${expanded.length}: ${file.name}`);
         const detected = error ? null : await detectReturn(file);
+        const sha = await sha256(file);
         const storable = canStore(file.name);
+        let warning: string | null = null;
+        const same = seen.get(sha);
+        if (same) warning = `Same file as ${same === file.name ? "another one" : same} above`;
+        else seen.set(sha, file.name);
+        const folderMonth = monthFromFolder(folder);
+        if (!warning && detected?.month && folderMonth && !monthsCovered(detected).includes(folderMonth)) {
+          warning = `In the folder of ${monthLabel(folderMonth)}, but the file is for ${monthLabel(detected.month)}`;
+        }
         fresh.push({
           id: nextId.current++,
           file,
           from,
+          folder,
+          sha,
           error: error ?? (storable ? undefined : "This type of file can't be kept"),
           detected,
-          workTypeId: detected ? workFor(detected) : "",
+          client: firmWide ? null : { id: client.id, name: client.name ?? "", gstin: client.gstin, tan: client.tan, subscribed },
+          workTypeId: "",
           kind: detected ? docKind(detected) : "OTHER",
           month: detected?.month ?? "",
-          ...(detected ? idCheck(detected, client) : { idCheck: "none" as const, idNote: null }),
+          ...(detected && !firmWide ? idCheck(detected, client) : { idCheck: "none" as const, idNote: null }),
+          warning,
           place: null,
           include: false,
           upload: null,
         });
       }
+
+      // All clients: each file goes to the client with its GSTIN or TAN
+      if (firmWide) {
+        setReading("Finding the clients…");
+        const gstins = [...new Set(fresh.map((r) => r.detected?.gstin).filter((g): g is string => !!g))];
+        const tans = [...new Set(fresh.map((r) => r.detected?.tan).filter((t): t is string => !!t))];
+        const { data } = await axios.post<{ clients: ClientRef[] }>("/api/compliance/clients/lookup", { gstins, tans });
+        for (const row of fresh) {
+          if (row.error || !row.detected) continue;
+          const d = row.detected;
+          const matches = data.clients.filter((c) => (d.gstin && c.gstin === d.gstin.toUpperCase()) || (!d.gstin && d.tan && c.tan === d.tan.toUpperCase()));
+          if (matches.length === 1) {
+            row.client = matches[0];
+            row.idCheck = "match";
+            row.idNote = d.gstin ? "GSTIN matches" : "TAN matches";
+          } else if (matches.length > 1) {
+            row.error = `${matches.length} clients have ${d.gstin ? `GSTIN ${d.gstin}` : `TAN ${d.tan}`}: add it in the client's page`;
+          } else {
+            row.error = d.gstin || d.tan ? `No client has ${d.gstin ? `GSTIN ${d.gstin}` : `TAN ${d.tan}`}` : "No GSTIN or TAN in the file: add it in the client's page";
+          }
+        }
+      }
+      for (const row of fresh) if (row.detected && row.client) row.workTypeId = workFor(row.detected, row.client.subscribed);
+
+      setReading("Finding the periods…");
       const places = await check(fresh);
       for (const row of fresh) {
         row.place = places.get(row.id) ?? null;
-        row.include = !row.error && row.idCheck !== "mismatch" && (!row.workTypeId ? row.kind === "OTHER" : !!row.month && row.place?.ok === true);
+        row.include =
+          !row.error &&
+          !!row.client &&
+          !row.warning &&
+          row.idCheck !== "mismatch" &&
+          (!row.workTypeId ? row.kind === "OTHER" && !firmWide : !!row.month && row.place?.ok === true);
       }
       setRows((r) => [...r.filter((x) => x.upload !== "done"), ...fresh]);
     } catch (error) {
       toast.error(apiError(error, "The files couldn't be read"));
     } finally {
-      setReading(false);
+      setReading(null);
       if (inputRef.current) inputRef.current.value = "";
+      if (folderRef.current) folderRef.current.value = "";
     }
   };
+
+  const fromInput = (files: FileList | null) =>
+    read(
+      Array.from(files ?? []).map((file) => {
+        const path = (file as File & { webkitRelativePath?: string }).webkitRelativePath ?? "";
+        return { file, folder: path.split("/").slice(0, -1).join("/") };
+      })
+    );
 
   const update = async (id: number, patch: Partial<Row>) => {
     const row = rows.find((r) => r.id === id);
@@ -170,23 +316,26 @@ export function ReturnUpload({ client, subscribed, workTypes, onChanged }: Props
     }
   };
 
-  const ready = rows.filter((r) => r.include && !r.upload);
+  const ready = rows.filter((r) => r.include && !r.upload && r.client);
 
   const uploadAll = async () => {
     setBusy(true);
     const setRow = (id: number, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
     let done = 0;
+    let filed = 0;
     try {
       // Periods first (past periods that don't exist yet are created), then the files
       const forItems = ready.filter((r) => r.workTypeId);
-      const keys = [...new Set(forItems.map((r) => `${r.workTypeId}|${r.month}`))];
-      const itemIds = new Map<string, Place>();
-      if (keys.length) {
-        const { data } = await axios.post<{ results: Place[] }>(`/api/compliance/clients/${client.id}/returns`, {
+      const placeOf = (r: Row) => `${r.client!.id}|${r.workTypeId}|${r.month}`;
+      const keys = [...new Set(forItems.map(placeOf))];
+      const placed = new Map<string, Place>();
+      for (const clientId of new Set(keys.map((k) => k.split("|")[0]))) {
+        const mine = keys.filter((k) => k.startsWith(`${clientId}|`));
+        const { data } = await axios.post<{ results: Place[] }>(`/api/compliance/clients/${clientId}/returns`, {
           place: true,
-          rows: keys.map((key) => {
-            const same = forItems.filter((r) => `${r.workTypeId}|${r.month}` === key);
-            const [workTypeId, month] = key.split("|");
+          rows: mine.map((key) => {
+            const same = forItems.filter((r) => placeOf(r) === key);
+            const [, workTypeId, month] = key.split("|");
             return {
               workTypeId,
               month,
@@ -195,24 +344,40 @@ export function ReturnUpload({ client, subscribed, workTypes, onChanged }: Props
             };
           }),
         });
-        keys.forEach((key, i) => itemIds.set(key, data.results[i]));
+        mine.forEach((key, i) => placed.set(key, data.results[i]));
       }
-      for (const row of ready) {
-        const place = row.workTypeId ? itemIds.get(`${row.workTypeId}|${row.month}`) : null;
+      // Oldest first, each period's JSON before its PDF, GSTR-1 before GSTR-3B,
+      // so periods complete and get filed in order
+      const order = (r: Row) => `${r.client!.id}|${r.month}|${["GSTR1", "IFF", "GSTR1A", "GSTR3B", "GSTR2B"].indexOf(r.detected?.gst?.form ?? "")}|${r.detected?.gst?.source === "JSON" ? 0 : 1}`;
+      const uploadedGst = new Set<string>();
+      for (const row of [...ready].sort((a, b) => order(a).localeCompare(order(b)))) {
+        const place = row.workTypeId ? placed.get(placeOf(row)) : null;
         if (place && (!place.ok || !place.itemId)) {
           setRow(row.id, { upload: "failed", message: place.ok ? "No period" : place.error });
           continue;
         }
         setRow(row.id, { upload: "uploading" });
         try {
-          await uploadComplianceFile(row.file, { clientId: client.id, itemId: place?.ok ? place.itemId : null, kind: row.kind });
-          setRow(row.id, { upload: "done", place: place ?? row.place });
+          const result = await uploadComplianceFile(row.file, {
+            clientId: row.client!.id,
+            itemId: place?.ok ? place.itemId : null,
+            kind: row.kind,
+            gst: place?.ok ? row.detected?.gst ?? null : null,
+          });
+          if (result.filed?.startsWith("Marked filed")) filed++;
+          if (row.detected?.gst) uploadedGst.add(row.client!.id);
+          setRow(row.id, { upload: "done", place: place ?? row.place, message: result.filed ?? undefined });
           done++;
         } catch (error) {
           setRow(row.id, { upload: "failed", message: error instanceof Error && !axios.isAxiosError(error) ? error.message : apiError(error) });
         }
       }
-      if (done) toast.success(`${done} file(s) uploaded`);
+      // Periods locked by an earlier one uploaded later in the batch
+      if (uploadedGst.size) {
+        const { data } = await axios.post<{ filed: number }>("/api/compliance/gst-working/file", { clientIds: [...uploadedGst] });
+        filed += data.filed;
+      }
+      if (done) toast.success(`${done} file(s) uploaded${filed ? `; ${filed} period(s) marked filed from their returns` : ""}`);
     } catch (error) {
       toast.error(apiError(error));
     } finally {
@@ -221,22 +386,41 @@ export function ReturnUpload({ client, subscribed, workTypes, onChanged }: Props
     }
   };
 
+  const disabled = !!reading || busy;
   return (
     <div className="space-y-2">
       <div
         className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3 text-sm"
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
+        onDrop={async (e) => {
           e.preventDefault();
-          if (!reading && !busy) read(e.dataTransfer.files);
+          if (disabled) return;
+          // Both are emptied once the drop event is over
+          const plain = Array.from(e.dataTransfer.files).map((file) => ({ file }));
+          const files = await droppedFiles(e.dataTransfer.items);
+          read(files.length ? files : plain);
         }}
       >
-        <input ref={inputRef} type="file" multiple accept=".pdf,.json,.zip" className="hidden" onChange={(e) => read(e.target.files)} />
-        <Button size="sm" variant="outline" disabled={reading || busy} onClick={() => inputRef.current?.click()}>
+        <input ref={inputRef} type="file" multiple accept=".pdf,.json,.zip,.rar" className="hidden" onChange={(e) => fromInput(e.target.files)} />
+        <input
+          ref={folderRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => fromInput(e.target.files)}
+          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+        />
+        <Button size="sm" variant="outline" disabled={disabled} onClick={() => inputRef.current?.click()}>
           {reading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileUp className="mr-1 h-4 w-4" />} Choose files
         </Button>
+        <Button size="sm" variant="outline" disabled={disabled} onClick={() => folderRef.current?.click()}>
+          <FolderUp className="mr-1 h-4 w-4" /> Choose a folder
+        </Button>
         <span className="text-xs text-muted-foreground">
-          {reading ? "Reading the files…" : "or drop them here: return PDFs, JSONs and ZIPs. Each file is read and shown below to confirm before it is uploaded."}
+          {reading ??
+            (firmWide
+              ? "or drop files, ZIPs, RARs or a whole folder (e.g. GST RETURNS with a folder per client and month). Each file goes to the client with its GSTIN or TAN and to the period in the file; check the table, then upload."
+              : "or drop them here: return PDFs, JSONs, ZIPs, RARs or a folder. Each file is read and shown below to confirm before it is uploaded.")}
         </span>
       </div>
 
@@ -248,6 +432,7 @@ export function ReturnUpload({ client, subscribed, workTypes, onChanged }: Props
                 <tr>
                   <th className="p-1" />
                   <th className="p-1">File</th>
+                  {firmWide && <th className="p-1">Client</th>}
                   <th className="p-1">Found</th>
                   <th className="p-1">Work</th>
                   <th className="p-1">File type</th>
@@ -257,26 +442,31 @@ export function ReturnUpload({ client, subscribed, workTypes, onChanged }: Props
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const attention = !!r.error || r.idCheck === "mismatch" || (r.workTypeId && (!r.month || r.place?.ok === false)) || r.detected?.monthGuessed || (!r.workTypeId && r.kind !== "OTHER");
+                  const bad = !!r.error || r.idCheck === "mismatch";
+                  const attention = !!r.warning || (r.workTypeId && (!r.month || r.place?.ok === false)) || r.detected?.monthGuessed || (!r.workTypeId && r.kind !== "OTHER");
                   return (
-                    <tr key={r.id} className={cn("border-t align-top", r.idCheck === "mismatch" || r.error ? "bg-red-50 dark:bg-red-950/30" : attention && !r.upload && "bg-amber-50 dark:bg-amber-950/30")}>
+                    <tr key={r.id} className={cn("border-t align-top", bad ? "bg-red-50 dark:bg-red-950/30" : attention && !r.upload && "bg-amber-50 dark:bg-amber-950/30")}>
                       <td className="p-1">
                         {r.upload === "done" ? (
                           <Check className="h-4 w-4 text-emerald-600" />
                         ) : r.upload === "uploading" ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <Checkbox checked={r.include} disabled={busy || !canStore(r.file.name)} onCheckedChange={(c) => update(r.id, { include: c === true })} aria-label={`Upload ${r.file.name}`} />
+                          <Checkbox checked={r.include} disabled={busy || !canStore(r.file.name) || !r.client || !!r.error} onCheckedChange={(c) => update(r.id, { include: c === true })} aria-label={`Upload ${r.file.name}`} />
                         )}
                       </td>
                       <td className="max-w-[12rem] p-1">
                         <p className="truncate font-medium" title={r.file.name}>{r.file.name}</p>
-                        {r.from && <p className="truncate text-muted-foreground">from {r.from}</p>}
+                        {(r.folder || r.from) && <p className="truncate text-muted-foreground" title={[r.from, r.folder].filter(Boolean).join(" › ")}>{[r.from, r.folder].filter(Boolean).join(" › ")}</p>}
                         {r.error && <p className="text-red-700 dark:text-red-300">{r.error}</p>}
+                        {r.warning && <p className="font-medium text-amber-800 dark:text-amber-300"><AlertTriangle className="mr-0.5 inline h-3 w-3" />{r.warning}</p>}
                         {r.upload === "failed" && <p className="text-red-700 dark:text-red-300">{r.message}</p>}
+                        {r.upload === "done" && r.message && <p className="text-emerald-700 dark:text-emerald-300">{r.message}</p>}
                       </td>
-                      <td className="p-1">
-                        <p>{r.detected?.found ? FOUND_LABEL[r.detected.found] : "Not recognised"}</p>
+                      {firmWide && <td className="max-w-[10rem] p-1">{r.client ? <span className="font-medium">{r.client.name}</span> : <span className="text-muted-foreground">—</span>}</td>}
+                      <td className="max-w-[16rem] p-1">
+                        <p>{r.detected?.gst ? `${FORM_LABELS[r.detected.gst.form]} ${r.detected.gst.source}` : r.detected?.found ? FOUND_LABEL[r.detected.found] : "Not recognised"}</p>
+                        {r.detected?.gst && <p className="text-muted-foreground">{gstSummary(r.detected.gst)}</p>}
                         {r.idNote && (
                           <p className={cn(r.idCheck === "match" ? "text-emerald-700 dark:text-emerald-300" : r.idCheck === "mismatch" ? "font-medium text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300")}>
                             {r.idCheck === "mismatch" && <AlertTriangle className="mr-0.5 inline h-3 w-3" />}
@@ -284,19 +474,19 @@ export function ReturnUpload({ client, subscribed, workTypes, onChanged }: Props
                           </p>
                         )}
                         {r.detected?.arn && <p className="text-muted-foreground">ARN/token {r.detected.arn}</p>}
-                        {r.detected?.filedAt && <p className="text-muted-foreground">Filed {r.detected.filedAt}</p>}
+                        {r.detected?.filedAt && r.detected.gst?.form !== "GSTR2B" && <p className="text-muted-foreground">Filed {r.detected.filedAt}</p>}
                       </td>
                       <td className="p-1">
-                        <Select value={r.workTypeId || NO_WORK} disabled={busy || !!r.upload} onValueChange={(v) => update(r.id, { workTypeId: v === NO_WORK ? "" : v, ...(v === NO_WORK && { kind: "OTHER" }) })}>
+                        <Select value={r.workTypeId || NO_WORK} disabled={busy || !!r.upload || !r.client} onValueChange={(v) => update(r.id, { workTypeId: v === NO_WORK ? "" : v, ...(v === NO_WORK && { kind: "OTHER" }) })}>
                           <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value={NO_WORK}>No work (client file)</SelectItem>
-                            {works.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+                            {worksFor(r.client?.subscribed ?? []).map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </td>
                       <td className="p-1">
-                        <Select value={r.kind} disabled={busy || !!r.upload} onValueChange={(kind) => update(r.id, { kind })}>
+                        <Select value={r.kind} disabled={busy || !!r.upload || !!r.detected?.gst} onValueChange={(kind) => update(r.id, { kind })}>
                           <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {Object.entries(DOC_KIND_LABELS).map(([k, label]) => <SelectItem key={k} value={k}>{label}</SelectItem>)}
@@ -306,17 +496,20 @@ export function ReturnUpload({ client, subscribed, workTypes, onChanged }: Props
                       <td className="p-1">
                         {r.workTypeId ? (
                           <>
-                            <Input type="month" className="h-8 w-36 text-xs" value={r.month} disabled={busy || !!r.upload} onChange={(e) => update(r.id, { month: e.target.value })} />
+                            <Input type="month" className="h-8 w-36 text-xs" value={r.month} disabled={busy || !!r.upload || !!r.detected?.gst} onChange={(e) => update(r.id, { month: e.target.value })} />
                             {r.detected?.monthGuessed && r.month === r.detected.month && (
                               <p className="text-amber-700 dark:text-amber-300">{r.detected.found === "TDS_CHALLAN" ? "From the payment date: check" : "From the file name: check"}</p>
                             )}
+                            {r.detected?.gst && <p className="text-muted-foreground">Read from the file</p>}
                           </>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </td>
                       <td className="p-1">
-                        {!r.workTypeId ? (
+                        {!r.client ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : !r.workTypeId ? (
                           <span className="text-muted-foreground">Client&apos;s files</span>
                         ) : !r.month ? (
                           <span className="text-amber-700 dark:text-amber-300">Choose the period</span>
@@ -346,14 +539,14 @@ export function ReturnUpload({ client, subscribed, workTypes, onChanged }: Props
             </table>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={busy || reading || ready.length === 0 || ready.some((r) => r.workTypeId && (!r.month || !r.place?.ok))} onClick={uploadAll}>
+            <Button size="sm" disabled={disabled || ready.length === 0 || ready.some((r) => r.workTypeId && (!r.month || !r.place?.ok))} onClick={uploadAll}>
               {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileUp className="mr-1 h-4 w-4" />} Upload {ready.length} ticked file(s)
             </Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => setRows([])}>
               <X className="mr-1 h-4 w-4" /> Clear list
             </Button>
             <span className="text-xs text-muted-foreground">
-              Check the highlighted rows. Files of another GSTIN or TAN are left unticked. Periods in the sheet only get the file; their status is changed in the sheet.
+              Check the highlighted rows. Files of another GSTIN or TAN, in a folder of another month, or repeated are left unticked. A filed return&apos;s PDF marks its period filed (with the ARN and date on it) unless something locks it.
             </span>
           </div>
         </>

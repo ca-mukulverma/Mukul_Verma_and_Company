@@ -27,7 +27,7 @@ export const RETURN_WORKS: { key: string; label: string }[] = [
   { key: "Income Tax Return", label: "Income Tax Return" },
 ];
 
-export const RETURN_DOC_KINDS = ["RETURN_PDF", "RETURN_JSON", "GSTR1A_PDF", "GSTR1A_JSON", "CHALLAN", "CERTIFICATE", "OTHER"] as const;
+export const RETURN_DOC_KINDS = ["RETURN_PDF", "RETURN_JSON", "GSTR1A_PDF", "GSTR1A_JSON", "GSTR2B_JSON", "CHALLAN", "CERTIFICATE", "OTHER"] as const;
 
 // Client details written into the email
 export const DETAIL_FIELDS = {
