@@ -36,6 +36,8 @@ export interface MyComplianceItem {
   kind: ComplianceKind;
   workTypeId: string;
   period: string;
+  // YYYY-MM of the period's first month, to open the sheet on it
+  month: string;
   dueDate: string;
   due: DueState;
   status: string;
@@ -64,13 +66,6 @@ function dueState(date: Date | null, today: Date): DueState {
   if (diff === 0) return "today";
   if (diff <= 3) return "soon";
   return "later";
-}
-
-// Sheet tab a compliance item lives on
-export function complianceTab(kind: ComplianceKind) {
-  if (kind === "GSTR1" || kind === "GSTR3B") return "gst";
-  if (kind === "TDS_PAYMENT" || kind === "TDS_RETURN") return "tds";
-  return "work";
 }
 
 export async function getMyWork(userId: string, now = new Date()): Promise<MyWork> {
@@ -158,6 +153,7 @@ export async function getMyWork(userId: string, now = new Date()): Promise<MyWor
     kind: i.workType.kind,
     workTypeId: i.workTypeId,
     period: periodLabel(i.frequency, i.periodStart),
+    month: i.periodStart.toISOString().slice(0, 7),
     dueDate: i.dueDate.toISOString(),
     due: dueState(i.dueDate, today),
     status: i.status,

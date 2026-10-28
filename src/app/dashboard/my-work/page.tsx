@@ -350,7 +350,7 @@ function ComplianceSection({ items, waitingFiles }: { items: MyComplianceItem[];
               <DueBadge due={item.due} date={item.dueDate} />
               <Button asChild size="sm" variant="outline">
                 <Link
-                  href={`/dashboard/compliance?tab=${SHEET_TAB[item.kind] ?? "work"}&item=${item.id}${
+                  href={`/dashboard/compliance?tab=${SHEET_TAB[item.kind] ?? "work"}&month=${item.month}&item=${item.id}${
                     item.kind === "GENERIC" ? `&work=${item.workTypeId}` : ""
                   }`}
                 >

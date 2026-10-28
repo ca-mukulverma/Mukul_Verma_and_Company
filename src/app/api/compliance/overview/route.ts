@@ -8,12 +8,31 @@ import { billingEmailConfigured } from "@/lib/bill-email";
 import { r2Configured } from "@/lib/r2";
 
 // GET /api/compliance/overview – counts per work, and for Admins and Partners
-// the notes from Claude's nightly review
-export async function GET() {
+// the notes from Claude's nightly review. ?counts=1 returns only the overdue
+// counts per sheet, for the badges on the Compliance tabs.
+export async function GET(request: Request) {
   const { access, error } = await requireComplianceAccess();
   if (error) return error;
 
   const today = todayIST();
+  if (new URL(request.url).searchParams.get("counts")) {
+    const rows = await prisma.complianceItem.groupBy({
+      by: ["workTypeId"],
+      where: { status: { in: ["pending", "data_received"] }, historical: false, dueDate: { lt: today }, workType: { active: true } },
+      _count: true,
+    });
+    const kinds = await prisma.complianceWorkType.findMany({
+      where: { id: { in: rows.map((r) => r.workTypeId) } },
+      select: { id: true, kind: true },
+    });
+    const overdue = { gst: 0, tds: 0, work: 0 };
+    for (const row of rows) {
+      const kind = kinds.find((k) => k.id === row.workTypeId)?.kind;
+      const sheet = kind === "GSTR1" || kind === "GSTR3B" ? "gst" : kind === "TDS_PAYMENT" || kind === "TDS_RETURN" ? "tds" : "work";
+      overdue[sheet] += row._count;
+    }
+    return NextResponse.json({ overdue });
+  }
   const inAWeek = new Date(today.getTime() + 7 * 86_400_000);
   const monthStart = utcDate(today.getUTCFullYear(), today.getUTCMonth() + 1);
   const open = { in: ["pending", "data_received"] as ("pending" | "data_received")[] };

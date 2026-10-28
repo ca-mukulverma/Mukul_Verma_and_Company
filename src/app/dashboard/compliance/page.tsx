@@ -13,6 +13,17 @@ import { ClientsPanel } from "@/components/compliance/clients-panel";
 import { ComplianceReco } from "@/components/compliance/reco";
 import { ComplianceSetup, WorkType } from "@/components/compliance/setup";
 import { apiError } from "@/components/compliance/types";
+import { HelpLink } from "@/components/help/help-link";
+
+// Red count of overdue items on a sheet's tab
+function OverdueBadge({ count }: { count?: number }) {
+  if (!count) return null;
+  return (
+    <span className="ml-1.5 rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-4 text-white" title={`${count} overdue`}>
+      {count}
+    </span>
+  );
+}
 
 // Recurring compliance work: GST, TDS, ITR, advance tax and any other regular
 // work. See docs/COMPLIANCE.md.
@@ -35,7 +46,18 @@ function CompliancePageContent() {
   const requested = params.get("tab") as Tab | null;
   const tab: Tab = requested && TABS.includes(requested) && (requested !== "setup" || isManager) ? requested : "overview";
   const [workTypes, setWorkTypes] = useState<WorkType[] | null>(null);
-  const [workSheetType, setWorkSheetType] = useState<string | null>(null);
+  const [workSheetType, setWorkSheetType] = useState<string | null>(params.get("work"));
+  // Opened from a link (e.g. My work → Open): the period and the item to open
+  const linkMonth = params.get("month");
+  const linkItem = params.get("item");
+  const [overdue, setOverdue] = useState<{ gst: number; tds: number; work: number } | null>(null);
+
+  useEffect(() => {
+    axios
+      .get("/api/compliance/overview", { params: { counts: 1 } })
+      .then(({ data }) => setOverdue(data.overdue))
+      .catch(() => setOverdue(null));
+  }, []);
 
   const loadWorkTypes = useCallback(async () => {
     try {
@@ -53,6 +75,9 @@ function CompliancePageContent() {
     const search = new URLSearchParams(params.toString());
     search.set("tab", next);
     if (next !== "clients") search.delete("client");
+    // A link's item and period apply only to the sheet it was opened on
+    search.delete("item");
+    search.delete("month");
     router.replace(`/dashboard/compliance?${search.toString()}`, { scroll: false });
   };
 
@@ -70,7 +95,10 @@ function CompliancePageContent() {
     // layout; they scroll sideways inside the page instead
     <div className="space-y-4 p-1 [contain:inline-size] md:p-2">
       <div>
-        <h1 className="text-2xl font-bold">Compliance</h1>
+        <div className="flex items-center gap-1">
+          <h1 className="text-2xl font-bold">Compliance</h1>
+          <HelpLink section="compliance" />
+        </div>
         <p className="text-sm text-muted-foreground">
           Recurring GST, TDS, ITR and other work for every client in one place. Click any cell in a sheet to update it.
         </p>
@@ -81,9 +109,9 @@ function CompliancePageContent() {
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex h-auto flex-wrap justify-start">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="gst">GST sheet</TabsTrigger>
-            <TabsTrigger value="tds">TDS sheet</TabsTrigger>
-            <TabsTrigger value="work">Other work</TabsTrigger>
+            <TabsTrigger value="gst">GST sheet<OverdueBadge count={overdue?.gst} /></TabsTrigger>
+            <TabsTrigger value="tds">TDS sheet<OverdueBadge count={overdue?.tds} /></TabsTrigger>
+            <TabsTrigger value="work">Other work<OverdueBadge count={overdue?.work} /></TabsTrigger>
             <TabsTrigger value="reco">Reconciliation</TabsTrigger>
             <TabsTrigger value="clients">Clients</TabsTrigger>
             {isManager && <TabsTrigger value="setup">Setup</TabsTrigger>}
@@ -92,13 +120,33 @@ function CompliancePageContent() {
             <ComplianceOverview onOpenSheet={openSheet} />
           </TabsContent>
           <TabsContent value="gst" className="mt-4">
-            <ComplianceSheet view="gst" workTypes={workTypes} isManager={isManager} />
+            <ComplianceSheet
+              view="gst"
+              workTypes={workTypes}
+              isManager={isManager}
+              initialMonth={tab === "gst" ? linkMonth : null}
+              initialItemId={tab === "gst" ? linkItem : null}
+            />
           </TabsContent>
           <TabsContent value="tds" className="mt-4">
-            <ComplianceSheet view="tds" workTypes={workTypes} isManager={isManager} />
+            <ComplianceSheet
+              view="tds"
+              workTypes={workTypes}
+              isManager={isManager}
+              initialMonth={tab === "tds" ? linkMonth : null}
+              initialItemId={tab === "tds" ? linkItem : null}
+            />
           </TabsContent>
           <TabsContent value="work" className="mt-4">
-            <ComplianceSheet key={workSheetType ?? "work"} view="work" workTypes={workTypes} isManager={isManager} initialWorkTypeId={workSheetType} />
+            <ComplianceSheet
+              key={workSheetType ?? "work"}
+              view="work"
+              workTypes={workTypes}
+              isManager={isManager}
+              initialWorkTypeId={workSheetType}
+              initialMonth={tab === "work" ? linkMonth : null}
+              initialItemId={tab === "work" ? linkItem : null}
+            />
           </TabsContent>
           <TabsContent value="reco" className="mt-4">
             <ComplianceReco isManager={isManager} />

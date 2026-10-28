@@ -22,7 +22,7 @@ import { clientContactSelect, reminderContacts } from "@/lib/client-contacts";
 
 export const sheetItemInclude = {
   workType: true,
-  client: { select: clientContactSelect },
+  client: { select: { ...clientContactSelect, managerId: true } },
   documents: { select: { id: true, kind: true, fileName: true, size: true, createdAt: true }, orderBy: { createdAt: "asc" } },
   lines: { include: { obligation: true, resolvedBy: { select: { name: true } } }, orderBy: { obligation: { createdAt: "asc" } } },
   challans: { orderBy: { challanDate: "asc" } },
@@ -141,7 +141,7 @@ export async function loadSheetItem(id: string, access: ComplianceAccess) {
 }
 
 function clientRow(client: SheetItemRecord["client"]) {
-  return { id: client.id, name: partyName(client), gstin: client.gstin, ...reminderContacts(client) };
+  return { id: client.id, name: partyName(client), gstin: client.gstin, managerId: client.managerId, ...reminderContacts(client) };
 }
 
 // Items may be created for periods up to next month, not further ahead
