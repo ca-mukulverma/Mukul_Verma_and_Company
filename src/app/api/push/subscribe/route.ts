@@ -37,22 +37,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-// Unregister this device
-export async function DELETE(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const body = await request.json().catch(() => null);
-  const endpoint = typeof body?.endpoint === "string" ? body.endpoint : null;
-  if (!endpoint) {
-    return NextResponse.json({ error: "Endpoint is required" }, { status: 400 });
-  }
-
-  await prisma.pushSubscription.deleteMany({
-    where: { endpoint, userId: session.user.id },
-  });
-
-  return NextResponse.json({ success: true });
-}
+// There is no way to unregister a device from the app: staff can't turn their
+// alerts off. Addresses that stop working are removed when a push to them
+// fails (lib/web-push.ts).

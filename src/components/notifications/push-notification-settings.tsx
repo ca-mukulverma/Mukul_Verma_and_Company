@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { BellRing, BellOff, Share, PlusSquare, Smartphone } from "lucide-react";
+import { BellRing, Share, PlusSquare, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { syncPushSubscription, urlBase64ToUint8Array, VAPID_PUBLIC_KEY } from "@/lib/push-client";
@@ -100,25 +100,6 @@ export function PushNotificationSettings() {
     }
   };
 
-  const disable = async () => {
-    setBusy(true);
-    try {
-      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
-      const subscription = await registration?.pushManager.getSubscription();
-      if (subscription) {
-        await axios.delete("/api/push/subscribe", { data: { endpoint: subscription.endpoint } });
-        await subscription.unsubscribe();
-      }
-      setState("disabled");
-      toast.success("Notifications turned off on this device");
-    } catch (error) {
-      console.error("Failed to disable push notifications:", error);
-      toast.error("Could not turn off notifications");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const sendTest = async () => {
     setBusy(true);
     try {
@@ -191,15 +172,13 @@ export function PushNotificationSettings() {
           </Button>
         )}
 
+        {/* No "turn off": every staff member gets the alerts for their work */}
         {state === "enabled" && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Notifications are on for this device.</span>
             <Button variant="outline" onClick={sendTest} disabled={busy}>
               <BellRing className="mr-2 h-4 w-4" />
               Send test notification
-            </Button>
-            <Button variant="ghost" onClick={disable} disabled={busy}>
-              <BellOff className="mr-2 h-4 w-4" />
-              Turn off on this device
             </Button>
           </div>
         )}

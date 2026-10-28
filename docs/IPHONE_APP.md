@@ -49,6 +49,11 @@ skips sending push notifications.
 3. Open **MV Company** from the Home Screen (not from Safari) and sign in.
 4. Go to **Settings → Notifications** and tap
    **Enable notifications on this device**, then **Allow**.
+
+There is no switch in the app to turn notifications off: every staff member
+gets the alerts for their own work. The app re-registers the phone each time
+it is opened, so alerts keep coming even if the phone changes its push
+address.
 5. Tap **Send test notification** to confirm it works.
 
 On Android (Chrome), steps 2–3 are optional: notifications can be enabled
