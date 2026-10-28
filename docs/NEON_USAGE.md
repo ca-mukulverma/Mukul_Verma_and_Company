@@ -68,8 +68,9 @@ The database compute starts when a query arrives and suspends after
   deletes the Neon branch when a PR closes or a Git branch is deleted. It
   has run successfully since 25 Oct. The 8 stale branches predated it.
 - **Middleware** uses the JWT only and never queries the database.
-- **Auth session check** reads the user from the database only every few
-  minutes (`USER_REFRESH_INTERVAL_MS` in `src/lib/auth.ts`), not per request.
+- **Auth session check** reads the user from the database at most once a
+  minute per user (`USER_REFRESH_INTERVAL_MS` in `src/lib/auth.ts`), not on
+  every request.
 - **Connections:** the app uses Neon's pooled `DATABASE_URL`; migrations
   switch to the direct address (`scripts/migrate-on-vercel.js`). Prisma is a
   single shared client.
