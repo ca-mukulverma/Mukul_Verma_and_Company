@@ -170,6 +170,10 @@ export function canViewBill(
   );
 }
 
+// How long "Undo" is offered after a task is marked completed (the toast in
+// the app is shorter, so an undo always lands inside it)
+const UNDO_WINDOW_MS = 10_000;
+
 // Creates the draft bill for a task that has just been completed.
 // Does nothing if the task already has a bill.
 export async function ensureDraftBillForTask(taskId: string, userId: string) {
@@ -198,8 +202,13 @@ export async function ensureDraftBillForTask(taskId: string, userId: string) {
   }
 
   // Admin and the company's billing managers: the bill is waiting for them.
-  // Sent after the response so completing the task isn't slowed down.
+  // Sent after the response so completing the task isn't slowed down, and
+  // after the few seconds in which the completion can be undone; an undone
+  // completion removes the bill, and then nobody is told.
   after(async () => {
+    await new Promise((resolve) => setTimeout(resolve, UNDO_WINDOW_MS));
+    const stillThere = await prisma.bill.findUnique({ where: { taskId: task.id }, select: { id: true } });
+    if (!stillThere) return;
     const [managerIds, completedBy] = await Promise.all([
       getBillingManagerIds(task.company),
       prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
