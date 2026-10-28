@@ -70,9 +70,19 @@ ineligible ITC (4D(2) against 2B *ITC not available*) and ITC rejected in 2B.
 Columns: taxable value, IGST, CGST, SGST, cess (only when there is any), total
 tax and total value, for the year's **Total** and every month or quarter.
 
-Choose the financial year at the top of the working. On screen one column is
-shown at a time (*Show*); **Excel** and **PDF** have them all. *Email the
-working* sends both to the client from the firm's Gmail.
+Change the financial year with the **‹ ›** arrows at the top. Below them is a
+button for **Year total** and for each month (or quarter); the working opens
+on the latest period with figures, and the arrows at either end step through
+the periods. For the chosen period every head is shown together: **Taxable,
+CGST, SGST, IGST, Cess** (only when there is any) and **Total** (taxable plus
+tax). On a computer that is one table; on a phone each line is a card with the
+heads under each other, so nothing scrolls sideways. A period's differences
+and missing files are listed under it. **Excel** and **PDF** have every
+month together. *Email the working* sends both to the client from the firm's
+Gmail.
+
+On a phone, **Compliance → Clients** shows the client list first; tapping a
+client opens it in place of the list, with **← All clients** to go back.
 
 ## Checks
 

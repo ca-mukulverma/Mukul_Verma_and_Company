@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Download, FileUp, Loader2, Mail, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ChevronLeft, Download, FileUp, Loader2, Mail, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -138,7 +138,9 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
 
   return (
     <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
-      <div className="space-y-2">
+      {/* On a phone the list and the open client take turns, like an app;
+          side by side from large screens */}
+      <div className={cn("space-y-2", selectedId && "hidden lg:block")}>
         <div className="relative">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input className="pl-8" placeholder="Search client or GSTIN" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -173,7 +175,11 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
               <div
                 key={c.id}
                 className={cn("group flex cursor-pointer items-start gap-2 border-b p-2 text-sm last:border-0 hover:bg-muted/50", c.parentId && "pl-6", selectedId === c.id && "bg-muted")}
-                onClick={() => setSelectedId(c.id)}
+                onClick={() => {
+                  setSelectedId(c.id);
+                  // Phone: the client opens in place of the list, from its top
+                  if (!window.matchMedia("(min-width: 1024px)").matches) window.scrollTo({ top: 0 });
+                }}
               >
                 {isManager && (
                   <span onClick={(e) => e.stopPropagation()}>
@@ -213,7 +219,12 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
         </div>
       </div>
 
-      <div>
+      <div className={cn("min-w-0", !selectedId && "hidden lg:block")}>
+        {selectedId && (
+          <Button variant="outline" size="sm" className="mb-3 lg:hidden" onClick={() => setSelectedId(null)}>
+            <ChevronLeft className="mr-1 h-4 w-4" /> All clients
+          </Button>
+        )}
         {selectedId ? (
           <ClientDetailView key={`${selectedId}-${version}`} clientId={selectedId} workTypes={workTypes} isManager={isManager} onChanged={load} onSelect={setSelectedId} />
         ) : (

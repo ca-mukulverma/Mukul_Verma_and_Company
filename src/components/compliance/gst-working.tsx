@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { AlertTriangle, Download, FileSearch, Loader2, Mail } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Download, FileSearch, Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Heads, totalTax } from "@/lib/gst-read/types";
 import { Issue, RowKey, WORKING_ROWS } from "@/lib/gst-read/working";
@@ -19,19 +18,22 @@ import { apiError, currentMonthKey } from "./types";
 // the client as Excel/PDF. Nothing is typed in or signed off here.
 
 type Period = ClientWorking["periods"][number];
-type Measure = "taxable" | "igst" | "cgst" | "sgst" | "cess" | "tax" | "value";
+type Column = "taxable" | "cgst" | "sgst" | "igst" | "cess" | "total";
 
-const MEASURES: { key: Measure; label: string }[] = [
-  { key: "taxable", label: "Taxable value" },
-  { key: "igst", label: "IGST" },
+// Every head side by side, in the order the working is read
+const COLUMNS: { key: Column; label: string }[] = [
+  { key: "taxable", label: "Taxable" },
   { key: "cgst", label: "CGST" },
   { key: "sgst", label: "SGST" },
+  { key: "igst", label: "IGST" },
   { key: "cess", label: "Cess" },
-  { key: "tax", label: "Total tax" },
-  { key: "value", label: "Total value" },
+  { key: "total", label: "Total" },
 ];
 
-const measure = (h: Heads, key: Measure) => (key === "tax" ? totalTax(h) : key === "value" ? h.taxable + totalTax(h) : h[key]);
+// "Total" is the taxable value plus all the tax
+const valueOf = (h: Heads, key: Column) => (key === "total" ? h.taxable + totalTax(h) : h[key]);
+// "year" is the whole financial year; otherwise a period's start (YYYY-MM)
+type Selection = "year" | string;
 const amount = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function fyOf(month: string) {
@@ -62,15 +64,19 @@ function Issues({ issues }: { issues: Issue[] }) {
   );
 }
 
-function FySelect({ fy, setFy }: { fy: number; setFy: (fy: number) => void }) {
+// ‹ FY 2025-26 › : earlier and later years with a tap, no list to open
+function FyStepper({ fy, setFy }: { fy: number; setFy: (fy: number) => void }) {
   const current = fyOf(currentMonthKey());
   return (
-    <Select value={String(fy)} onValueChange={(v) => setFy(Number(v))}>
-      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {[0, 1, 2, 3, 4].map((i) => <SelectItem key={i} value={String(current - i)}>{fyLabel(current - i)}</SelectItem>)}
-      </SelectContent>
-    </Select>
+    <div className="flex items-center gap-1">
+      <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setFy(fy - 1)} disabled={fy <= current - 4} aria-label="Previous year">
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <span className="min-w-24 text-center text-sm font-semibold">{fyLabel(fy)}</span>
+      <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setFy(fy + 1)} disabled={fy >= current} aria-label="Next year">
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+    </div>
   );
 }
 
@@ -80,7 +86,7 @@ export function ClientGstWorking({ clientId, email, refresh }: { clientId: strin
   const [fy, setFy] = useState(fyOf(previousMonth()));
   const [data, setData] = useState<ClientWorking | null>(null);
   const [loading, setLoading] = useState(false);
-  const [show, setShow] = useState<Measure>("taxable");
+  const [selected, setSelected] = useState<Selection | null>(null);
   const [to, setTo] = useState(email ?? "");
   const [sending, setSending] = useState(false);
   const [unread, setUnread] = useState<{ id: string; fileName: string }[]>([]);
@@ -95,12 +101,21 @@ export function ClientGstWorking({ clientId, email, refresh }: { clientId: strin
     ])
       .then(([working, docs]) => {
         setData(working.data);
+        // Opens on the latest period with figures (the year when there are none),
+        // and keeps the period chosen when the same year reloads after an upload
+        setSelected((current) => {
+          if (current && (current === "year" || working.data.periods.some((p) => p.start === current))) return current;
+          const withFigures = working.data.periods.filter((p) => Object.keys(p.rows).length > 0);
+          return withFigures.length ? withFigures[withFigures.length - 1].start : "year";
+        });
         setTo((t) => t || working.data.client.email || "");
         setUnread(docs.data.docs);
       })
       .catch((e) => toast.error(apiError(e)))
       .finally(() => setLoading(false));
   }, [clientId, fy]);
+  // A new year opens on its own latest period
+  useEffect(() => setSelected(null), [fy]);
   useEffect(() => {
     load();
   }, [load, refresh, version]);
@@ -150,22 +165,25 @@ export function ClientGstWorking({ clientId, email, refresh }: { clientId: strin
     }
   };
 
-  const measures = MEASURES.filter((m) => m.key !== "cess" || data?.hasCess);
-  const rows = WORKING_ROWS.filter((r) => !("key" in r) || !r.optional || data?.periods.some((p) => p.rows[r.key] && measure(p.rows[r.key]!, "value") !== 0));
+  const columns = COLUMNS.filter((c) => c.key !== "cess" || data?.hasCess);
+  const rows = WORKING_ROWS.filter((r) => !("key" in r) || !r.optional || data?.periods.some((p) => p.rows[r.key] && valueOf(p.rows[r.key]!, "total") !== 0));
+  const periods = data?.periods ?? [];
+  const index = periods.findIndex((p) => p.start === selected);
+  const period = index >= 0 ? periods[index] : null;
+  // The figures shown: one period, or the year's total
+  const figures = period ? period.rows : data?.total ?? {};
+  const shortTitle = (p: Period) => p.title.replace(/ \d{4}-\d{2}$/, "");
+  // Previous / next go through Year, then each period in turn
+  const order: Selection[] = ["year", ...periods.map((p) => p.start)];
+  const position = order.indexOf(selected ?? "year");
+  const step = (by: number) => setSelected(order[Math.min(order.length - 1, Math.max(0, position + by))]);
   const exportUrl = (format: string) => `/api/compliance/gst-working/export?${new URLSearchParams({ clientId, fy: String(fy), format })}`;
   const attention = data?.periods.filter((p) => p.issues.length > 0) ?? [];
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <FySelect fy={fy} setFy={setFy} />
-        <span className="text-xs text-muted-foreground">Show</span>
-        <Select value={show} onValueChange={(v) => setShow(v as Measure)}>
-          <SelectTrigger className="h-9 w-40 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {measures.map((m) => <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <FyStepper fy={fy} setFy={setFy} />
         <Button asChild size="sm" variant="outline">
           <a href={exportUrl("xlsx")}><Download className="mr-1 h-4 w-4" /> Excel</a>
         </Button>
@@ -187,16 +205,51 @@ export function ClientGstWorking({ clientId, email, refresh }: { clientId: strin
             </div>
           )}
 
-          <div className="overflow-x-auto rounded-md border">
+          {/* One button per month (or quarter); scrolls sideways on a phone */}
+          <div className="flex items-center gap-1">
+            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => step(-1)} disabled={position <= 0} aria-label="Previous period">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex flex-1 gap-1.5 overflow-x-auto pb-1">
+              {order.map((key) => {
+                const p = periods.find((x) => x.start === key);
+                const active = (selected ?? "year") === key;
+                const empty = p && Object.keys(p.rows).length === 0;
+                return (
+                  <Button
+                    key={key}
+                    size="sm"
+                    variant={active ? "default" : "outline"}
+                    className={cn("h-8 shrink-0 rounded-full px-3 text-xs", empty && !active && "text-muted-foreground")}
+                    onClick={() => setSelected(key)}
+                  >
+                    {p ? shortTitle(p) : "Year total"}
+                    {p?.hasDifference && <AlertTriangle className={cn("ml-1 h-3 w-3", active ? "text-white" : "text-red-600")} />}
+                  </Button>
+                );
+              })}
+            </div>
+            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => step(1)} disabled={position >= order.length - 1} aria-label="Next period">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <p className="text-sm font-semibold">
+            {period ? period.title : `${fyLabel(fy)} – total of all periods`}
+            {period && Object.keys(period.rows).length === 0 && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">No return files uploaded for this period yet</span>
+            )}
+          </p>
+
+          {/* Computer: one table with every head side by side */}
+          <div className="hidden overflow-x-auto rounded-md border md:block">
             <table className="w-full text-xs">
               <thead className="bg-muted">
                 <tr>
-                  <th className="sticky left-0 z-10 bg-muted p-2 text-left">SALES WORKING</th>
-                  <th className="whitespace-nowrap p-2 text-right">TOTAL</th>
-                  {data.periods.map((p) => (
-                    <th key={p.start} className="whitespace-nowrap p-2 text-right">
-                      {p.title.replace(/ \d{4}-\d{2}$/, "")}
-                      {p.hasDifference && <AlertTriangle className="ml-1 inline h-3 w-3 text-red-600" />}
+                  <th className="p-2 text-left">PARTICULARS</th>
+                  {columns.map((c) => (
+                    <th key={c.key} className={cn("whitespace-nowrap p-2 text-right", c.key === "total" && "bg-muted-foreground/10")}>
+                      {c.label.toUpperCase()}
                     </th>
                   ))}
                 </tr>
@@ -205,25 +258,43 @@ export function ClientGstWorking({ clientId, email, refresh }: { clientId: strin
                 {rows.map((def, n) =>
                   "heading" in def ? (
                     <tr key={`h${n}`} className="border-t bg-muted/40">
-                      <td className="sticky left-0 bg-muted p-1.5 font-semibold underline" colSpan={1}>{def.heading}</td>
-                      <td colSpan={data.periods.length + 1} />
+                      <td className="p-1.5 font-semibold underline" colSpan={columns.length + 1}>{def.heading}</td>
                     </tr>
                   ) : (
-                    <tr key={def.key} className={cn("border-t", (def.key.endsWith("_net") || def.key === "net_after_1a") && "font-semibold")}>
-                      <td className={cn("sticky left-0 z-10 bg-background p-1.5", def.difference && "font-semibold")}>{def.label}</td>
-                      <Cell value={data.total[def.key as RowKey]} show={show} difference={def.difference} />
-                      {data.periods.map((p) => <Cell key={p.start} value={p.rows[def.key as RowKey]} show={show} difference={def.difference} />)}
+                    <tr key={def.key} className={cn("border-t", isNetRow(def.key) && "font-semibold")}>
+                      <td className={cn("p-1.5", def.difference && "font-semibold")}>{def.label}</td>
+                      {columns.map((c) => (
+                        <Cell key={c.key} value={figures[def.key as RowKey]} column={c.key} difference={def.difference} />
+                      ))}
                     </tr>
                   )
                 )}
               </tbody>
             </table>
           </div>
+
+          {/* Phone: one card per line, the heads under each other, no sideways scrolling */}
+          <div className="space-y-2 md:hidden">
+            {rows.map((def, n) =>
+              "heading" in def ? (
+                <p key={`h${n}`} className="pt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">{def.heading}</p>
+              ) : (
+                <MobileRow key={def.key} label={def.label} value={figures[def.key as RowKey]} columns={columns} difference={def.difference} strong={isNetRow(def.key)} />
+              )
+            )}
+          </div>
+
           <p className="text-xs text-muted-foreground">
-            Every figure is read from the files uploaded for the period (GSTR-1/IFF JSON and PDF, GSTR-1A PDF, GSTR-3B PDF, GSTR-2B JSON); to correct one, upload the corrected file. The Excel and PDF have every column.
+            Every figure is read from the files uploaded for the period (GSTR-1/IFF JSON and PDF, GSTR-1A PDF, GSTR-3B PDF, GSTR-2B JSON); to correct one, upload the corrected file. The Excel and PDF have every month together.
           </p>
 
-          {attention.length > 0 ? (
+          {period ? (
+            period.issues.length > 0 || period.files.some((f) => f.state === "missing") ? (
+              <PeriodCard period={period} />
+            ) : (
+              Object.keys(period.rows).length > 0 && <p className="text-xs text-emerald-700 dark:text-emerald-400">Everything ties for {period.title}.</p>
+            )
+          ) : attention.length > 0 ? (
             <div className="grid gap-2 lg:grid-cols-2">
               {attention.map((p) => <PeriodCard key={p.start} period={p} />)}
             </div>
@@ -243,14 +314,53 @@ export function ClientGstWorking({ clientId, email, refresh }: { clientId: strin
   );
 }
 
-function Cell({ value, show, difference }: { value: Heads | undefined; show: Measure; difference?: boolean }) {
-  if (!value) return <td className="p-1.5 text-right text-muted-foreground">–</td>;
-  const v = measure(value, show);
-  const bad = difference && Math.abs(v) >= 1;
+const isNetRow = (key: string) => key.endsWith("_net") || key === "net_after_1a";
+
+// A difference shows ✓ when it ties (under ₹1) and the amount in red when not
+function shown(value: Heads | undefined, column: Column, difference?: boolean) {
+  if (!value) return { text: "–", tone: "text-muted-foreground" };
+  const v = valueOf(value, column);
+  if (!difference) return { text: amount(v), tone: "" };
+  return Math.abs(v) >= 1 ? { text: amount(v), tone: "font-semibold text-red-600" } : { text: "✓", tone: "text-emerald-700 dark:text-emerald-400" };
+}
+
+function Cell({ value, column, difference }: { value: Heads | undefined; column: Column; difference?: boolean }) {
+  const { text, tone } = shown(value, column, difference);
+  return <td className={cn("whitespace-nowrap p-1.5 text-right tabular-nums", column === "total" && "bg-muted/40 font-semibold", tone)}>{text}</td>;
+}
+
+function MobileRow({
+  label,
+  value,
+  columns,
+  difference,
+  strong,
+}: {
+  label: string;
+  value: Heads | undefined;
+  columns: { key: Column; label: string }[];
+  difference?: boolean;
+  strong?: boolean;
+}) {
   return (
-    <td className={cn("whitespace-nowrap p-1.5 text-right tabular-nums", bad && "font-semibold text-red-600", difference && !bad && "text-emerald-700 dark:text-emerald-400")}>
-      {difference && !bad ? "✓" : amount(v)}
-    </td>
+    <div className={cn("rounded-md border p-2", strong && "border-primary/40 bg-primary/5")}>
+      <p className={cn("mb-1 text-xs", (strong || difference) && "font-semibold")}>{label}</p>
+      {!value ? (
+        <p className="text-xs text-muted-foreground">–</p>
+      ) : (
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+          {columns.map((c) => {
+            const { text, tone } = shown(value, c.key, difference);
+            return (
+              <div key={c.key} className={cn("flex justify-between gap-2", c.key === "total" && "col-span-2 border-t pt-0.5 font-semibold")}>
+                <dt className="text-muted-foreground">{c.label}</dt>
+                <dd className={cn("tabular-nums", tone)}>{text}</dd>
+              </div>
+            );
+          })}
+        </dl>
+      )}
+    </div>
   );
 }
 
