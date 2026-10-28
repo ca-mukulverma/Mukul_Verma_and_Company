@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import axios from "axios";
@@ -133,6 +134,9 @@ export default function EditClientPage({
     },
   });
 
+  // Asks before Cancel or closing the tab throws away what was typed
+  const confirmLeave = useUnsavedChanges(form.formState.isDirty && !saving);
+
   // Watch the isGuest field to conditionally display the expiry date field
   const isGuest = form.watch("isGuest");
 
@@ -217,6 +221,8 @@ export default function EditClientPage({
       await axios.patch(`/api/clients/${clientId}`, clientData);
 
       toast.success("Client updated successfully");
+      // Saved: leaving no longer needs a warning
+      form.reset(data);
 
       // Redirect after short delay
       setTimeout(() => {
@@ -471,7 +477,7 @@ export default function EditClientPage({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => router.push(`/dashboard/clients/${clientId}`)}
+                  onClick={() => confirmLeave() && router.push(`/dashboard/clients/${clientId}`)}
                 >
                   Cancel
                 </Button>

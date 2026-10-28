@@ -6,6 +6,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import * as z from "zod";
 import {
   Card,
@@ -211,6 +212,9 @@ export default function EditTaskPage() {
     }
   }, [taskId, form, router]);
 
+  // Asks before Cancel or closing the tab throws away the changes
+  const confirmLeave = useUnsavedChanges(form.formState.isDirty && !isLoading);
+
   // Form submission handler
   const onSubmit = async (data: TaskFormValues) => {
     try {
@@ -232,6 +236,8 @@ export default function EditTaskPage() {
       // Submit to API
       await axios.patch(`/api/tasks/${taskId}`, taskData);
       toast.success("Task updated successfully");
+      // Saved: leaving no longer needs a warning
+      form.reset(data);
       router.push(`/dashboard/tasks/${taskId}`);
     } catch (error) {
       console.error("Error updating task:", error);
@@ -288,7 +294,10 @@ export default function EditTaskPage() {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form
+              onSubmit={form.handleSubmit(onSubmit, () => toast.error("Please fill in the fields marked in red"))}
+              className="space-y-6"
+            >
               <FormField
                 control={form.control}
                 name="title"
@@ -522,7 +531,7 @@ export default function EditTaskPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => router.push(`/dashboard/tasks/${taskId}`)}
+                  onClick={() => confirmLeave() && router.push(`/dashboard/tasks/${taskId}`)}
                 >
                   Cancel
                 </Button>
