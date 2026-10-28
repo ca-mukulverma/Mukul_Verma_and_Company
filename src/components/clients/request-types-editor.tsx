@@ -38,6 +38,7 @@ const RETURN_DOC_LABELS: Record<(typeof RETURN_DOC_KINDS)[number], string> = {
   RETURN_JSON: "Return JSON",
   GSTR1A_PDF: "GSTR-1A PDF",
   GSTR1A_JSON: "GSTR-1A JSON",
+  GSTR2B_JSON: "GSTR-2B JSON",
   CHALLAN: "Challan",
   CERTIFICATE: "Form 16/16A",
   OTHER: "Other files",

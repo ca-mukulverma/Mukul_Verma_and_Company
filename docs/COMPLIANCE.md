@@ -93,7 +93,7 @@ There are three sheets, made to work like the old Excel tracker:
 
 Everything is done **on the sheet**:
 
-- **Click any cell** to open its small window: mark filed, enter figures,
+- **Click any cell** to open its small window: mark filed, enter TDS figures,
   confirm RCM / TDS lines, add challans, attach files, do the Form 16/16A
   steps, see history. Nothing else needs to be opened.
 - **Data recd**: one tick marks GSTR-1 and GSTR-3B of the row together. An
@@ -213,21 +213,25 @@ Past periods don't ask for these.
 
 ## GSTR-1A
 
-Inside the GSTR-1 item (after GSTR-1 is filed): tick *GSTR-1A filed for this
-period*, enter the date, ARN and the change in taxable value and tax, and
-attach its PDF/JSON. The sheet shows it in the **1A** column, the
-reconciliation adds it to GSTR-1, and there is no separate fee.
+Upload the GSTR-1A PDF (Upload returns, or the GSTR-1 item's window): it marks
+the GSTR-1A filed with its ARN and date and its figures go into the GST
+working. It can also be ticked by hand inside the GSTR-1 item. The sheet shows
+it in the **1A** column, the reconciliation adds it to GSTR-1, and there is no
+separate fee.
 
 ## Files
 
 - Attach files from the cell window: **Return PDF**, **Return JSON** (GST
   JSON from the portal wherever available), **Challan**, **Form 16/16A**,
   **Other**. Client-level files go under the client's **Files**.
-- **Upload returns** (Compliance → Clients → a client): choose or drop any
-  number of PDFs, JSONs and ZIPs. ZIPs (and ZIPs inside them) are opened and
-  each file inside is read on its own. For each file the app reads:
-  - GST JSON: GSTIN and period (`fp` in GSTR-1, `ret_period` in GSTR-3B);
-  - GSTR-1, GSTR-1A and GSTR-3B PDFs: GSTIN, period, ARN and date of ARN;
+- **Upload returns** (Compliance → Clients → a client, or for **all clients**
+  in Compliance → GST working): choose or drop any number of PDFs, JSONs,
+  ZIPs, RARs or a whole folder. ZIPs and RARs (and ZIPs inside them) are
+  opened and each file inside is read on its own. For each file the app reads:
+  - GST returns (GSTR-1/IFF JSON and PDF, GSTR-1A PDF, GSTR-3B PDF, GSTR-2B
+    JSON): GSTIN, period, ARN, filing date and **all the figures** of the GST
+    working (see [GST_WORKING.md](GST_WORKING.md)); a filed return's PDF marks
+    its period filed;
   - TDS: Form 27A / provisional receipt (TAN, 24Q/26Q, quarter, token
     number), Form 16A and Form 16 (TAN, quarter or year), challan 281 (TAN;
     the month is taken as the one before the deposit date, so check it);
@@ -235,8 +239,9 @@ reconciliation adds it to GSTR-1, and there is no separate fee.
 
   A table shows each file with the return found, whether the **GSTIN / TAN
   matches the client**, the work, file type and period, and where it will go.
-  Everything can be changed; rows to check are highlighted, and files of
-  another GSTIN or TAN are red and left unticked. **Upload** adds the ticked
+  Everything can be changed (except the period and type of a GST return, read
+  from the file); rows to check are highlighted, and files of another GSTIN or
+  TAN, in a folder of another month, or uploaded twice are left unticked. **Upload** adds the ticked
   files: periods in the sheet only get the file (their status is changed in
   the sheet); a past period that doesn't exist yet is saved as completed with
   the ARN and filing date read from the file. Scanned PDFs can't be read and
@@ -333,8 +338,11 @@ Compliance → **Reconciliation**:
   value and tax, ITC claimed vs GSTR-2B, RCM lines vs RCM paid, cash paid and
   totals; and a TDS table with challans paid vs TDS deposited in each return.
 
-The figures come from what staff enter when marking returns filed. It is plain
-arithmetic done by the app, always live and free.
+GST figures are read from the uploaded return files (they can't be typed in);
+the full working in the firm's format, with sign-off, Excel and PDF, is in
+**GST working** ([GST_WORKING.md](GST_WORKING.md)). TDS figures are entered
+when marking returns filed. It is plain arithmetic done by the app, always
+live and free.
 
 ## Overview and notifications
 
@@ -513,8 +521,9 @@ which is several years of return PDFs.
 
 ## Not included yet
 
-- Reading figures automatically from the uploaded PDF/JSON (figures are typed
-  in when marking filed). Can be added once sample portal files are available.
+- Reading TDS return figures from files (GST figures are read; see
+  [GST_WORKING.md](GST_WORKING.md)).
+- GSTR-2B against the Tally purchase register.
 - Importing the old Excel tracker (a column-matching import can be added when
   the sheet is available).
 - More than one mobile number / email per client (the client master's are used).
@@ -527,7 +536,8 @@ which is several years of return PDFs.
   periods and due dates: `src/lib/compliance-periods.ts`; sheets:
   `src/lib/compliance-sheet.ts`; reconciliation: `src/lib/compliance-reco.ts`;
   storage: `src/lib/r2.ts`; emails: `src/lib/compliance-email.ts`; reading
-  uploaded returns: `src/components/compliance/return-detect.ts`; WhatsApp:
+  uploaded returns: `src/components/compliance/return-detect.ts`; GST working:
+  see [GST_WORKING.md](GST_WORKING.md#for-developers); WhatsApp:
   `src/components/compliance/whatsapp-send.ts` and the extension in
   `public/whatsapp-extension` (`__APP_ORIGIN__` is filled in on download).
 - API: `src/app/api/compliance/*`; daily job: `src/app/api/cron/compliance`

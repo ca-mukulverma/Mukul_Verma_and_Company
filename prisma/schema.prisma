@@ -134,6 +134,7 @@ model User {
   complianceReminders     ComplianceReminder[]
   complianceCompleted     ComplianceItem[]      @relation("ComplianceItemCompletedBy")
   complianceChecked       ComplianceItem[]      @relation("ComplianceItemCheckedBy")
+  gstWorkingChecks        GstWorkingCheck[]     @relation("GstWorkingCheckedBy")
   obligationLinesResolved ComplianceObligationLine[]
   clientDispatches        ClientDispatch[]
 
@@ -189,6 +190,7 @@ model Client {
   obligations             ClientObligation[]
   complianceNotes         ComplianceNote[]
   dispatches              ClientDispatch[]
+  gstWorkingChecks        GstWorkingCheck[]
   
   @@index([managerId])
   @@index([contactPerson]) // Index for searching by contact person name
@@ -650,6 +652,7 @@ enum ComplianceDocKind {
   RETURN_JSON
   GSTR1A_PDF
   GSTR1A_JSON
+  GSTR2B_JSON
   CHALLAN
   CERTIFICATE
   OTHER
@@ -829,9 +832,14 @@ model ComplianceDocument {
   // year it belongs to (2025 = FY 2025-26)
   docType       String?          @db.VarChar(40)
   financialYear Int?
+  // GST returns: the figures read from the file when it was uploaded (see
+  // lib/gst-read) and the month they are for (a quarter's last month)
+  gst          Json?
+  gstMonth     DateTime?         @db.Date
   createdAt    DateTime          @default(now())
 
   @@index([clientId, createdAt])
+  @@index([clientId, gstMonth])
   @@index([clientId, docType])
   @@index([itemId])
   @@index([storageKey])
@@ -921,6 +929,31 @@ model ComplianceNote {
   createdAt DateTime        @default(now())
 
   @@index([createdAt])
+}
+
+// A reviewer's sign-off of one GST period in the client's GST working (see
+// docs/GST_WORKING.md). The figures as they were when checked are kept, so a
+// later upload that changes them shows the check as out of date.
+model GstWorkingCheck {
+  id          String   @id @default(uuid()) @db.Char(36)
+  clientId    String   @db.Char(36)
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  periodStart DateTime @db.Date
+  checkedById String?  @db.Char(36)
+  checkedBy   User?    @relation("GstWorkingCheckedBy", fields: [checkedById], references: [id], onDelete: SetNull)
+  // Required when the period has a difference
+  remark      String?  @db.Text
+  snapshot    Json
+  createdAt   DateTime @default(now())
+
+  @@unique([clientId, periodStart])
+}
+
+// Firm-wide compliance settings, e.g. {"gstSwingPercent": 50}
+model ComplianceSetting {
+  key       String   @id @db.VarChar(40)
+  value     Json
+  updatedAt DateTime @updatedAt
 }
 
 // ─── Send to Client ─────────────────────────────────────────────────────────

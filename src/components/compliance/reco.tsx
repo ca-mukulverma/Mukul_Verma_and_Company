@@ -51,7 +51,8 @@ function fyOf(month: string) {
   return m >= 4 ? y : y - 1;
 }
 
-// Reconciliation from the figures staff enter when they mark returns filed.
+// Reconciliation from the figures read from the uploaded GST returns and the
+// TDS figures staff enter when they mark returns filed.
 // Worked out by the app itself (no AI), so it is always free and live.
 export function ComplianceReco({ isManager }: { isManager: boolean }) {
   const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
@@ -244,7 +245,7 @@ export function ComplianceReco({ isManager }: { isManager: boolean }) {
               </table>
             </div>
             <p className="text-xs text-muted-foreground">
-              Diff = GSTR-3B minus GSTR-1, or return minus challans. Figures come from what staff enter when marking a return filed; empty figures show as –.
+              Diff = GSTR-3B minus GSTR-1, or return minus challans. GST figures are read from the uploaded returns (see GST working for the full working); TDS figures are entered when a return is marked filed. Empty figures show as –.
             </p>
           </>
         )}
