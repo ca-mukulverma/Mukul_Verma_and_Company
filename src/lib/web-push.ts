@@ -62,7 +62,10 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             message,
-            { TTL: 60 * 60 * 24 }
+            // "high": delivered at once. With the default ("normal") Android
+            // holds pushes while the phone is idle and iPhones may batch or
+            // drop them to save battery.
+            { TTL: 60 * 60 * 24, urgency: "high" }
           );
         } catch (error: unknown) {
           const statusCode = (error as { statusCode?: number })?.statusCode;

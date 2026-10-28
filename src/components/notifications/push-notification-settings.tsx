@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { BellRing, BellOff, Share, PlusSquare, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { syncPushSubscription, urlBase64ToUint8Array, VAPID_PUBLIC_KEY } from "@/lib/push-client";
 
 type PushState =
   | "loading"
@@ -14,15 +15,6 @@ type PushState =
   | "denied"
   | "disabled"
   | "enabled";
-
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
-
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = window.atob(base64);
-  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
-}
 
 function isIOS() {
   return (
@@ -60,6 +52,11 @@ export function PushNotificationSettings() {
       return;
     }
 
+    // Permission given: make sure the server has this device's current address
+    if (Notification.permission === "granted" && (await syncPushSubscription().catch(() => false))) {
+      setState("enabled");
+      return;
+    }
     const registration = await navigator.serviceWorker.register("/sw.js");
     const subscription = await registration.pushManager.getSubscription();
     setState(subscription ? "enabled" : "disabled");
@@ -142,7 +139,7 @@ export function PushNotificationSettings() {
           Phone notifications
         </CardTitle>
         <CardDescription>
-          Get task, comment and chat alerts on your iPhone or Android lock screen, even when the app
+          Get task, billing, compliance, comment and chat alerts on your iPhone or Android lock screen, even when the app
           is closed.
         </CardDescription>
       </CardHeader>

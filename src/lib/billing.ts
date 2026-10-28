@@ -1,4 +1,5 @@
 import { Bill, BillType, Company, Prisma } from "@prisma/client";
+import { after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser } from "@/lib/web-push";
@@ -195,6 +196,24 @@ export async function ensureDraftBillForTask(taskId: string, userId: string) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return;
     throw error;
   }
+
+  // Admin and the company's billing managers: the bill is waiting for them.
+  // Sent after the response so completing the task isn't slowed down.
+  after(async () => {
+    const [managerIds, completedBy] = await Promise.all([
+      getBillingManagerIds(task.company),
+      prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+    ]);
+    await notifyBillingUsers(
+      managerIds.filter((id) => id !== userId),
+      {
+        title: "Task completed: ready for billing",
+        content: `${completedBy?.name ?? "Someone"} completed "${task.title}" (${task.company === "BEDGE" ? "B Edge" : "MVC"}). Its bill is waiting in the ${task.company === "BEDGE" ? "B Edge" : "MVC"} bills.`,
+        sentById: userId,
+      },
+      `/dashboard/billing?tab=${task.company === "BEDGE" ? "bedge" : "mvc"}`
+    );
+  });
 }
 
 // When a completed task is reopened, its bill is removed if nobody has
@@ -272,15 +291,23 @@ export async function getBillingManagerIds(company: Company): Promise<string[]> 
 
 // In-app + push notification about a bill; clicking it opens the billing page.
 // Never throws.
+// The push goes out even if saving the in-app copy fails, so a phone is never
+// left without the alert. `url` opens the tab the bill is waiting in.
 export async function notifyBillingUsers(
   userIds: string[],
-  message: { title: string; content: string; sentById: string }
+  message: { title: string; content: string; sentById: string },
+  url = "/dashboard/billing"
 ) {
   const uniqueIds = [...new Set(userIds)];
+  // The notification title column holds 75 characters
+  const title = message.title.slice(0, 75);
   const results = await Promise.allSettled(
     uniqueIds.map(async (sentToId) => {
-      await prisma.notification.create({ data: { ...message, sentToId } });
-      await sendPushToUser(sentToId, { title: message.title, body: message.content, url: "/dashboard/billing" });
+      const [saved] = await Promise.allSettled([
+        prisma.notification.create({ data: { ...message, title, sentToId } }),
+        sendPushToUser(sentToId, { title, body: message.content, url }),
+      ]);
+      if (saved.status === "rejected") throw saved.reason;
     })
   );
   for (const result of results) {

@@ -490,6 +490,9 @@ function BillCard({
             <Button size="sm" variant="outline" onClick={() => onOpen("send_back")}>
               <Undo2 className="mr-1 h-3.5 w-3.5" />Send back
             </Button>
+            <Button size="sm" variant="outline" className="text-destructive" onClick={() => onOpen("not_billable")}>
+              <Ban className="mr-1 h-3.5 w-3.5" />Not billable
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => onOpen("history")}>
               <History className="mr-1 h-3.5 w-3.5" />History
             </Button>

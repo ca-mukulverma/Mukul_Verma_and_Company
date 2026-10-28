@@ -45,3 +45,26 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
+
+// The browser replaced this device's push subscription (Android does this from
+// time to time, iPhones after an update). Subscribe again with the same key and
+// tell the server, otherwise pushes would go to the old, dead address.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const key = event.oldSubscription?.options?.applicationServerKey;
+  event.waitUntil(
+    (event.newSubscription
+      ? Promise.resolve(event.newSubscription)
+      : key
+        ? self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key })
+        : Promise.resolve(null)
+    ).then((subscription) => {
+      if (!subscription) return;
+      return fetch("/api/push/subscribe", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription.toJSON()),
+      });
+    })
+  );
+});

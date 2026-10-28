@@ -293,7 +293,16 @@ export function RequestAmountDialog({ bill, onClose, onDone }: DialogProps) {
 export function RemarkDialog({ bill, onClose, onDone, kind }: DialogProps & { kind: keyof typeof REMARK_DIALOGS }) {
   const [remark, setRemark] = useState("");
   const { saving, run } = useBillAction({ bill, onDone });
-  const config = REMARK_DIALOGS[kind];
+  // The person asked for the amount must say why it should not be billed:
+  // the billing managers are told and can reopen it
+  const config =
+    kind === "not_billable" && !bill.canManage
+      ? {
+          ...REMARK_DIALOGS.not_billable,
+          description: "Use this when the work should not be billed. Admin and the billing managers are told and can reopen it.",
+          required: true,
+        }
+      : REMARK_DIALOGS[kind];
   const valid = !config.required || remark.trim().length >= 3;
 
   return (

@@ -230,7 +230,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             title: "Bill awaiting your amount",
             content: `${user.name} asked you to enter the amount for: ${billLabel}`,
             sentById: user.id,
-          })
+          }, "/dashboard/billing?tab=amounts")
         );
       }
       break;
@@ -290,7 +290,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             title: "Bill awaiting final approval",
             content: `${user.name} entered the amount for: ${billLabel}. It is waiting for Admin's final approval.`,
             sentById: user.id,
-          });
+          }, "/dashboard/billing?tab=final");
           return;
         }
         // Admin, the billing managers and the partner the bill was sent to
@@ -329,14 +329,31 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     case "not_billable": {
-      if (!isManager) return forbidden();
+      // The billing manager, or the person asked for the amount when they
+      // feel the work should not be billed at all
+      if (!isManager && !isRequestedUser) return forbidden();
+      if (!isManager && !input.remark) {
+        return NextResponse.json({ error: "Say why this should not be billed" }, { status: 400 });
+      }
       const ok = await updateIfStatus(
         bill.id,
-        EDITABLE_BILL_STATUSES as BillStatus[],
+        isManager ? (EDITABLE_BILL_STATUSES as BillStatus[]) : ["awaiting_amount"],
         { status: "not_billable", amountRequestedFromId: null },
         { action: "not_billable", userId: user.id, remark: input.remark || null }
       );
       if (!ok) return conflict();
+
+      if (!isManager) {
+        // Admin and the billing managers: they can reopen it if they disagree
+        after(async () => {
+          const managerIds = await getBillingManagerIds(bill.company);
+          await notifyBillingUsers(managerIds.filter((id) => id !== user.id), {
+            title: "Bill marked not billable",
+            content: `${user.name} marked ${billLabel} as not billable: "${input.remark}". Reopen it from the bills tab if it should be billed.`,
+            sentById: user.id,
+          });
+        });
+      }
       break;
     }
 
