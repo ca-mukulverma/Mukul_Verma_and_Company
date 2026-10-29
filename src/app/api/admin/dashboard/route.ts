@@ -1,9 +1,11 @@
 import { NextResponse, NextRequest } from "next/server";
+import { BillType } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendPushForNotification } from "@/lib/web-push";
 import { dashboardCache } from "@/lib/cache";
+import { BILL_TYPE_LABELS, BILL_TYPES } from "@/lib/billing-constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -140,6 +142,7 @@ export async function GET(request: NextRequest) {
         canManageBedgeBilling: true,
         canEnterBillAmounts: true,
         canViewBillingList: true,
+        billingListTypes: true,
       },
     });
 
@@ -310,7 +313,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Array of { id, canApproveBilling, canManageBedgeBilling?, canEnterBillAmounts?, canViewBillingList? }
+  // Array of { id, canApproveBilling, canManageBedgeBilling?, canEnterBillAmounts?, canViewBillingList?,
+  // billingListTypes? } – billingListTypes: the Billing Lists that partner sees, [] = all
   const { updates } = await request.json() as {
     updates: {
       id: string;
@@ -318,14 +322,24 @@ export async function POST(request: NextRequest) {
       canManageBedgeBilling?: boolean;
       canEnterBillAmounts?: boolean;
       canViewBillingList?: boolean;
+      billingListTypes?: BillType[];
     }[];
   };
+  if (updates.some((u) => u.billingListTypes?.some((t) => !(BILL_TYPES as string[]).includes(t)))) {
+    return NextResponse.json({ error: "Unknown bill type" }, { status: 400 });
+  }
 
   try {
     const updatePromises = updates.map(async (update) => {
       const before = await prisma.user.findUnique({
         where: { id: update.id },
-        select: { canApproveBilling: true, canManageBedgeBilling: true, canEnterBillAmounts: true, canViewBillingList: true },
+        select: {
+          canApproveBilling: true,
+          canManageBedgeBilling: true,
+          canEnterBillAmounts: true,
+          canViewBillingList: true,
+          billingListTypes: true,
+        },
       });
       const updatedUser = await prisma.user.update({
         where: { id: update.id },
@@ -339,6 +353,9 @@ export async function POST(request: NextRequest) {
           }),
           ...(update.canViewBillingList !== undefined && {
             canViewBillingList: update.canViewBillingList,
+          }),
+          ...(update.billingListTypes !== undefined && {
+            billingListTypes: [...new Set(update.billingListTypes)],
           }),
         },
       });
@@ -377,8 +394,17 @@ export async function POST(request: NextRequest) {
       if (update.canEnterBillAmounts && !before?.canEnterBillAmounts) {
         granted.push("Billing managers can now send you bills to enter the amount. They appear under \"Awaiting my amount\" on the Billing page.");
       }
+      const lists = (types: BillType[]) =>
+        types.length && types.length < BILL_TYPES.length ? types.map((t) => BILL_TYPE_LABELS[t]).join(", ") : "MVC and B Edge (all bills)";
+      const newTypes = update.billingListTypes ?? before?.billingListTypes ?? [];
       if (update.canViewBillingList && !before?.canViewBillingList) {
-        granted.push("You can now see the Billing List of MVC and B Edge on the Billing page, download bills and email them to clients.");
+        granted.push(`You can now see the Billing List on the Billing page for ${lists(newTypes)}, download those bills and email them to clients.`);
+      } else if (
+        update.canViewBillingList &&
+        update.billingListTypes !== undefined &&
+        [...newTypes].sort().join() !== [...(before?.billingListTypes ?? [])].sort().join()
+      ) {
+        granted.push(`Your Billing List now shows: ${lists(newTypes)}.`);
       }
       for (const content of granted) {
         const notification = await prisma.notification.create({
@@ -393,6 +419,8 @@ export async function POST(request: NextRequest) {
       }
     });
     await Promise.all(updatePromises);
+    // The permissions page reads partners from the cached dashboard data
+    await dashboardCache.invalidate("*").catch(() => undefined);
     return NextResponse.json({ message: "Permissions updated successfully" });
   } catch (error) {
     console.error("Failed to update permissions:", error);

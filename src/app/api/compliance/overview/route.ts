@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     prisma.complianceItem.groupBy({ by: ["workTypeId"], where: { status: "pending", historical: false, periodEnd: { gte: addMonths(monthStart, -12) } }, _count: true }),
     prisma.complianceItem.groupBy({ by: ["workTypeId"], where: { status: "data_received", historical: false }, _count: true }),
     prisma.complianceItem.groupBy({ by: ["workTypeId"], where: { status: "filed", historical: false }, _count: true }),
-    prisma.complianceItem.groupBy({ by: ["workTypeId"], where: { status: "completed", completedAt: { gte: monthStart } }, _count: true }),
+    prisma.complianceItem.groupBy({ by: ["workTypeId"], where: { status: "completed", historical: false, completedAt: { gte: monthStart } }, _count: true }),
     access.isManager
       ? prisma.complianceNote.findMany({
           orderBy: { createdAt: "desc" },

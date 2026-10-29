@@ -21,8 +21,6 @@ const HINDI: Record<string, string> = {
   "Clients": "क्लाइंट",
   "Office": "ऑफिस",
   "Billing": "बिलिंग",
-  "Team Chat": "टीम चैट",
-  "Chat": "चैट",
   "Admin": "एडमिन",
   "Users": "यूज़र",
   "Settings": "सेटिंग्स",

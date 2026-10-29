@@ -60,9 +60,9 @@ The database compute starts when a query arrives and suspends after
 3. **Notification bell** polls every 60 s (was 30 s) through the shared
    idle-aware hook, and refreshes on return to the app at most once every
    30 s. Push notifications are unaffected.
-4. **Chat staff list** (`/api/chat/users`) is cached in Redis for 5 minutes
-   instead of being read from Neon on every 30-second poll. Online status
-   remains live.
+4. **Team Chat was removed** (29 Oct 2026). It had not been used for a long
+   time; its polling and live connection are gone, and Redis now only serves
+   the cache.
 
 ### Checked and already fine
 
@@ -76,7 +76,6 @@ The database compute starts when a query arrives and suspends after
 - **Connections:** the app uses Neon's pooled `DATABASE_URL`; migrations
   switch to the direct address (`scripts/migrate-on-vercel.js`). Prisma is a
   single shared client.
-- **Chat live updates and the online heartbeat** use Redis, not Neon.
 - **Role check** (`/api/auth/validate-role`) already polls every 5 minutes
   only while the user is active.
 

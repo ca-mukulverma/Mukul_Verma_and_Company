@@ -5,7 +5,7 @@ import Link from "next/link";
 import axios from "axios";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { AlertTriangle, ArrowLeft, KeyRound, Loader2, Send, Settings2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, KeyRound, Loader2, Search, Send, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { REQUEST_CATEGORIES, RequestTypeView } from "@/lib/client-requests";
 import { clientDocType } from "@/lib/client-documents";
+import { matchesSearch } from "@/lib/search-text";
 
 // Send to Client: pick what the client asked for, check what it picked, send.
 // See docs/CLIENT_REQUESTS.md.
@@ -89,6 +90,7 @@ export function SendToClient({ clientId }: { clientId: string }) {
   const [data, setData] = useState<PreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [fileSearch, setFileSearch] = useState("");
 
   const [docIds, setDocIds] = useState<Set<string>>(new Set());
   const [billIds, setBillIds] = useState<Set<string>>(new Set());
@@ -164,7 +166,12 @@ export function SendToClient({ clientId }: { clientId: string }) {
 
   const files = useMemo(() => preview?.files ?? [], [preview]);
   const isChosen = useCallback((f: DispatchFile) => (f.source === "bill" ? billIds : docIds).has(f.id), [billIds, docIds]);
-  const shownFiles = showAll ? files : files.filter((f) => f.selected || isChosen(f));
+  // Typing a search looks through all the client's files
+  const shownFiles = fileSearch.trim()
+    ? files.filter((f) => matchesSearch(fileSearch, f.label, f.fileName, f.group))
+    : showAll
+      ? files
+      : files.filter((f) => f.selected || isChosen(f));
   const groups = useMemo(() => {
     const map = new Map<string, DispatchFile[]>();
     for (const f of shownFiles) map.set(f.group, [...(map.get(f.group) ?? []), f]);
@@ -347,8 +354,21 @@ export function SendToClient({ clientId }: { clientId: string }) {
                     </Button>
                   )}
                 </div>
+                {files.length > 0 && (
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      className="pl-8"
+                      placeholder="Find a file to add: e.g. 3b sep, form 16a q2, itr 2025"
+                      value={fileSearch}
+                      onChange={(e) => setFileSearch(e.target.value)}
+                    />
+                  </div>
+                )}
                 {groups.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{files.length ? "No files picked." : "The client has no files yet."}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {fileSearch.trim() ? "No file matches the search." : files.length ? "No files picked." : "The client has no files yet."}
+                  </p>
                 ) : (
                   groups.map(([group, list]) => (
                     <div key={group} className="space-y-1">

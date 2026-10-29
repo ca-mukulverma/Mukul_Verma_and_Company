@@ -4,7 +4,6 @@ import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const MAX_PAGE_SIZE = 50;
-const CHAT_TITLE = "New Team Chat Message";
 
 // Get notifications with pagination and filters
 export async function GET(request: NextRequest) {
@@ -77,19 +76,13 @@ export async function GET(request: NextRequest) {
       where: whereCondition,
     });
 
-    // Count unread notifications, and how many of them are chat messages
-    // (shown on Team Chat in the sidebar)
-    const [unreadCount, unreadChat] = await Promise.all([
-      prisma.notification.count({
-        where: {
-          sentToId: currentUser.id,
-          isRead: false,
-        },
-      }),
-      prisma.notification.count({
-        where: { sentToId: currentUser.id, isRead: false, title: CHAT_TITLE },
-      }),
-    ]);
+    // Count unread notifications
+    const unreadCount = await prisma.notification.count({
+      where: {
+        sentToId: currentUser.id,
+        isRead: false,
+      },
+    });
 
     // Format response based on requested format
     if (format === "dashboard") {
@@ -130,7 +123,6 @@ export async function GET(request: NextRequest) {
         pages: Math.ceil(totalCount / limit),
       },
       unreadCount,
-      unreadChat,
     });
   } catch (error) {
     console.error("Error fetching notifications:", error);
@@ -146,9 +138,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Mark all notifications as read; ?area=chat marks only chat messages read
-// (when Team Chat is opened)
-export async function PATCH(request: NextRequest) {
+// Mark all notifications as read
+export async function PATCH() {
   try {
     // Get authenticated user
     const session = await getServerSession(authOptions);
@@ -164,12 +155,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Mark all notifications as read
-    const chatOnly = new URL(request.url).searchParams.get("area") === "chat";
     const updated = await prisma.notification.updateMany({
       where: {
         sentToId: currentUser.id,
         isRead: false,
-        ...(chatOnly ? { title: CHAT_TITLE } : {}),
       },
       data: {
         isRead: true,

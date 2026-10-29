@@ -6,6 +6,7 @@ import { sendPushToUser } from "@/lib/web-push";
 import {
   ADMIN_AMOUNT_EDIT_STATUSES,
   BILL_TYPES,
+  billTypesOf,
   EDITABLE_BILL_STATUSES,
   formatBillNumber,
   financialYearOf,
@@ -20,8 +21,11 @@ export interface BillingAccess {
   manages: Company[];
   // Admins, and the partners Admin has allowed, can be asked to enter an amount
   canEnterAmounts: boolean;
-  // Companies whose Billing List (numbered bills) the user sees, downloads and
-  // emails: the ones they manage, or both for a partner Admin has allowed
+  // Bill types whose Billing List (numbered bills) the user sees, downloads and
+  // emails: those of the companies they manage, plus the ones Admin chose for a
+  // partner with Billing List (all of them if Admin chose none)
+  listTypes: BillType[];
+  // The companies of those bill types
   listCompanies: Company[];
 }
 
@@ -35,6 +39,7 @@ export async function getBillingAccess(userId: string): Promise<BillingAccess | 
       canManageBedgeBilling: true,
       canEnterBillAmounts: true,
       canViewBillingList: true,
+      billingListTypes: true,
     },
   });
   if (!user || !user.isActive) return null;
@@ -45,9 +50,19 @@ export async function getBillingAccess(userId: string): Promise<BillingAccess | 
   if (isAdmin || (isPartner && user.canApproveBilling)) manages.push("MVC");
   if (isAdmin || (isPartner && user.canManageBedgeBilling)) manages.push("BEDGE");
 
-  const listCompanies: Company[] = isPartner && user.canViewBillingList ? ["MVC", "BEDGE"] : manages;
+  const chosen = isPartner && user.canViewBillingList ? (user.billingListTypes.length ? user.billingListTypes : BILL_TYPES) : [];
+  const allowed = new Set<BillType>([...billTypesOf(manages), ...chosen]);
+  const listTypes = (BILL_TYPES as BillType[]).filter((t) => allowed.has(t));
+  const listCompanies = (["MVC", "BEDGE"] as Company[]).filter((c) => listTypes.some((t) => companyOfType(t) === c));
 
-  return { userId, isAdmin, manages, canEnterAmounts: isAdmin || (isPartner && user.canEnterBillAmounts), listCompanies };
+  return {
+    userId,
+    isAdmin,
+    manages,
+    canEnterAmounts: isAdmin || (isPartner && user.canEnterBillAmounts),
+    listTypes,
+    listCompanies,
+  };
 }
 
 export function managesCompany(access: BillingAccess, company: Company) {
@@ -56,9 +71,11 @@ export function managesCompany(access: BillingAccess, company: Company) {
 
 export const LISTED_BILL_STATUSES: Bill["status"][] = ["approved", "cancelled"];
 
-// The bill is in the Billing List and the user may see that list
-export function seesInBillingList(bill: Pick<Bill, "company" | "status">, access: BillingAccess) {
-  return access.listCompanies.includes(bill.company) && LISTED_BILL_STATUSES.includes(bill.status);
+const companyOfType = (type: BillType): Company => (type === "BEDGE" ? "BEDGE" : "MVC");
+
+// The bill is in a Billing List the user may see
+export function seesInBillingList(bill: Pick<Bill, "type" | "status">, access: BillingAccess) {
+  return !!bill.type && access.listTypes.includes(bill.type) && LISTED_BILL_STATUSES.includes(bill.status);
 }
 
 // The bill was sent to this user, or they entered its amount. Only counts while
@@ -159,7 +176,7 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
 
 // Whether the user may open a bill at all
 export function canViewBill(
-  bill: Pick<Bill, "company" | "status" | "createdById" | "amountRequestedFromId" | "amountEnteredById">,
+  bill: Pick<Bill, "company" | "type" | "status" | "createdById" | "amountRequestedFromId" | "amountEnteredById">,
   access: BillingAccess
 ) {
   return (

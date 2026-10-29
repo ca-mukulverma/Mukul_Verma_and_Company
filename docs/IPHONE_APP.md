@@ -3,7 +3,7 @@
 MV Company can be installed on an iPhone (or Android phone) as an app from the
 Home Screen. Once installed, staff receive **push notifications** on their lock
 screen for everything that already creates an in-app notification: new or
-reassigned tasks, status changes, task comments, chat messages, billing
+reassigned tasks, status changes, task comments, billing
 approvals and permission changes. Tapping a notification opens the related task.
 
 This uses standard Web Push (a Progressive Web App), so there is **no App Store

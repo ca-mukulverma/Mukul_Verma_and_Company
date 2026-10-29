@@ -37,7 +37,7 @@ export default function SettingsPage() {
             <BellRing className="h-4 w-4" /> Phone notifications
           </CardTitle>
           <CardDescription>
-            Turn on alerts for tasks, billing, compliance and chat on this phone or computer, and send yourself a test.
+            Turn on alerts for tasks, billing and compliance on this phone or computer, and send yourself a test.
           </CardDescription>
         </CardHeader>
         <CardContent>

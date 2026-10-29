@@ -36,7 +36,6 @@ import {
   Receipt,
   Download,
   ClipboardCheck,
-  MessageSquare,
 } from "lucide-react";
 import { StartComplianceDialog, isRegistrationTask } from "@/components/compliance/start-compliance-dialog";
 import { TaskComments } from "@/components/tasks/task-comments";
@@ -362,11 +361,6 @@ export default function TaskDetailPage({
           onClick={() => router.push(getTaskListUrl())}
         >
           <ArrowLeftIcon className="h-4 w-4 mr-2" /> Back to Tasks
-        </Button>
-        <Button asChild variant="outline" size="sm" className="mb-4 ml-2">
-          <Link href={`/dashboard/chat?about=${encodeURIComponent(`task "${task.title}"`)}`}>
-            <MessageSquare className="h-4 w-4 mr-2" /> Discuss in chat
-          </Link>
         </Button>
       </div>
 

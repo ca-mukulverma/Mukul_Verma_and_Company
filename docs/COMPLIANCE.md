@@ -262,11 +262,32 @@ separate fee.
   Scanned PDFs can't be read and are placed by hand. Password-protected ZIPs
   (e.g. from TRACES) can't be opened; they can be kept as they are as a
   client file.
+- **Standard file names**: every file of a period, and every typed client
+  document, is saved under one name whatever it was called on the computer,
+  e.g. `CITY MOTORS - GSTR-3B - Sep 2026.pdf`, `CITY MOTORS - GSTR-1 JSON - Sep
+  2026.json`, `CITY MOTORS - Form 16A - Q2 FY 2026-27.pdf`, `CITY MOTORS - PAN
+  card.pdf`. A second file of the same name gets " (2)". Downloads and emails
+  use these names. Files added to the client's Files without a type keep
+  their own name (`src/lib/document-names.ts`).
+- **Search** (client Files, Documents tab, Send to Client): type any words in
+  any order, e.g. `3b sep`, `gstr1 json 2026`, `form 16a q2`; dashes, spaces
+  and full month names don't matter. The chips above the client's Files show
+  one file type at a time. The client list also matches every word and GSTIN /
+  PAN.
 - Files go **straight from the browser to Cloudflare R2**, not through the app
   server, so even large JSON files upload quickly.
 - To save space: **JSON and CSV are compressed** in the browser (about 10×
   smaller) and the **same file uploaded twice is stored once**. Up to 15 MB per
   file after compression. Neon only keeps a small row per file.
+- **How client emails look** (reminders, documents, GST working, Send to
+  Client, bills): one professional layout (`src/lib/email-layout.ts`) with the
+  firm's name at the top, "Dear <contact person>" (the responsible person for
+  reminders sent to them), the content with numbered lists and tables, "Thanking
+  you, Yours sincerely" and a signature with the address, phone and email from
+  Billing → Company profiles (CA Mukul Verma for MVC, B Edge for B Edge), and a
+  short confidentiality note. Subjects read e.g. `GSTR-3B for Sep 2026 – CITY
+  MOTORS | CA Mukul Verma`. Fill in the company profiles so the signature
+  carries the full contact details.
 - **Email in one click**: tick files (in the cell window or the client's Files)
   and click *Email*. Any staff member can. Files go from the company's billing
   Gmail; if they are larger than about 18 MB together, the email carries
@@ -390,7 +411,8 @@ live and free.
 ## Overview and notifications
 
 - **Overview** shows, for each work, overdue, due in 7 days, data pending, data
-  received, files pending and done this month. The user's own works come first.
+  received, files pending and done this month (periods in the sheet only; past
+  periods entered for history don't count). The user's own works come first.
 - **Every day at about 11:58** (the daily job in `vercel.json`) the app
   creates the coming periods and settles TDS returns without challans. What is
   due in 3 days, overdue and waiting for files in each person's works goes into

@@ -6,6 +6,7 @@ import { BillingAccess } from "@/lib/billing";
 import { formatIndianDate, formatRupees } from "@/lib/billing-constants";
 import { loadBillDocuments } from "@/lib/bill-document";
 import { clientDocLabel, clientDocType, fyLabel } from "@/lib/client-documents";
+import type { EmailContent, EmailSection } from "@/lib/email-layout";
 import {
   BUILT_IN_REQUESTS,
   DETAIL_FIELDS,
@@ -259,7 +260,7 @@ export async function buildPreview(options: {
   const canSeeBills = !!billing && billing.listCompanies.length > 0;
   if (canSeeBills) {
     const bills = await prisma.bill.findMany({
-      where: { clientId: client.id, status: "approved", billNumber: { not: null }, company: { in: billing!.listCompanies } },
+      where: { clientId: client.id, status: "approved", billNumber: { not: null }, type: { in: billing!.listTypes } },
       select: { id: true, billNumber: true, billDate: true, description: true },
       orderBy: { billDate: "desc" },
     });
@@ -323,7 +324,6 @@ function companyFor(docs: DocWithItem[]): Company {
 
 export interface ComposeInput {
   client: DispatchClient;
-  firm: string;
   docs: DocWithItem[];
   billDocs: Awaited<ReturnType<typeof loadBillDocuments>>;
   details: DetailField[];
@@ -348,49 +348,59 @@ export async function filingLines(itemIds: string[]) {
   return items.map((it) => `${it.workType.name} ${periodLabel(it.frequency, it.periodStart)}: filed on ${formatDay(it.filedAt)}${it.arn ? `, ARN ${it.arn}` : ""}`);
 }
 
-export async function buildEmailText(input: ComposeInput) {
+// The email's content, in the professional layout (src/lib/email-layout.ts)
+export async function buildEmailContent(input: ComposeInput): Promise<EmailContent> {
   const { client, docs, billDocs } = input;
-  const parts: string[] = [`Dear ${partyName(client)},`];
+  const sections: EmailSection[] = [];
   const listed = [...docs.map(documentLabel), ...billDocs.map((b) => `Bill no. ${b.billNumber} dated ${formatIndianDate(b.billDate)}`)];
-  if (listed.length) {
-    parts.push(`As requested, please find ${input.attached ? "attached" : "below the links to"} the following:\n` + listed.map((l, i) => `${i + 1}. ${l}`).join("\n"));
-  } else {
-    parts.push("As requested, please find the details below.");
-  }
+  const paragraphs = [
+    listed.length
+      ? `As requested, please find ${input.attached ? "attached" : "below the download links for"} the following for ${partyName(client)}.`
+      : `As requested, please find the details of ${partyName(client)} below.`,
+  ];
+  if (listed.length && input.attached) sections.push({ title: "Attached", lines: listed, numbered: true });
+  if (input.links) sections.push({ title: "Download links (valid for 7 days)", lines: input.links.split("\n").filter(Boolean), numbered: true });
 
   // Filing date and ARN of each return sent
   const itemIds = [...new Set(docs.map((d) => d.itemId).filter((id): id is string => !!id))];
   const filings = await filingLines(itemIds);
-  if (filings.length) parts.push("Filing details:\n" + filings.map((l) => `- ${l}`).join("\n"));
+  if (filings.length) sections.push({ title: "Filing details", lines: filings });
 
   const details = input.details
     .map((f) => [DETAIL_FIELDS[f], (input.client[f] as string | null)?.trim()] as const)
     .filter(([, v]) => !!v);
-  if (details.length) parts.push("Your details on our record:\n" + details.map(([k, v]) => `${k}: ${v}`).join("\n"));
+  if (details.length) sections.push({ title: "Your details as per our records", lines: details.map(([k, v]) => `${k}: ${v}`) });
 
   if (input.logins.length) {
-    parts.push(
-      "Portal logins (please keep these confidential):\n" +
-        input.logins.map((l) => `${l.title}\n  User ID: ${l.username || "—"}\n  Password: ${l.password}`).join("\n")
-    );
+    sections.push({
+      title: "Portal logins (please keep these confidential)",
+      lines: input.logins.map((l) => `${l.title} – User ID: ${l.username || "—"}, Password: ${l.password}`),
+    });
   }
 
   if (input.statement) {
     const { from, to, bills } = input.statement;
+    const title = `Statement of bills (${rangeLabel(from, to)})`;
     if (bills.length === 0) {
-      parts.push(`Statement of bills (${rangeLabel(from, to)}): no bills were issued in this period.`);
+      sections.push({ title, lines: ["No bills were issued in this period."] });
     } else {
       const total = bills.reduce((s, b) => s + b.total, 0);
-      parts.push(
-        `Statement of bills (${rangeLabel(from, to)}):\n` +
-          bills.map((b) => `- ${b.billNumber}, ${formatIndianDate(b.billDate)}: ${formatRupees(b.total)} (${b.description.slice(0, 60)})`).join("\n") +
-          `\nTotal: ${formatRupees(total)}`
-      );
+      sections.push({
+        title,
+        table: {
+          head: ["Bill no.", "Date", "Particulars", "Amount"],
+          rows: bills.map((b) => [b.billNumber, formatIndianDate(b.billDate), b.description.split("\n")[0].slice(0, 60), formatRupees(b.total)]),
+          right: [3],
+          total: ["Total", "", "", formatRupees(total)],
+        },
+      });
     }
   }
 
-  if (input.note) parts.push(input.note);
-  if (input.links) parts.push(input.links.trim());
-  parts.push(`Regards,\n${input.firm}`);
-  return parts.join("\n\n");
+  return {
+    greetingName: client.contactPerson,
+    paragraphs,
+    sections,
+    after: [input.note ?? "", "Please feel free to contact us for any clarification."],
+  };
 }

@@ -5,7 +5,6 @@ import {
   HelpCircle,
   LayoutDashboard,
   ListTodo,
-  MessageSquare,
   Receipt,
   Settings,
   Users,
@@ -24,8 +23,6 @@ export interface NavItem {
   roles: string[];
   // "g" then this key opens the page
   shortcut?: string;
-  // Shows the unread chat count
-  badge?: "chat";
 }
 
 export interface NavGroup {
@@ -62,7 +59,6 @@ export function navGroups(role: string): NavGroup[] {
       title: "Office",
       items: [
         { title: "Billing", href: "/dashboard/billing", icon: Receipt, roles: STAFF_ROLES, shortcut: "b" },
-        { title: "Team Chat", href: "/dashboard/chat", icon: MessageSquare, roles: STAFF_ROLES, shortcut: "h", badge: "chat" },
         { title: "Dashboard", href: roleDashboardPath(role), icon: LayoutDashboard, roles: STAFF_ROLES, shortcut: "d" },
       ],
     },
@@ -97,7 +93,7 @@ export function navItems(role: string) {
 }
 
 // The four pages on the phone's bottom bar (the fifth button opens the menu)
-export const BOTTOM_BAR_HREFS = ["/dashboard/my-work", "/dashboard/tasks", "/dashboard/compliance", "/dashboard/chat"];
+export const BOTTOM_BAR_HREFS = ["/dashboard/my-work", "/dashboard/tasks", "/dashboard/compliance", "/dashboard/clients"];
 
 // The page a path belongs to: the longest menu link it starts with
 export function activeHref(pathname: string | null, items: NavItem[]) {

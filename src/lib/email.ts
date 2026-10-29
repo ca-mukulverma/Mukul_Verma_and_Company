@@ -1,7 +1,10 @@
 import nodemailer from 'nodemailer';
-import { 
-  getPasswordSetupTemplate, 
-  getPasswordResetTemplate, 
+import {
+  APP_NAME,
+  FIRM_NAME,
+  getActivityNotificationTemplate,
+  getPasswordSetupTemplate,
+  getPasswordResetTemplate,
   getTaskAssignmentTemplate,
   getTaskReassignedTemplate
 } from '../../emails/templates';
@@ -35,7 +38,7 @@ export async function sendEmail({
   to,
   subject,
   html,
-  from = process.env.EMAIL_FROM || 'noreply@officemanagement.com'
+  from = process.env.EMAIL_FROM || `${FIRM_NAME} <${process.env.EMAIL_USER}>`
 }: {
   to: string;
   subject: string;
@@ -72,7 +75,7 @@ export async function sendPasswordSetupEmail(
 
   return sendEmail({
     to: email,
-    subject: 'Set Up Your Password - Office Management System',
+    subject: `Set your password | ${APP_NAME}`,
     html
   });
 }
@@ -90,7 +93,7 @@ export async function sendPasswordResetEmail(
 
   return sendEmail({
     to: email,
-    subject: 'Password Reset - Office Management System',
+    subject: `Reset your password | ${APP_NAME}`,
     html
   });
 }
@@ -101,18 +104,11 @@ export async function sendActivityNotificationEmail(
   activityTitle: string,
   activityDetails: string
 ) {
-  const html = `
-    <div>
-      <h1>${activityTitle}</h1>
-      <p>Hi ${name},</p>
-      <p>${activityDetails}</p>
-      <p>Thank you,<br>Office Management Team</p>
-    </div>
-  `;
+  const html = getActivityNotificationTemplate(name, activityTitle, activityDetails, process.env.NEXTAUTH_URL);
 
   return sendEmail({
     to: email,
-    subject: activityTitle,
+    subject: `${activityTitle} | ${APP_NAME}`,
     html,
   });
 }
@@ -137,7 +133,7 @@ export async function sendTaskAssignmentEmail(
 
   return sendEmail({
     to: email,
-    subject: `Task Assigned: ${taskTitle} - Office Management System`,
+    subject: `Task assigned: ${taskTitle} | ${APP_NAME}`,
     html
   });
 }
@@ -157,7 +153,7 @@ export async function sendTaskReassignedEmail(
 
   return sendEmail({
     to: email,
-    subject: `Task Reassigned: ${taskTitle} - Office Management System`,
+    subject: `Task reassigned: ${taskTitle} | ${APP_NAME}`,
     html
   });
 }

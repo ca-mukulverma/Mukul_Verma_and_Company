@@ -31,6 +31,7 @@ import { ClientRef, ReturnUpload } from "./return-upload";
 import { ClientGstWorking } from "./gst-working";
 import { EditClientDialog } from "./edit-client-dialog";
 import { GSTIN_PATTERN, gstState } from "@/lib/gst-states";
+import { matchesSearch } from "@/lib/search-text";
 
 interface ClientListItem {
   id: string;
@@ -119,10 +120,9 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
 
   // A party's other-state GSTINs are listed under its main record
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
     const shown = clients.filter(
       (c) =>
-        (!q || c.name.toLowerCase().includes(q) || c.gstin?.toLowerCase().includes(q) || c.state?.toLowerCase().includes(q)) &&
+        matchesSearch(search, c.name, c.gstin, c.state) &&
         (workFilter === "all" ||
           (workFilter === "none" ? c.works.length === 0 : c.works.some((w) => w.workTypeId === workFilter)))
     );
@@ -977,7 +977,21 @@ function Documents({ data, onChanged }: { data: ClientDetail; onChanged: () => v
   const [uploading, setUploading] = useState(false);
   const [filter, setFilter] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const visible = data.documents.filter((d) => !filter || `${d.fileName} ${d.work ?? ""}`.toLowerCase().includes(filter.toLowerCase()));
+  const [kindFilter, setKindFilter] = useState<string | null>(null);
+  const kinds = [...new Set(data.documents.map((d) => d.kind))];
+  // Searches the name, work, file type, period and upload date
+  const visible = data.documents.filter(
+    (d) =>
+      (!kindFilter || d.kind === kindFilter) &&
+      matchesSearch(
+        filter,
+        d.fileName,
+        d.work,
+        DOC_KIND_LABELS[d.kind],
+        data.items.find((i) => i.id === d.itemId)?.period,
+        longDate(d.createdAt)
+      )
+  );
 
   const email = async () => {
     setSending(true);
@@ -1021,9 +1035,36 @@ function Documents({ data, onChanged }: { data: ClientDetail; onChanged: () => v
       }
     >
       <p className="text-xs text-muted-foreground">Any staff member can email files to the client from here. Large files are sent as download links.</p>
-      {data.documents.length > 5 && <Input placeholder="Search files" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+      {data.documents.length > 0 && (
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-8"
+              placeholder="Search: e.g. 3b sep, gstr1 json 2026, challan"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          </div>
+          {kinds.length > 1 && (
+            <div className="flex flex-wrap gap-1">
+              {[null, ...kinds].map((k) => (
+                <Button
+                  key={k ?? "all"}
+                  size="sm"
+                  variant={kindFilter === k ? "default" : "outline"}
+                  className="h-7 rounded-full px-3 text-xs"
+                  onClick={() => setKindFilter(k)}
+                >
+                  {k ? DOC_KIND_LABELS[k] : "All"}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No files yet.</p>
+        <p className="text-sm text-muted-foreground">{data.documents.length ? "No file matches the search." : "No files yet."}</p>
       ) : (
         <ul className="max-h-80 space-y-1 overflow-y-auto text-sm">
           {visible.map((d) => (

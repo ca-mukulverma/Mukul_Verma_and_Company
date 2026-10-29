@@ -560,20 +560,8 @@ useEffect(() => {
     if (!clients) return [];
 
     return clients.filter((client) => {
-      if (searchTerm) {
-        const searchLower = searchTerm.toLowerCase();
-        const contactPerson = client.contactPerson?.toLowerCase() || "";
-        const companyName = client.companyName?.toLowerCase() || "";
-        const email = client.email?.toLowerCase() || "";
-        const phone = client.phone?.toLowerCase() || "";
-
-        return (
-          contactPerson.includes(searchLower) ||
-          companyName.includes(searchLower) ||
-          email.includes(searchLower) ||
-          phone.includes(searchLower)
-        );
-      }
+      // The server searched (every word, also GSTIN and PAN)
+      if (searchTerm) return true;
 
       if (activeTab === "permanent" && client.isGuest) return false;
       if (activeTab === "guest" && !client.isGuest) return false;

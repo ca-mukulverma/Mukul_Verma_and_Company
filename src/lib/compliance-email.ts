@@ -20,6 +20,8 @@ export interface OutgoingEmail {
   to: string[];
   subject: string;
   text: string;
+  // The formatted version (src/lib/email-layout.ts); plain text otherwise
+  html?: string;
   attachments?: { filename: string; content: Buffer; contentType: string }[];
 }
 
@@ -48,7 +50,7 @@ export async function sendComplianceEmails(
           to: email.to,
           subject: email.subject,
           text: email.text,
-          html: textToHtml(email.text),
+          html: email.html ?? textToHtml(email.text),
           attachments: email.attachments,
         });
         results.push(null);

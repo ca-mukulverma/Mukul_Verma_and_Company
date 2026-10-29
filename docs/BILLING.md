@@ -118,7 +118,7 @@ GST bills.
 | Admin | Admin role | Everything. Gives final approval and approves edit/cancel/reissue requests |
 | MVC billing manager | Selected Partner(s)/Admin | All MVC bills and amounts. Sets GST/Non-GST, enters or requests amounts, approves, requests edit/cancel/reissue, exports |
 | B Edge billing manager | Selected Partner(s)/Admin | Same as above, but only for B Edge bills |
-| Billing List viewer | Partner(s) Admin allows | The whole Billing List of MVC and B Edge: amounts, bill numbers, downloads and emailing bills to clients. Can't change bills, approve or export to Tally |
+| Billing List viewer | Partner(s) Admin allows | The Billing Lists Admin ticks for them (GST – MVC & Company, each Non-GST name, B Edge; all by default): amounts, bill numbers, downloads and emailing those bills to clients. Can't change bills, approve or export to Tally |
 | Amount setter | Admin, or a Partner Admin has allowed to enter amounts, that a bill is sent to | Only the bills sent to them. Enters the amount, sends the bill back with a remark, or marks it Not billable with a reason |
 | Everyone else | Executives, consultants and the other Partners | Can log work done. Never sees amounts, bill numbers or the Billing List |
 
@@ -206,7 +206,11 @@ of an exported bill; the notification then says that Tally must be updated.
 ## Billing List and exports
 
 Only the billing managers (each for their own company), Admin and the
-partners Admin allows to see it (both companies) can see the Billing List. It can be filtered by series, bill date range, status
+partners Admin allows to see it can see the Billing List. In Settings →
+Permissions, turning **Billing List** on for a partner shows a tick box for each
+list (GST – MVC & Company, Non-GST – CA Mukul Verma, CA Harsh Verma, Verma Law
+Associates, B Edge); the partner sees, downloads, searches and emails only the
+ticked ones (all are ticked at first). It can be filtered by series, bill date range, status
 (approved/cancelled) and client or work. It shows fee, GST and total per bill,
 with the fee totals for each series.
 
@@ -289,12 +293,14 @@ Approved bills are emailed to the party from the **Billing List**:
 
 Each party gets **one email** with all of its selected bills attached as PDFs,
 whichever entity issued them. MVC and B Edge bills always go in separate
-emails. The email is a short, plain note, like one a person would type: the
-subject names the bill number and the party, the body gives the bills with
-their dates and amounts (and the total when there are several), asks to
-quote the bill number when paying, and is signed *CA Mukul Verma* (MVC) or
-*B Edge Business Consultants* (B Edge) with the phone number from the
-company profile. The bank details are only on the attached bills, not in
+emails. The email uses the same plain, professional layout as every client
+email (`src/lib/email-layout.ts`): the firm's name at the top, "Dear <contact
+person>", the bills with their dates and amounts in a small table (and the
+total when there are several), a request to quote the bill number when
+paying, "Thanking you, Yours sincerely" and the signature *CA Mukul Verma*
+(MVC) or *B Edge Business Consultants* (B Edge) with the address, phone and
+email from the company profile (CA Mukul Verma's profile for MVC), then a
+one-line confidentiality note. No logo or images. The bank details are only on the attached bills, not in
 the email itself (see *Keeping bill emails out of spam*). Cancelled bills
 are never emailed.
 

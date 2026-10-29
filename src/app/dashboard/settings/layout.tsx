@@ -73,6 +73,11 @@ export default function SettingsLayout({
             label: "Permissions",
             href: "/dashboard/settings/permissions",
           },
+          {
+            value: "data",
+            label: "Data",
+            href: "/dashboard/settings/data",
+          },
         ]
       : []),
     // Add other available settings tabs here

@@ -5,7 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { canWorkOn, completeIfReady, logEvent, partyName } from "@/lib/compliance";
 import { loadSheetItem } from "@/lib/compliance-sheet";
 import { periodLabel } from "@/lib/compliance-periods";
-import { firmName, sendComplianceEmails } from "@/lib/compliance-email";
+import { sendComplianceEmails } from "@/lib/compliance-email";
+import { composeEmail, emailSubject } from "@/lib/email-layout";
+import { filingLines } from "@/lib/client-dispatch";
 import { parseEmailList } from "@/lib/bill-email";
 import { badRequest, forbidden, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 import { downloadUrl, r2Configured, readObject } from "@/lib/r2";
@@ -57,7 +59,6 @@ export async function POST(request: NextRequest) {
   }
 
   const company = certItem?.workType.company ?? docs.find((d) => d.item)?.item?.workType.company ?? "MVC";
-  const firm = firmName(company);
   const party = partyName(docs[0].client);
 
   // Attach the files, or send download links if they are too big together
@@ -78,20 +79,26 @@ export async function POST(request: NextRequest) {
     }
   } else {
     const urls = await Promise.all(docs.map((d) => downloadUrl(d.storageKey, d.fileName, LINK_DAYS * 86_400)));
-    links = `\n\nThe files are large, so they can be downloaded here (links work for ${LINK_DAYS} days):\n` +
-      docs.map((d, i) => `${d.fileName}: ${urls[i]}`).join("\n");
+    links = docs.map((d, i) => `${d.fileName}: ${urls[i]}`).join("\n");
   }
 
   const what = certItem
     ? `${certItem.workType.name === "TDS Return 24Q" ? "Form 16" : "Form 16A"} for ${certItem.workType.name}, ${periodLabel(certItem.frequency, certItem.periodStart)}`
     : [...new Set(docs.map((d) => (d.item ? `${d.item.workType.name} ${periodLabel(d.item.frequency, d.item.periodStart)}` : d.fileName)))].join(", ");
-  const text =
-    `Dear ${party},\n\nPlease find ${attachments ? "attached" : "below"} the ${what}.` +
-    (note ? `\n\n${note}` : "") +
-    links +
-    `\n\nRegards,\n${firm}`;
+  const filings = await filingLines([...new Set(docs.map((d) => d.itemId).filter((id): id is string => !!id))]);
+  const { html, text } = await composeEmail(company, {
+    greetingName: docs[0].client.contactPerson,
+    paragraphs: [
+      `Please find ${attachments ? "attached" : "below the download links for"} the ${what} for ${party}.`,
+    ],
+    sections: [
+      { title: attachments ? "Attached" : `Download links (valid for ${LINK_DAYS} days)`, lines: links ? links.split("\n") : docs.map((d) => d.fileName), numbered: true },
+      ...(filings.length ? [{ title: "Filing details", lines: filings }] : []),
+    ],
+    after: [note ?? "", "Please feel free to contact us for any clarification."],
+  });
 
-  const [failure] = await sendComplianceEmails(company, "Document", [{ to, subject: `${what} – ${party}`, text, attachments }]);
+  const [failure] = await sendComplianceEmails(company, "Document", [{ to, subject: emailSubject(what, party, company), text, html, attachments }]);
   if (failure) return NextResponse.json({ error: failure }, { status: 502 });
 
   const itemIds = [...new Set(docs.map((d) => d.itemId).filter((id): id is string => !!id))];

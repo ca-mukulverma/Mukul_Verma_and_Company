@@ -30,7 +30,7 @@ const STEPS: Step[] = [
   {
     icon: ClipboardList,
     title: "Tasks",
-    text: "Open a task to change its status, comment or discuss it in chat. When you mark it completed, its bill goes to billing on its own.",
+    text: "Open a task to change its status or add a comment. When you mark it completed, its bill goes to billing on its own.",
   },
   {
     icon: CalendarCheck,

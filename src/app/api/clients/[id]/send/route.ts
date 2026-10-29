@@ -4,7 +4,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { canWorkOn, completeIfReady, logEvent } from "@/lib/compliance";
 import { badRequest, forbidden, monthString, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
-import { emailsSentToday, firmName, GMAIL_DAILY_LIMIT, sendComplianceEmails } from "@/lib/compliance-email";
+import { emailsSentToday, GMAIL_DAILY_LIMIT, sendComplianceEmails } from "@/lib/compliance-email";
+import { composeEmail, emailSubject } from "@/lib/email-layout";
 import { addMonths, parseMonthKey } from "@/lib/compliance-periods";
 import { BILLING_COMPANIES, BILLING_MAILBOXES, billingEmailConfigured, parseEmailList, senderName } from "@/lib/bill-email";
 import { getBillingAccess } from "@/lib/billing";
@@ -13,7 +14,7 @@ import { renderBill } from "@/lib/bill-files";
 import { downloadUrl, r2Configured, readObject } from "@/lib/r2";
 import { DETAIL_FIELDS, DetailField, requestConfigSchema } from "@/lib/client-requests";
 import {
-  buildEmailText,
+  buildEmailContent,
   buildPreview,
   clientEmails,
   documentLabel,
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       where: {
         clientId: client.id,
         status: "approved",
-        company: { in: billing!.listCompanies },
+        type: { in: billing!.listTypes },
         billDate: { gte: range.from, lt: addMonths(range.to, 1) },
       },
       orderBy: { billDate: "asc" },
@@ -214,9 +215,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     } else {
       const urls = await Promise.all(docs.map((d) => downloadUrl(d.storageKey, d.fileName, LINK_DAYS * 86_400)));
-      links =
-        `The files are large, so they can be downloaded here (links work for ${LINK_DAYS} days):\n` +
-        docs.map((d, i) => `${documentLabel(d)}: ${urls[i]}`).join("\n");
+      links = docs.map((d, i) => `${documentLabel(d)}: ${urls[i]}`).join("\n");
     }
   }
   for (const bill of billDocs) {
@@ -227,23 +226,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
   }
 
-  const firm = firmName(input.company);
-  const text = await buildEmailText({
-    client,
-    firm,
-    docs,
-    billDocs,
-    details: input.details,
-    logins,
-    statement,
-    note: input.note || null,
-    attached: !links,
-    links,
-  });
-  const subject = `${requestName} – ${client.companyName || client.contactPerson}`;
+  const { html, text } = await composeEmail(
+    input.company,
+    await buildEmailContent({
+      client,
+      docs,
+      billDocs,
+      details: input.details,
+      logins,
+      statement,
+      note: input.note || null,
+      attached: !links,
+      links,
+    })
+  );
+  const subject = emailSubject(requestName, client.companyName || client.contactPerson, input.company);
 
   const [failure] = await sendComplianceEmails(input.company, "Document", [
-    { to, subject, text, attachments: attachments.length ? attachments : undefined },
+    { to, subject, text, html, attachments: attachments.length ? attachments : undefined },
   ]);
   if (failure) return NextResponse.json({ error: failure }, { status: 502 });
 

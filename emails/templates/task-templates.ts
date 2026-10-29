@@ -1,33 +1,23 @@
-export function getTaskAssignmentTemplate(
-  taskTitle: string,
-  assignerName: string,
-  note?: string,
-  dueDate?: Date
-): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h2>You've been assigned a new task</h2>
-      <p><strong>Task:</strong> ${taskTitle}</p>
-      <p><strong>Assigned by:</strong> ${assignerName}</p>
-      ${note ? `<p><strong>Note:</strong> ${note}</p>` : ""}
-      <p><strong>Due date:</strong> ${
-        dueDate ? new Date(dueDate).toLocaleDateString() : "No due date"
-      }</p>
-      <p>Log in to the system to view task details.</p>
-      <p>Thank you,<br>Office Management Team</p>
-    </div>
-  `;
+import { escapeHtml, staffEmail } from "./layout";
+
+const dueText = (dueDate?: Date | null) =>
+  dueDate ? new Date(dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "No due date";
+
+export function getTaskAssignmentTemplate(taskTitle: string, assignerName: string, note?: string, dueDate?: Date | null): string {
+  return staffEmail({
+    paragraphs: ["A task has been assigned to you. Its details are given below."],
+    details: [
+      ["Task", taskTitle],
+      ["Assigned by", assignerName],
+      ["Due date", dueText(dueDate)],
+      ...(note ? ([["Note", note]] as [string, string][]) : []),
+    ],
+    footnote: "Please sign in to the office app to see the full task.",
+  });
 }
 
-export function getTaskReassignedTemplate(
-  taskTitle: string,
-  newAssigneeName: string
-): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h2>Task Reassigned</h2>
-      <p>Your task "${taskTitle}" has been reassigned to ${newAssigneeName}</p>
-      <p>Thank you,<br>Office Management Team</p>
-    </div>
-  `;
+export function getTaskReassignedTemplate(taskTitle: string, newAssigneeName: string): string {
+  return staffEmail({
+    paragraphs: [`The task “${escapeHtml(taskTitle)}” has been reassigned to ${escapeHtml(newAssigneeName)}. No further action is needed from you on it.`],
+  });
 }

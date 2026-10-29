@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         : { assignees: { some: { userId: user.id } } };
 
   const access = await getBillingAccess(user.id);
-  const billCompanies = access?.listCompanies ?? [];
+  const billTypes = access?.listTypes ?? [];
 
   const [clients, tasks, bills, users] = await Promise.all([
     prisma.client.findMany({
@@ -58,9 +58,9 @@ export async function GET(request: NextRequest) {
       orderBy: { updatedAt: "desc" },
       take: PER_GROUP,
     }),
-    billCompanies.length
+    billTypes.length
       ? prisma.bill.findMany({
-          where: { billNumber: contains, company: { in: billCompanies }, status: { in: LISTED_BILL_STATUSES } },
+          where: { billNumber: contains, type: { in: billTypes }, status: { in: LISTED_BILL_STATUSES } },
           select: {
             id: true,
             billNumber: true,

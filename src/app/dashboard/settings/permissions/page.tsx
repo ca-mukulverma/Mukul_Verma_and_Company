@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useSession } from "next-auth/react";
 import axios from "axios";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
+import { BILL_TYPE_LABELS, BILL_TYPES, BillTypeValue } from "@/lib/billing-constants";
 
 export default function PermissionsPage() {
   const { data: session } = useSession();
@@ -21,6 +23,8 @@ export default function PermissionsPage() {
     canManageBedgeBilling: boolean;
     canEnterBillAmounts: boolean;
     canViewBillingList: boolean;
+    // The Billing Lists the partner sees when Billing List is on
+    billingListTypes: BillTypeValue[];
   }
 
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -49,6 +53,8 @@ export default function PermissionsPage() {
           canManageBedgeBilling: user.canManageBedgeBilling || false,
           canEnterBillAmounts: user.canEnterBillAmounts || false,
           canViewBillingList: user.canViewBillingList || false,
+          // Saved as [] for "all"
+          billingListTypes: user.billingListTypes?.length ? user.billingListTypes : [...BILL_TYPES],
         }))
       );
       setLoading(false);
@@ -73,17 +79,40 @@ export default function PermissionsPage() {
     );
   };
 
+  // Tick or untick one Billing List for a partner
+  const toggleListType = (id: string, type: BillTypeValue) => {
+    setPartners((prev) =>
+      prev.map((partner) =>
+        partner.id === id
+          ? {
+              ...partner,
+              billingListTypes: partner.billingListTypes.includes(type)
+                ? partner.billingListTypes.filter((t) => t !== type)
+                : BILL_TYPES.filter((t) => t === type || partner.billingListTypes.includes(t)),
+            }
+          : partner
+      )
+    );
+  };
+
   // Save the updated permissions to the backend
   const handleSave = async () => {
+    const empty = partners.find((p) => p.canViewBillingList && p.billingListTypes.length === 0);
+    if (empty) {
+      setError(`Tick at least one Billing List for ${empty.name}, or turn Billing List off.`);
+      return;
+    }
     try {
       setError(null);
       const updates = partners.map(
-        ({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts, canViewBillingList }) => ({
+        ({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts, canViewBillingList, billingListTypes }) => ({
           id,
           canApproveBilling,
           canManageBedgeBilling,
           canEnterBillAmounts,
           canViewBillingList,
+          // All ticked is saved as "all", so a new bill type is included too
+          billingListTypes: billingListTypes.length === BILL_TYPES.length ? [] : billingListTypes,
         })
       );
       await axios.post("/api/admin/dashboard", { updates });
@@ -107,8 +136,9 @@ export default function PermissionsPage() {
           <p className="text-sm text-muted-foreground">
             MVC billing managers handle MVC bills (GST and Non-GST); B Edge billing managers handle B Edge bills.
             They see amounts, choose the bill type and send bills for the amount. Bills can only be sent for the amount to
-            partners with Can Enter Amounts on. Partners with Billing List on see the whole Billing List of both companies,
-            download bills and email them to clients, but can&apos;t change bills. Other partners see billing like any other staff.
+            partners with Can Enter Amounts on. Partners with Billing List on see the Billing Lists ticked for them
+            (MVC &amp; Company GST, each Non-GST name, B Edge), download those bills and email them to clients, but
+            can&apos;t change bills. A billing manager always sees the whole list of their company. Other partners see billing like any other staff.
             Admins can always do all of these.
           </p>
         </CardHeader>
@@ -133,7 +163,8 @@ export default function PermissionsPage() {
                     </TableHeader>
                     <TableBody>
                       {partners.map((partner) => (
-                        <TableRow key={partner.id}>
+                        <Fragment key={partner.id}>
+                        <TableRow className={partner.canViewBillingList ? "border-b-0" : undefined}>
                           <TableCell>
                             <Avatar>
                               <AvatarImage src={partner.avatar || ""} alt={partner.name} />
@@ -170,6 +201,28 @@ export default function PermissionsPage() {
                             />
                           </TableCell>
                         </TableRow>
+                        {partner.canViewBillingList && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="pt-0">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
+                                <span className="font-medium">{partner.name} sees:</span>
+                                {BILL_TYPES.map((type) => (
+                                  <label key={type} className="flex items-center gap-1.5">
+                                    <Checkbox
+                                      checked={partner.billingListTypes.includes(type)}
+                                      onCheckedChange={() => toggleListType(partner.id, type)}
+                                    />
+                                    {BILL_TYPE_LABELS[type]}
+                                  </label>
+                                ))}
+                                {partner.billingListTypes.length === 0 && (
+                                  <span className="text-destructive">Tick at least one</span>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        </Fragment>
                       ))}
                     </TableBody>
                   </Table>
