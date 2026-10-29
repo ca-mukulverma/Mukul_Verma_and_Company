@@ -63,7 +63,6 @@ Access the live demo: [https://mvcompany.vercel.app/](https://mvcompany.vercel.a
 - Billing status tracking for completed tasks
 
 ### 💬 Communication System
-- Integrated team chat
 - Real-time notifications (bell with unread count, phone push) and one daily digest per person
 - Header search (Ctrl+K) and keyboard shortcuts (press ? in the app)
 - Detailed task comments with attachment support
@@ -187,7 +186,6 @@ PostgreSQL Database (Neon.tech)
 │   │   │   ├── 📊 activities/            # Activity tracking
 │   │   │   ├── 👑 admin/                 # Admin operations
 │   │   │   ├── 🔐 auth/                  # Authentication
-│   │   │   ├── 💬 chat/                  # Messaging system
 │   │   │   ├── 🏢 clients/               # Client management 
 │   │   │   ├── ⏱️ cron/                  # Scheduled tasks
 │   │   │   ├── 👨‍💼 junior/               # Junior staff APIs
@@ -198,7 +196,6 @@ PostgreSQL Database (Neon.tech)
 │   │   │
 │   │   ├── 📊 dashboard/                 # Protected routes
 │   │   │   ├── 👑 admin/                 # Admin interface
-│   │   │   ├── 💬 chat/                  # Messaging UI
 │   │   │   ├── 🏢 clients/               # Client management
 │   │   │   ├── 👨‍💼 junior/               # Junior dashboard
 │   │   │   ├── 🤝 partner/               # Partner interface

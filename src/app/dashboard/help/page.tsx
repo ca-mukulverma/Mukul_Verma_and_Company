@@ -35,7 +35,7 @@ const SECTIONS: Section[] = [
     steps: [
       "Click the search box at the top, or press Ctrl+K (⌘K on Mac) or /.",
       "Type at least 2 letters: a client's name, PAN, GSTIN, email or phone; a task title; a bill number; or a colleague's name.",
-      "The same box jumps to any page (type “billing”, “chat” …) and has quick actions such as New task.",
+      "The same box jumps to any page (type “billing”, “compliance” …) and has quick actions such as New task.",
     ],
   },
   {
@@ -43,7 +43,7 @@ const SECTIONS: Section[] = [
     title: "Tasks",
     steps: [
       "Tasks are for occasional work. Recurring returns are in Compliance.",
-      "Open a task to change its status, read and add comments, or click Discuss in chat to talk about it in Team Chat.",
+      "Open a task to change its status, and read and add comments.",
       "When a task is marked Completed its bill is created for the billing manager automatically. If you clicked by mistake, use Undo in the message that appears.",
       "Admins and Partners create tasks. Start from a template (ITR, GST notice reply, Income tax notice, ROC, GST registration, Tax audit, Accounting) to get the title, priority, due date and checklist filled in. “Assign to me” adds yourself.",
       "Leaving a form with unsaved changes asks you first.",
@@ -81,19 +81,10 @@ const SECTIONS: Section[] = [
     steps: [
       "Open a client to see their details, tasks, documents, history and logins. Recent activity at the top shows the latest work done for them and by whom.",
       "Send to Client emails the client what they asked for (returns, challans, ITR, certificates) in one go.",
-      "Discuss in chat starts a Team Chat message about the client. New task (Admins and Partners) creates a task already linked to the client.",
+      "New task (Admins and Partners) creates a task already linked to the client.",
       "Client pickers show the last 5 clients you picked at the top.",
     ],
     link: { href: "/dashboard/clients", label: "Open Clients" },
-  },
-  {
-    id: "chat",
-    title: "Team Chat",
-    steps: [
-      "One chat for the whole office. The red number on Team Chat in the menu is how many messages you haven't seen.",
-      "Discuss in chat on a task or client opens the chat with the message started for you.",
-    ],
-    link: { href: "/dashboard/chat", label: "Open Team Chat" },
   },
   {
     id: "notifications",
@@ -112,7 +103,7 @@ const SECTIONS: Section[] = [
       "iPhone (iOS 16.4 or later): open the site in Safari → Share → Add to Home Screen → Add. Open MV Company from the Home Screen, sign in, then Settings → Notifications → Enable notifications on this device → Allow.",
       "Android: open the site in Chrome → menu (⋮) → Install app (or Add to Home screen). Then Settings → Notifications → Enable notifications on this device.",
       "If phone alerts stop: open the app once (it re-registers the phone by itself). If they still don't come, check that notifications for MV Company are allowed in the phone's settings and that Focus / Do Not Disturb is off.",
-      "On the phone, the bar at the bottom has Today, Tasks, Compliance, Chat and Menu.",
+      "On the phone, the bar at the bottom has Today, Tasks, Compliance, Clients and Menu.",
     ],
   },
   {
@@ -120,7 +111,7 @@ const SECTIONS: Section[] = [
     title: "Keyboard shortcuts",
     steps: [
       "Ctrl+K or / – search.",
-      "G then a letter – open a page: G M Today, G T Tasks, G P Compliance, G C Clients, G B Billing, G H Team Chat, G D Dashboard, G S Settings, G E Help (G U Users for Admins and Partners).",
+      "G then a letter – open a page: G M Today, G T Tasks, G P Compliance, G C Clients, G B Billing, G D Dashboard, G S Settings, G E Help (G U Users for Admins and Partners).",
       "N – new task (Admins and Partners).",
       "? – the list of shortcuts. Shortcuts don't work while you are typing in a box.",
     ],

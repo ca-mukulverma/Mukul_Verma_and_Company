@@ -10,20 +10,9 @@ const redisOptions = {
   },
 };
 
-// Main Redis instance
+// The cache's Redis connection (src/lib/cache.ts)
 export const redis = new Redis(process.env.REDIS_URL as string, redisOptions);
 
-// Publisher
-export const pubRedis = new Redis(process.env.REDIS_URL as string, redisOptions);
-
-// Subscriber
-export const subRedis = new Redis(process.env.REDIS_URL as string, redisOptions);
-
-// Handle connection errors for all Redis clients
-[redis, pubRedis, subRedis].forEach((client, index) => {
-  const name = ["Main", "Pub", "Sub"][index];
-
-  client.on("error", (err) => console.error(`❌ ${name} Redis Error:`, err));
-  client.on("end", () => console.warn(`⚠ ${name} Redis connection ended. Reconnecting...`));
-  client.on("close", () => console.warn(`⚠ ${name} Redis connection closed. Reconnecting...`));
-});
+redis.on("error", (err) => console.error("❌ Redis Error:", err));
+redis.on("end", () => console.warn("⚠ Redis connection ended. Reconnecting..."));
+redis.on("close", () => console.warn("⚠ Redis connection closed. Reconnecting..."));

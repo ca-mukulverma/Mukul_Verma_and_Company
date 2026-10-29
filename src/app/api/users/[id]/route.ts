@@ -336,11 +336,6 @@ export async function DELETE(
       where: { userId: userId },
     });
 
-    // 5. Delete messages sent by this user
-    await prisma.message.deleteMany({
-      where: { senderId: userId },
-    });
-
     // 6. Handle tasks
     // First, update tasks assigned to this user (set assignedToId to null)
     await prisma.taskAssignee.deleteMany({

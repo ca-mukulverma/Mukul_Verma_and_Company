@@ -120,7 +120,7 @@ export function PushNotificationSettings() {
           Phone notifications
         </CardTitle>
         <CardDescription>
-          Get task, billing, compliance, comment and chat alerts on your iPhone or Android lock screen, even when the app
+          Get task, billing, compliance and comment alerts on your iPhone or Android lock screen, even when the app
           is closed.
         </CardDescription>
       </CardHeader>

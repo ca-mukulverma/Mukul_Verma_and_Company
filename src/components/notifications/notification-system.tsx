@@ -46,9 +46,6 @@ export interface Notification {
 interface NotificationContextProps {
   notifications: Notification[];
   unreadCount: number;
-  // Unread team chat messages
-  unreadChat: number;
-  markChatRead: () => Promise<void>;
   loading: boolean;
   error: string | null;
   markAsRead: (id: string) => Promise<void>;
@@ -61,8 +58,6 @@ interface NotificationContextProps {
 const NotificationContext = createContext<NotificationContextProps>({
   notifications: [],
   unreadCount: 0,
-  unreadChat: 0,
-  markChatRead: async () => {},
   loading: false,
   error: null,
   markAsRead: async () => {},
@@ -86,12 +81,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   // From the server: the list holds only the latest few
   const [unreadCount, setUnreadCount] = useState(0);
-  const [unreadChat, setUnreadChat] = useState(0);
   // The list as last rendered, for callbacks that must stay stable
   const notificationsRef = useRef<Notification[]>([]);
   notificationsRef.current = notifications;
-  const unreadChatRef = useRef(0);
-  unreadChatRef.current = unreadChat;
 
   // Fetch notifications - stabilize with useCallback
   const fetchNotifications = useCallback(async (): Promise<void> => {
@@ -107,10 +99,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       lastFetchedRef.current = now;
       
       const response = await axios.get("/api/notifications");
-      const data = response.data as { data: Notification[]; unreadCount?: number; unreadChat?: number };
+      const data = response.data as { data: Notification[]; unreadCount?: number };
       setNotifications(data.data || []);
       setUnreadCount(data.unreadCount ?? (data.data || []).filter((n) => !n.isRead).length);
-      setUnreadChat(data.unreadChat ?? 0);
     } catch (err) {
       console.error("Failed to load notifications:", err);
       // Keep the notifications already shown. A failed poll is usually the phone
@@ -140,25 +131,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
-  // Opening Team Chat: its message notifications are read
-  const markChatRead = useCallback(async () => {
-    try {
-      await axios.patch("/api/notifications?area=chat");
-      setUnreadCount((count) => Math.max(0, count - unreadChatRef.current));
-      setUnreadChat(0);
-      setNotifications(prev => prev.map(n => (n.title === "New Team Chat Message" ? { ...n, isRead: true } : n)));
-    } catch (err) {
-      console.error("Failed to mark chat messages read:", err);
-    }
-  }, []);
-
   // Mark every notification read (they stay in the list)
   const markAllAsRead = useCallback(async () => {
     try {
       await axios.patch("/api/notifications");
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
-      setUnreadChat(0);
     } catch (err) {
       console.error("Failed to mark notifications read:", err);
       toast.error("Failed to mark notifications read");
@@ -214,8 +192,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const contextValue = {
     notifications,
     unreadCount,
-    unreadChat,
-    markChatRead,
     loading,
     error,
     markAsRead,

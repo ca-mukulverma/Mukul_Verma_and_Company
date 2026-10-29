@@ -13,7 +13,6 @@ export function notificationLink(n: { title: string; content?: string | null; ta
   if (title.includes("compliance") || title.includes("return") || title.includes("gst") || title.includes("tds")) {
     return "/dashboard/compliance";
   }
-  if (title.includes("chat") || title.includes("message")) return "/dashboard/chat";
   if (title.includes("profile") || title.includes("role") || title.includes("permission")) return "/dashboard/settings/profile";
   return null;
 }

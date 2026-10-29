@@ -35,7 +35,6 @@ import {
   Hash,
   Users,
   Send,
-  MessageSquare,
   Plus,
 } from "lucide-react";
 import Link from "next/link";
@@ -233,12 +232,6 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <Link href={`/dashboard/chat?about=${encodeURIComponent(`client ${client.companyName || client.contactPerson}`)}`}>
-              <MessageSquare className="mr-2 h-4 w-4" />
-              Discuss in chat
-            </Link>
-          </Button>
           {canEdit && (
             <Button variant="outline" asChild>
               <Link href={`/dashboard/tasks/create?clientId=${client.id}`}>

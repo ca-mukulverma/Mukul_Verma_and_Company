@@ -110,11 +110,7 @@ export function RecentNotificationsCard({
     markAsRead(notification.id); // Mark the notification as read
 
     // Redirect based on the notification title
-    // Redirect based on the notification title
-    if (notification.title === "New Team Chat Message") {
-      console.log("Redirecting to /dashboard/chat");
-      router.push("/dashboard/chat");
-    } else if (
+    if (
       notification.title === "Your profile was updated" ||
       notification.title.endsWith("profile")
     ) {

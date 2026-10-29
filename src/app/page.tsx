@@ -200,10 +200,10 @@ export default function Home() {
               <div className="h-12 w-12 rounded-lg bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <MessageSquare className="h-6 w-6 text-pink-600 dark:text-pink-400" />
               </div>
-              <h3 className="text-xl font-semibold mb-2 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">Team Communication</h3>
+              <h3 className="text-xl font-semibold mb-2 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">Instant Alerts</h3>
               <p className="text-muted-foreground">
-                Chat with team members in real-time, discuss tasks, and share files. 
-                Keep all project communication in one centralized location.
+                Task, billing and compliance alerts reach every team member on their
+                phone or computer, with a daily digest of what is due.
               </p>
             </div>
 

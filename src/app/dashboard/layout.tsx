@@ -45,26 +45,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 }
 
-function CountBadge({ count, className }: { count: number; className?: string }) {
-  if (count <= 0) return null;
-  return (
-    <span
-      className={cn(
-        "flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white",
-        className
-      )}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
-
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const pathname = usePathname();
   const router = useRouter();
   const { t, language, setLanguage } = useLanguage();
-  const { unreadChat, refreshNotifications } = useNotifications();
+  const { refreshNotifications } = useNotifications();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   // Open by default so new staff see the page names; each person's choice is remembered
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -118,12 +104,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     onNewTask: isManager ? () => router.push("/dashboard/tasks/create") : undefined,
   });
 
-  const badgeFor = (item: NavItem) => (item.badge === "chat" ? unreadChat : 0);
   const avatarSrc = session?.user?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${session?.user?.name}`;
 
   const SidebarLink = ({ item }: { item: NavItem }) => {
     const active = current === item.href;
-    const count = badgeFor(item);
     const content = (
       <Link
         href={item.href}
@@ -136,11 +120,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       >
         <item.icon className="h-5 w-5 shrink-0" />
         {!sidebarCollapsed && <span className="flex-1 font-medium">{t(item.title)}</span>}
-        {sidebarCollapsed ? (
-          <CountBadge count={count} className="absolute -right-0.5 -top-0.5 h-4 min-w-4" />
-        ) : (
-          <CountBadge count={count} />
-        )}
       </Link>
     );
     if (!sidebarCollapsed) return content;
@@ -286,7 +265,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                   >
                     <item.icon className="h-5 w-5" />
                     <span className="truncate">{t(item.title)}</span>
-                    <CountBadge count={badgeFor(item)} className="absolute right-[22%] top-1 h-4 min-w-4" />
                   </Link>
                 );
               })}
@@ -350,7 +328,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                         >
                           <item.icon className="h-5 w-5" />
                           <span className="flex-1">{t(item.title)}</span>
-                          <CountBadge count={badgeFor(item)} />
                         </Link>
                       ))}
                     </div>
