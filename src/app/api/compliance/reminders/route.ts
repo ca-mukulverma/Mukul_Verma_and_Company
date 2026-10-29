@@ -6,6 +6,7 @@ import { canWorkOn, partyName, renderMessage } from "@/lib/compliance";
 import { clientContactSelect, reminderRecipients } from "@/lib/client-contacts";
 import { periodLabel } from "@/lib/compliance-periods";
 import { emailsSentToday, firmName, GMAIL_DAILY_LIMIT, sendComplianceEmails } from "@/lib/compliance-email";
+import { emailSubject, firmSignature, renderEmail } from "@/lib/email-layout";
 import { parseEmailList } from "@/lib/bill-email";
 import { badRequest, forbidden, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 
@@ -100,10 +101,21 @@ export async function POST(request: NextRequest) {
         results.push({ key: r.client.id, clientId: r.client.id, name: partyName(r.client), ok: false, error: "No valid email address for the responsible person" });
       }
       if (sendable.length === 0) continue;
+      const signature = await firmSignature(company);
       const failures = await sendComplianceEmails(
         company,
         "Reminder",
-        sendable.map((r) => ({ to: r.to, subject: r.subject, text: r.text }))
+        sendable.map((r) => {
+          const greetingName = r.client.ownerIsResponsible ? r.client.contactPerson : r.client.responsibleName || r.client.contactPerson;
+          const { html, text } = renderEmail(
+            {
+              greetingName,
+              paragraphs: [reminderBody(r.text, firmName(company)), "If you have already shared it, kindly ignore this reminder."],
+            },
+            signature
+          );
+          return { to: r.to, subject: emailSubject(r.subject, partyName(r.client), company), text, html };
+        })
       );
       sendable.forEach((r, i) => {
         const failure = failures[i];
@@ -134,4 +146,15 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ results });
+}
+
+// The reminder text is written for WhatsApp ("Dear X, … – Firm"); in the email
+// layout the greeting and signature are added around it
+function reminderBody(text: string, firm: string) {
+  let body = text.replace(/^\s*Dear [^,\n]*,\s*/i, "").trim();
+  for (const dash of ["–", "—", "-"]) {
+    const ending = ` ${dash} ${firm}`;
+    if (body.endsWith(ending)) body = body.slice(0, -ending.length).trim();
+  }
+  return body.charAt(0).toUpperCase() + body.slice(1);
 }

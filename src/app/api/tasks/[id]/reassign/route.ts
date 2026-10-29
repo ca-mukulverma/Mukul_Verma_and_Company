@@ -4,6 +4,7 @@ import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { sendEmail } from "@/lib/email";
+import { APP_NAME, getTaskAssignmentTemplate } from "../../../../../../emails/templates";
 import { syncTaskAssignments } from "@/lib/task-assignment";
 import { TASK_EMAIL_WHATSAPP_ENABLED, sendTaskAllotmentNotifications } from "@/lib/notifications";
 
@@ -135,19 +136,8 @@ export async function PATCH(
             try {
               await sendEmail({
                 to: assignee.email,
-                subject: `Task Assigned: ${task.title}`,
-                html: `
-                  <h2>You've been assigned a new task</h2>
-                  <p><strong>Task:</strong> ${task.title}</p>
-                  <p><strong>Assigned by:</strong> ${currentUser.name}</p>
-                  ${validatedData.note ? `<p><strong>Note:</strong> ${validatedData.note}</p>` : ""}
-                  <p><strong>Due date:</strong> ${
-                    task.dueDate
-                      ? new Date(task.dueDate).toLocaleDateString()
-                      : "No due date"
-                  }</p>
-                  <p>Log in to the system to view task details.</p>
-                `,
+                subject: `Task assigned: ${task.title} | ${APP_NAME}`,
+                html: getTaskAssignmentTemplate(task.title, currentUser.name, validatedData.note || undefined, task.dueDate),
               });
             } catch (error) {
               console.error("Failed to send email notification:", error);

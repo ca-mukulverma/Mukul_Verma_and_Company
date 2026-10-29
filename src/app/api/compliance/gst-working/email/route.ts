@@ -3,7 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { badRequest, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 import { parseEmailList } from "@/lib/bill-email";
-import { firmName, sendComplianceEmails } from "@/lib/compliance-email";
+import { sendComplianceEmails } from "@/lib/compliance-email";
+import { composeEmail, emailSubject } from "@/lib/email-layout";
 import { clientWorking } from "@/lib/gst-working";
 import { workingExcel, workingFileName, workingPdf } from "@/lib/gst-working-export";
 
@@ -34,19 +35,31 @@ export async function POST(request: NextRequest) {
   });
   const company = gst?.workType.company ?? "MVC";
   const fyLabel = `${fy}-${String((fy + 1) % 100).padStart(2, "0")}`;
+  const contact = await prisma.client.findUnique({ where: { id: clientId }, select: { contactPerson: true } });
+  const { html, text } = await composeEmail(company, {
+    greetingName: contact?.contactPerson,
+    paragraphs: [
+      `Please find attached the GST working of ${working.client.name}${working.client.gstin ? ` (GSTIN ${working.client.gstin})` : ""} for FY ${fyLabel}, month by month, in Excel and PDF.`,
+    ],
+    sections: [
+      {
+        title: "The working covers",
+        lines: [
+          "Sales as per GSTR-1 and GSTR-1A compared with GSTR-3B",
+          "Tax payable under reverse charge (RCM) compared with the RCM credit taken",
+          "Input tax credit claimed in GSTR-3B compared with GSTR-2B, including ineligible and rejected credit",
+        ],
+        numbered: true,
+      },
+    ],
+    after: [note ?? "", "Please go through it and let us know if any figure needs a correction."],
+  });
   const [failure] = await sendComplianceEmails(company, "Document", [
     {
       to,
-      subject: `GST working FY ${fyLabel} – ${working.client.name}`,
-      text: [
-        `Dear ${working.client.name},`,
-        "",
-        `Please find attached your GST working for FY ${fyLabel} (sales as per GSTR-1 and GSTR-1A against GSTR-3B, RCM, and ITC as per GSTR-3B against GSTR-2B), month by month.`,
-        ...(note ? ["", note] : []),
-        "",
-        "Regards,",
-        firmName(company),
-      ].join("\n"),
+      subject: emailSubject(`GST working for FY ${fyLabel}`, working.client.name, company),
+      text,
+      html,
       attachments: [
         { filename: workingFileName(working, "xlsx"), content: await workingExcel(working), contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
         { filename: workingFileName(working, "pdf"), content: workingPdf(working), contentType: "application/pdf" },

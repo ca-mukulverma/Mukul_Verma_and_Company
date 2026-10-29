@@ -293,12 +293,14 @@ Approved bills are emailed to the party from the **Billing List**:
 
 Each party gets **one email** with all of its selected bills attached as PDFs,
 whichever entity issued them. MVC and B Edge bills always go in separate
-emails. The email is a short, plain note, like one a person would type: the
-subject names the bill number and the party, the body gives the bills with
-their dates and amounts (and the total when there are several), asks to
-quote the bill number when paying, and is signed *CA Mukul Verma* (MVC) or
-*B Edge Business Consultants* (B Edge) with the phone number from the
-company profile. The bank details are only on the attached bills, not in
+emails. The email uses the same plain, professional layout as every client
+email (`src/lib/email-layout.ts`): the firm's name at the top, "Dear <contact
+person>", the bills with their dates and amounts in a small table (and the
+total when there are several), a request to quote the bill number when
+paying, "Thanking you, Yours sincerely" and the signature *CA Mukul Verma*
+(MVC) or *B Edge Business Consultants* (B Edge) with the address, phone and
+email from the company profile (CA Mukul Verma's profile for MVC), then a
+one-line confidentiality note. No logo or images. The bank details are only on the attached bills, not in
 the email itself (see *Keeping bill emails out of spam*). Cancelled bills
 are never emailed.
 

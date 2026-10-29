@@ -279,6 +279,15 @@ separate fee.
 - To save space: **JSON and CSV are compressed** in the browser (about 10×
   smaller) and the **same file uploaded twice is stored once**. Up to 15 MB per
   file after compression. Neon only keeps a small row per file.
+- **How client emails look** (reminders, documents, GST working, Send to
+  Client, bills): one professional layout (`src/lib/email-layout.ts`) with the
+  firm's name at the top, "Dear <contact person>" (the responsible person for
+  reminders sent to them), the content with numbered lists and tables, "Thanking
+  you, Yours sincerely" and a signature with the address, phone and email from
+  Billing → Company profiles (CA Mukul Verma for MVC, B Edge for B Edge), and a
+  short confidentiality note. Subjects read e.g. `GSTR-3B for Sep 2026 – CITY
+  MOTORS | CA Mukul Verma`. Fill in the company profiles so the signature
+  carries the full contact details.
 - **Email in one click**: tick files (in the cell window or the client's Files)
   and click *Email*. Any staff member can. Files go from the company's billing
   Gmail; if they are larger than about 18 MB together, the email carries
