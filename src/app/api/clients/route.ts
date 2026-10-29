@@ -52,16 +52,22 @@ export async function GET(request: NextRequest) {
       where.isGuest = isGuest;
     }
     
-    // Add search filter if provided
-    if (searchTerm) {
-      where.OR = [
-        { contactPerson: { contains: searchTerm, mode: 'insensitive' } },
-        { companyName: { contains: searchTerm, mode: 'insensitive' } },
-        { email: { contains: searchTerm, mode: 'insensitive' } },
-        { phone: { contains: searchTerm, mode: 'insensitive' } },
-        { responsibleName: { contains: searchTerm, mode: 'insensitive' } },
-        { responsiblePhone: { contains: searchTerm, mode: 'insensitive' } }
-      ];
+    // Add search filter if provided: every word must match a field, in any
+    // order ("motors city", "shweta 9826")
+    const words = searchTerm.trim().split(/\s+/).filter(Boolean).slice(0, 5);
+    if (words.length) {
+      where.AND = words.map((word) => ({
+        OR: [
+          { contactPerson: { contains: word, mode: 'insensitive' } },
+          { companyName: { contains: word, mode: 'insensitive' } },
+          { email: { contains: word, mode: 'insensitive' } },
+          { phone: { contains: word, mode: 'insensitive' } },
+          { responsibleName: { contains: word, mode: 'insensitive' } },
+          { responsiblePhone: { contains: word, mode: 'insensitive' } },
+          { gstin: { contains: word, mode: 'insensitive' } },
+          { pan: { contains: word, mode: 'insensitive' } },
+        ],
+      }));
     }
     
     // Execute the queries

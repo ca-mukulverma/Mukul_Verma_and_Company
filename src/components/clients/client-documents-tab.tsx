@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Download, FileText, Loader2, Trash2, Upload } from "lucide-react";
+import { Download, FileText, Loader2, Search, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Skeleton } from "@/components/ui/skeleton";
 import { uploadComplianceFile } from "@/components/compliance/upload";
 import { CLIENT_DOC_GROUPS, CLIENT_DOC_TYPES, clientDocType, fyLabel, fyOf } from "@/lib/client-documents";
+import { matchesSearch } from "@/lib/search-text";
 
 // Client → Documents: the client's registrations (kept once) and yearly papers
 // (ITRs, financials …), picked by Send to Client. Files of compliance periods
@@ -47,6 +48,7 @@ export function ClientDocumentsTab({ clientId }: { clientId: string }) {
   const [inputKey, setInputKey] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -107,11 +109,12 @@ export function ClientDocumentsTab({ clientId }: { clientId: string }) {
     const groups = new Map<string, ClientDocument[]>();
     for (const doc of documents ?? []) {
       const group = clientDocType(doc.docType)?.group ?? "Other files";
+      if (!matchesSearch(search, doc.label, doc.fileName, group, doc.uploadedBy, format(new Date(doc.createdAt), "d MMM yyyy"))) continue;
       groups.set(group, [...(groups.get(group) ?? []), doc]);
     }
     const order = [...CLIENT_DOC_GROUPS, "Other files"];
     return [...groups.entries()].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
-  }, [documents]);
+  }, [documents, search]);
 
   return (
     <div className="space-y-4">
@@ -190,6 +193,16 @@ export function ClientDocumentsTab({ clientId }: { clientId: string }) {
             </div>
           ) : (
             <div className="space-y-5">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  placeholder="Search: e.g. pan, itr 2025, audit report"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              {grouped.length === 0 && <p className="text-sm text-muted-foreground">No document matches the search.</p>}
               {grouped.map(([group, docs]) => (
                 <div key={group} className="space-y-1">
                   <h4 className="text-sm font-medium text-muted-foreground">{group}</h4>

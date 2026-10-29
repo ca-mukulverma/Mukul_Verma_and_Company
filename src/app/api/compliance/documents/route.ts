@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { canWorkOn, completeIfReady, DOC_KIND_LABELS, logEvent } from "@/lib/compliance";
+import { canWorkOn, completeIfReady, DOC_KIND_LABELS, logEvent, partyName } from "@/lib/compliance";
 import { loadSheetItem } from "@/lib/compliance-sheet";
 import { badRequest, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 import { objectSize } from "@/lib/r2";
@@ -9,6 +9,7 @@ import { clientDocType } from "@/lib/client-documents";
 import { fileFromUpload, placementOf, syncItemFigures } from "@/lib/gst-working";
 import { GstRead } from "@/lib/gst-read/types";
 import { parseMonthKey } from "@/lib/compliance-periods";
+import { standardFileName, uniqueFileName } from "@/lib/document-names";
 
 // POST /api/compliance/documents – records a file after the browser uploaded
 // it. Returns the updated item (an attached return may complete it).
@@ -39,12 +40,37 @@ export async function POST(request: NextRequest) {
     await prisma.complianceDocument.update({ where: { id: existing.id }, data: { gst: gst as object, gstMonth: parseMonthKey(gst.month) } });
   }
   if (!existing) {
+    // Saved under the standard name, not the name on the uploader's computer
+    const [client, item, sameItemNames] = await Promise.all([
+      prisma.client.findUnique({ where: { id: data.clientId }, select: { contactPerson: true, companyName: true } }),
+      data.itemId
+        ? prisma.complianceItem.findUnique({
+            where: { id: data.itemId },
+            select: { frequency: true, periodStart: true, workType: { select: { name: true } } },
+          })
+        : null,
+      prisma.complianceDocument.findMany({
+        where: { clientId: data.clientId, itemId: data.itemId ?? null, docType, financialYear },
+        select: { fileName: true },
+      }),
+    ]);
+    const fileName = uniqueFileName(
+      standardFileName({
+        party: client ? partyName(client) : "",
+        originalName: data.fileName,
+        kind,
+        item: item && { workName: item.workType.name, frequency: item.frequency, periodStart: item.periodStart },
+        docTypeLabel: clientDocType(docType)?.label,
+        financialYear,
+      }),
+      sameItemNames.map((d) => d.fileName)
+    );
     await prisma.complianceDocument.create({
       data: {
         clientId: data.clientId,
         itemId: data.itemId ?? null,
         kind,
-        fileName: data.fileName,
+        fileName,
         contentType: data.contentType,
         storageKey: key,
         sha256: data.sha256,
@@ -57,7 +83,7 @@ export async function POST(request: NextRequest) {
       },
     });
     if (data.itemId) {
-      await logEvent(prisma, data.itemId, "document_added", access.userId, `${DOC_KIND_LABELS[kind]}: ${data.fileName}`);
+      await logEvent(prisma, data.itemId, "document_added", access.userId, `${DOC_KIND_LABELS[kind]}: ${fileName}`);
       await completeIfReady(data.itemId, access.userId);
     }
   }
