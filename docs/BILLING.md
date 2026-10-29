@@ -118,7 +118,7 @@ GST bills.
 | Admin | Admin role | Everything. Gives final approval and approves edit/cancel/reissue requests |
 | MVC billing manager | Selected Partner(s)/Admin | All MVC bills and amounts. Sets GST/Non-GST, enters or requests amounts, approves, requests edit/cancel/reissue, exports |
 | B Edge billing manager | Selected Partner(s)/Admin | Same as above, but only for B Edge bills |
-| Billing List viewer | Partner(s) Admin allows | The whole Billing List of MVC and B Edge: amounts, bill numbers, downloads and emailing bills to clients. Can't change bills, approve or export to Tally |
+| Billing List viewer | Partner(s) Admin allows | The Billing Lists Admin ticks for them (GST – MVC & Company, each Non-GST name, B Edge; all by default): amounts, bill numbers, downloads and emailing those bills to clients. Can't change bills, approve or export to Tally |
 | Amount setter | Admin, or a Partner Admin has allowed to enter amounts, that a bill is sent to | Only the bills sent to them. Enters the amount, sends the bill back with a remark, or marks it Not billable with a reason |
 | Everyone else | Executives, consultants and the other Partners | Can log work done. Never sees amounts, bill numbers or the Billing List |
 
@@ -206,7 +206,11 @@ of an exported bill; the notification then says that Tally must be updated.
 ## Billing List and exports
 
 Only the billing managers (each for their own company), Admin and the
-partners Admin allows to see it (both companies) can see the Billing List. It can be filtered by series, bill date range, status
+partners Admin allows to see it can see the Billing List. In Settings →
+Permissions, turning **Billing List** on for a partner shows a tick box for each
+list (GST – MVC & Company, Non-GST – CA Mukul Verma, CA Harsh Verma, Verma Law
+Associates, B Edge); the partner sees, downloads, searches and emails only the
+ticked ones (all are ticked at first). It can be filtered by series, bill date range, status
 (approved/cancelled) and client or work. It shows fee, GST and total per bill,
 with the fee totals for each series.
 

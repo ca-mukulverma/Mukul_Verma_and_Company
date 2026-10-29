@@ -143,7 +143,7 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
 
   return ids.flatMap((id) => {
     const bill = bills.find((b) => b.id === id);
-    if (!bill || !bill.type || !bill.billNumber || !bill.billDate || !access.listCompanies.includes(bill.company)) return [];
+    if (!bill || !bill.type || !bill.billNumber || !bill.billDate || !access.listTypes.includes(bill.type)) return [];
     const entity = entities.find((e) => e.type === bill.type);
     const fee = bill.amount !== null ? Number(bill.amount) : 0;
     const isGst = bill.type === "GST";

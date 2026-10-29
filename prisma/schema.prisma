@@ -118,6 +118,7 @@ model User {
   canManageBedgeBilling   Boolean        @default(false) // B Edge billing manager
   canEnterBillAmounts     Boolean        @default(false) // Partner bills can be sent to for the amount
   canViewBillingList      Boolean        @default(false) // Partner who sees the whole Billing List and emails bills
+  billingListTypes        BillType[]     @default([]) // Which Billing Lists that partner sees; empty = all
   pushSubscriptions       PushSubscription[]
   billsCreated            Bill[]         @relation("BillCreatedBy")
   billsAmountRequested    Bill[]         @relation("BillAmountRequestedFrom")

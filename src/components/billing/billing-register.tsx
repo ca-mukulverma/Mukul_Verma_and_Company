@@ -23,8 +23,6 @@ import { useDebounce } from "@/hooks/use-debounce";
 import {
   BILL_TYPE_LABELS,
   BillTypeValue,
-  billTypesOf,
-  CompanyValue,
   formatIndianDate,
   formatRupees,
   gstAmount,
@@ -37,11 +35,11 @@ import { BillStatusBadge } from "./bill-list";
 import { apiErrorMessage, Bill, billParty, blobErrorMessage, CHANGE_KIND_LABELS, downloadBillFile } from "./bill-types";
 import { ChangeKind, ChangeRequestDialog } from "./change-request-dialog";
 
-// Numbered bills (approved and cancelled) of the companies whose Billing List
-// the user sees: the ones they manage, or both for a partner Admin has allowed.
+// Numbered bills (approved and cancelled) of the bill types whose Billing List
+// the user sees: those of the companies they manage, or the ones Admin chose
+// for a partner.
 // Only billing managers can ask for changes; everyone here can download and email.
-export function BillingRegister({ companies, onChanged }: { companies: CompanyValue[]; onChanged?: () => void }) {
-  const types = billTypesOf(companies);
+export function BillingRegister({ types, onChanged }: { types: BillTypeValue[]; onChanged?: () => void }) {
   const [type, setType] = useState<string>("all");
   const [status, setStatus] = useState("all");
   // all, yes (emailed to the party) or no (not emailed yet)

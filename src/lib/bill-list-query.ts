@@ -4,8 +4,8 @@ import { BillingAccess } from "@/lib/billing";
 // The bills a request asks for, shared by the bill lists and the Excel export:
 // ?view=manage|list|amounts|mine&company=MVC|BEDGE&status=...&search=...
 //   manage  – bills of the companies the user manages
-//   list    – the Billing List: numbered bills of those companies (both for a
-//             partner Admin has allowed to see it), filtered by &type=<BillType>
+//   list    – the Billing List: numbered bills of the bill types the user may
+//             see (BillingAccess.listTypes), filtered by &type=<BillType>
 //             &from=YYYY-MM-DD&to=YYYY-MM-DD (bill date)
 //             &emailed=yes (delivered, as far as is known) | failed | no (never emailed)
 //   amounts – bills sent to the user to enter the amount
@@ -22,7 +22,7 @@ export function billListWhere(
   const where: Prisma.BillWhereInput = {};
 
   if (view === "manage" || view === "list") {
-    // Partners allowed to see the Billing List see it for both companies
+    // Partners allowed to see the Billing List see the companies of their bill types
     const allowed = view === "list" ? access.listCompanies : access.manages;
     const companies = company ? [company as Company] : allowed;
     if (companies.length === 0 || companies.some((c) => !allowed.includes(c))) {
@@ -36,7 +36,11 @@ export function billListWhere(
       const to = searchParams.get("to");
       if (type && type !== "all") {
         if (!(type in BillType)) return { error: "Invalid type", status: 400 };
+        if (!access.listTypes.includes(type as BillType)) return { error: "Insufficient permissions", status: 403 };
         where.type = type as BillType;
+      } else {
+        // Only the Billing Lists Admin allowed
+        where.type = { in: access.listTypes };
       }
       if (from || to) {
         where.billDate = {

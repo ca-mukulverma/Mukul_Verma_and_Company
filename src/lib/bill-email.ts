@@ -118,7 +118,7 @@ export interface BillEmailGroup {
 export async function loadBillEmailGroups(ids: string[], access: BillingAccess) {
   const [bills, docs] = await Promise.all([
     prisma.bill.findMany({
-      where: { id: { in: ids }, status: "approved", company: { in: access.listCompanies } },
+      where: { id: { in: ids }, status: "approved", type: { in: access.listTypes } },
       select: {
         id: true,
         company: true,

@@ -259,7 +259,7 @@ export async function buildPreview(options: {
   const canSeeBills = !!billing && billing.listCompanies.length > 0;
   if (canSeeBills) {
     const bills = await prisma.bill.findMany({
-      where: { clientId: client.id, status: "approved", billNumber: { not: null }, company: { in: billing!.listCompanies } },
+      where: { clientId: client.id, status: "approved", billNumber: { not: null }, type: { in: billing!.listTypes } },
       select: { id: true, billNumber: true, billDate: true, description: true },
       orderBy: { billDate: "desc" },
     });

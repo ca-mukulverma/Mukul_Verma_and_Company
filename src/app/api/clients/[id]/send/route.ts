@@ -168,7 +168,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       where: {
         clientId: client.id,
         status: "approved",
-        company: { in: billing!.listCompanies },
+        type: { in: billing!.listTypes },
         billDate: { gte: range.from, lt: addMonths(range.to, 1) },
       },
       orderBy: { billDate: "asc" },

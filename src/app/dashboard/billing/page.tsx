@@ -20,12 +20,14 @@ import { TallyExport } from "@/components/billing/tally-export";
 import { cn } from "@/lib/utils";
 import { SeriesSettings } from "@/components/billing/series-settings";
 import { WorkEntryForm } from "@/components/billing/work-entry-form";
-import { CompanyValue } from "@/lib/billing-constants";
+import { BillTypeValue, CompanyValue } from "@/lib/billing-constants";
 
 export interface BillingSummary {
   manages: CompanyValue[];
   // Companies whose Billing List the user sees (a partner may see it without managing)
   listCompanies: CompanyValue[];
+  // Bill types whose Billing List the user sees
+  listTypes: BillTypeValue[];
   canEnterAmounts: boolean;
   isAdmin: boolean;
   awaitingMyAmountCount: number;
@@ -102,6 +104,7 @@ function BillingPageContent() {
       setSummary({
         manages: [],
         listCompanies: [],
+        listTypes: [],
         canEnterAmounts: false,
         isAdmin: false,
         awaitingMyAmountCount: 0,
@@ -245,7 +248,7 @@ function BillingPageContent() {
         </TabsContent>
         {seesList && (
           <TabsContent value="list" className="mt-4 min-w-0">
-            <BillingRegister companies={summary.listCompanies} onChanged={loadSummary} />
+            <BillingRegister types={summary.listTypes} onChanged={loadSummary} />
           </TabsContent>
         )}
         {isManager && (
