@@ -390,7 +390,8 @@ live and free.
 ## Overview and notifications
 
 - **Overview** shows, for each work, overdue, due in 7 days, data pending, data
-  received, files pending and done this month. The user's own works come first.
+  received, files pending and done this month (periods in the sheet only; past
+  periods entered for history don't count). The user's own works come first.
 - **Every day at about 11:58** (the daily job in `vercel.json`) the app
   creates the coming periods and settles TDS returns without challans. What is
   due in 3 days, overdue and waiting for files in each person's works goes into
