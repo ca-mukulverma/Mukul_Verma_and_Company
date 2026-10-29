@@ -1,4 +1,12 @@
-import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // Compliance documents are kept in Cloudflare R2 (see docs/COMPLIANCE.md for
@@ -72,4 +80,20 @@ export async function readObject(key: string): Promise<Buffer> {
 
 export async function deleteObject(key: string) {
   await r2().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+}
+
+// Deletes every object whose key starts with the prefix; returns how many
+export async function deletePrefix(prefix: string): Promise<number> {
+  let deleted = 0;
+  let token: string | undefined;
+  do {
+    const page = await r2().send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }));
+    const keys = (page.Contents ?? []).flatMap((o) => (o.Key ? [{ Key: o.Key }] : []));
+    if (keys.length) {
+      await r2().send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys, Quiet: true } }));
+      deleted += keys.length;
+    }
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return deleted;
 }
