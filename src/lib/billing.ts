@@ -1,4 +1,4 @@
-import { Bill, BillType, Company, Prisma } from "@prisma/client";
+import { Bill, BillReturnKind, BillType, Company, Prisma } from "@prisma/client";
 import { after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -109,6 +109,7 @@ export const billInclude = {
   createdBy: { select: { id: true, name: true } },
   amountRequestedFrom: { select: { id: true, name: true } },
   amountEnteredBy: { select: { id: true, name: true } },
+  returnedBy: { select: { id: true, name: true } },
   reissuedFrom: { select: { id: true, billNumber: true } },
   reissuedAs: { select: { id: true, billNumber: true } },
   changeRequests: {
@@ -156,6 +157,17 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     amountEnteredBy: canSeeAmount ? bill.amountEnteredBy : null,
     amountEnteredAt: canSeeAmount ? bill.amountEnteredAt : null,
     amount: canSeeAmount && bill.amount !== null ? Number(bill.amount) : null,
+    // The last send-back or Admin return; the comment may be about the amount
+    returned:
+      canSeeAmount && bill.returnKind
+        ? {
+            kind: bill.returnKind,
+            remark: bill.returnRemark,
+            at: bill.returnedAt,
+            by: bill.returnedBy,
+            count: bill.returnCount,
+          }
+        : null,
     billNumber: canSeeNumber ? bill.billNumber : null,
     billDate: canSeeNumber ? bill.billDate : null,
     reissuedFrom: canSeeNumber ? bill.reissuedFrom : null,
@@ -173,6 +185,34 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     canEditAmount: access.isAdmin && bill.amount !== null && ADMIN_AMOUNT_EDIT_STATUSES.includes(bill.status),
   };
 }
+
+// Kept on the bill when it is sent back or returned by Admin, so the comment
+// is shown on it (see isReturnOpen); cleared at final approval
+export function billReturnData(kind: BillReturnKind, remark: string, userId: string) {
+  return {
+    returnKind: kind,
+    returnRemark: remark,
+    returnedAt: new Date(),
+    returnedById: userId,
+    returnCount: { increment: 1 },
+  } satisfies Prisma.BillUncheckedUpdateManyInput;
+}
+
+export const CLEARED_BILL_RETURN = {
+  returnKind: null,
+  returnRemark: null,
+  returnedAt: null,
+  returnedById: null,
+} satisfies Prisma.BillUncheckedUpdateManyInput;
+
+// Bills sent back or returned that are still where they were sent back to:
+// the comment is waiting for the billing manager (isReturnOpen)
+export const OPEN_RETURN_WHERE = {
+  OR: [
+    { returnKind: "sent_back", status: "draft" },
+    { returnKind: "final_rejected", status: "amount_entered" },
+  ],
+} satisfies Prisma.BillWhereInput;
 
 // Whether the user may open a bill at all
 export function canViewBill(

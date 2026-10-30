@@ -1,7 +1,15 @@
 import { BillType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logActivities } from "@/lib/activity-logger";
-import { BillingAccess, getBillingManagerIds, hasBillTo, managesCompany, notifyBillingUsers } from "@/lib/billing";
+import {
+  BillingAccess,
+  CLEARED_BILL_RETURN,
+  billReturnData,
+  getBillingManagerIds,
+  hasBillTo,
+  managesCompany,
+  notifyBillingUsers,
+} from "@/lib/billing";
 import { MvcBillTypeValue, financialYearOf, formatBillNumber } from "@/lib/billing-constants";
 import { clientLedger, ledgerClientSelect, ledgersAtApproval } from "@/lib/connectors";
 
@@ -127,7 +135,7 @@ export async function finalApprove(ids: string[], actor: Actor): Promise<BatchRe
         // Only bills still waiting are approved; the others moved on meanwhile
         const claimed = await tx.bill.updateManyAndReturn({
           where: { id: { in: candidates.map((b) => b.id) }, status: "manager_approved" },
-          data: { status: "approved", billDate: now },
+          data: { status: "approved", billDate: now, ...CLEARED_BILL_RETURN },
           select: { id: true },
         });
         const claimedIds = new Set(claimed.map((row) => row.id));
@@ -211,7 +219,7 @@ export async function finalReject(id: string, remark: string, actor: Actor) {
   const ok = await prisma.$transaction(async (tx) => {
     const { count } = await tx.bill.updateMany({
       where: { id, status: "manager_approved" },
-      data: { status: "amount_entered" },
+      data: { status: "amount_entered", ...billReturnData("final_rejected", remark, actor.id) },
     });
     if (count === 0) return false;
     await tx.billEvent.create({ data: { billId: id, action: "final_rejected", userId: actor.id, remark } });

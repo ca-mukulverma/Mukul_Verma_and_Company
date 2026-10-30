@@ -61,6 +61,20 @@ export const GST_RATE_PERCENT = 18;
 // moment it is entered, through final approval (see docs/BILLING.md)
 export const ADMIN_AMOUNT_EDIT_STATUSES: BillStatusValue[] = ["amount_entered", "manager_approved", "approved"];
 
+export type BillReturnKindValue = "sent_back" | "final_rejected";
+
+// Where a bill lands when it is sent back (by the person asked for the amount)
+// or returned by Admin. While it is still there, the comment is waiting for
+// the billing manager: the "Sent back" filter and the alert on the bill.
+export const RETURNED_TO_STATUS: Record<BillReturnKindValue, BillStatusValue> = {
+  sent_back: "draft",
+  final_rejected: "amount_entered",
+};
+
+export function isReturnOpen(status: BillStatusValue, returnKind: BillReturnKindValue | null | undefined) {
+  return !!returnKind && RETURNED_TO_STATUS[returnKind] === status;
+}
+
 // Statuses in which the billing manager can still change the bill freely
 export const EDITABLE_BILL_STATUSES: BillStatusValue[] = [
   "draft",

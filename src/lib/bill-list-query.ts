@@ -1,8 +1,9 @@
 import { BillStatus, BillType, Company, Prisma } from "@prisma/client";
-import { BillingAccess } from "@/lib/billing";
+import { BillingAccess, OPEN_RETURN_WHERE } from "@/lib/billing";
 
 // The bills a request asks for, shared by the bill lists and the Excel export:
 // ?view=manage|list|amounts|mine&company=MVC|BEDGE&status=...&search=...
+//   status=returned (manage) – sent back or returned by Admin, not yet acted on
 //   manage  – bills of the companies the user manages
 //   list    – the Billing List: numbered bills of the bill types the user may
 //             see (BillingAccess.listTypes), filtered by &type=<BillType>
@@ -63,7 +64,10 @@ export function billListWhere(
     where.createdById = access.userId;
   }
 
-  if (status && status !== "all") {
+  if (status === "returned") {
+    if (view !== "manage") return { error: "Invalid status", status: 400 };
+    where.AND = [OPEN_RETURN_WHERE];
+  } else if (status && status !== "all") {
     if (view === "list" && status !== "approved" && status !== "cancelled") {
       return { error: "Invalid status", status: 400 };
     }

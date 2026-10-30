@@ -146,6 +146,22 @@ Admin final approval ──► bill number + bill date assigned ──► Billin
   (one or several at once; or "Return" to the billing manager with a remark)
 ```
 
+**Sent back and returned bills are marked on the bill.** When the person
+asked for the amount sends a bill back, or Admin returns it at final
+approval, the bill keeps who did it, when, the comment and how many times it
+has gone back (`returnKind`, `returnRemark`, `returnedAt`, `returnedById`,
+`returnCount`). While the bill is still where it was sent back to (Draft
+after a send-back, Amount entered after Admin's return), its card shows a red
+**Sent back** / **Returned by Admin** badge next to the status and the
+comment in full in a red box, and it is listed under the billing manager's
+**Sent back** filter (with its count). Once the bill moves on, the comment
+stays on it as a quieter "Earlier sent back by …" note, so the partner or
+Admin who sees it next knows what was asked for. Every bill dialog (enter or
+send for the amount, return, not billable, …) shows the comment too. The
+marker is cleared at final approval; earlier comments stay in the history.
+Only people who see the amount see the comment, as with the history.
+A partner losing permission to enter amounts counts as a send-back.
+
 An amount entered by the company's billing manager or by Admin counts as
 the billing manager's approval: the bill goes straight to Admin's final
 approval, and its history shows both steps. Only an amount entered by

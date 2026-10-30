@@ -1,5 +1,5 @@
 import axios from "axios";
-import { BillStatusValue, BillTypeValue, CompanyValue, MvcBillTypeValue } from "@/lib/billing-constants";
+import { BillReturnKindValue, BillStatusValue, BillTypeValue, CompanyValue, MvcBillTypeValue } from "@/lib/billing-constants";
 import { ClientOption } from "./client-picker";
 
 // A bill as returned by /api/bills (amounts are null when the user may not see them)
@@ -26,6 +26,14 @@ export interface Bill {
   amountEnteredBy: { id: string; name: string } | null;
   amountEnteredAt: string | null;
   amount: number | null;
+  // The last send-back or Admin return, kept until final approval
+  returned: {
+    kind: BillReturnKindValue;
+    remark: string | null;
+    at: string | null;
+    by: { id: string; name: string } | null;
+    count: number;
+  } | null;
   billNumber: string | null;
   billDate: string | null;
   reissuedFrom: { id: string; billNumber: string | null } | null;

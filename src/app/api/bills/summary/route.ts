@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getBillingAccess } from "@/lib/billing";
+import { OPEN_RETURN_WHERE, getBillingAccess } from "@/lib/billing";
 
 // GET /api/bills/summary – numbers for the dashboard billing card
 export async function GET() {
@@ -13,7 +13,7 @@ export async function GET() {
   const access = await getBillingAccess(user.id);
   if (!access) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [awaitingMyAmount, grouped, awaitingFinalCount, pendingChangeRequests] = await Promise.all([
+  const [awaitingMyAmount, grouped, returned, awaitingFinalCount, pendingChangeRequests] = await Promise.all([
     access.canEnterAmounts
       ? prisma.bill.findMany({
           where: { amountRequestedFromId: user.id, status: "awaiting_amount" },
@@ -35,6 +35,14 @@ export async function GET() {
           _count: { _all: true },
         })
       : Promise.resolve([]),
+    // Sent back or returned by Admin, waiting for the billing manager
+    access.manages.length > 0
+      ? prisma.bill.groupBy({
+          by: ["company"],
+          where: { company: { in: access.manages }, ...OPEN_RETURN_WHERE },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
     access.isAdmin ? prisma.bill.count({ where: { status: "manager_approved" } }) : Promise.resolve(0),
     access.manages.length > 0
       ? prisma.billChangeRequest.count({ where: { status: "pending", bill: { company: { in: access.manages } } } })
@@ -49,6 +57,7 @@ export async function GET() {
   const counts: Record<string, Record<string, number>> = {};
   for (const company of access.manages) counts[company] = {};
   for (const row of grouped) counts[row.company][row.status] = row._count._all;
+  for (const row of returned) counts[row.company].returned = row._count._all;
 
   return NextResponse.json({
     manages: access.manages,

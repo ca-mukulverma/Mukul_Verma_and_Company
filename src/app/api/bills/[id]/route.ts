@@ -8,6 +8,7 @@ import {
   BillingAccess,
   amountSetterWhere,
   billInclude,
+  billReturnData,
   billToData,
   canViewBill,
   describeBill,
@@ -311,7 +312,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       const ok = await updateIfStatus(
         bill.id,
         ["awaiting_amount"],
-        { status: "draft", amountRequestedFromId: null },
+        { status: "draft", amountRequestedFromId: null, ...billReturnData("sent_back", input.remark, user.id) },
         { action: "sent_back", userId: user.id, remark: input.remark }
       );
       if (!ok) return conflict();

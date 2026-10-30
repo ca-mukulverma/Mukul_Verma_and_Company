@@ -33,6 +33,7 @@ import {
 } from "@/lib/billing-constants";
 import { CompanyBadge } from "./company-select";
 import { EmailStatus } from "./email-status";
+import { BillReturnBadge, BillReturnNotice } from "./bill-return-notice";
 import {
   BillDialog,
   EditAmountDialog,
@@ -64,6 +65,7 @@ const STATUS_STYLES: Record<BillStatusValue, string> = {
 // Status filters shown to billing managers
 const MANAGE_FILTERS: { value: string; label: string }[] = [
   { value: "draft", label: "Drafts" },
+  { value: "returned", label: "Sent back" },
   { value: "awaiting_amount", label: "Awaiting amount" },
   { value: "amount_entered", label: "Amount entered" },
   { value: "manager_approved", label: "Awaiting final approval" },
@@ -325,6 +327,7 @@ function BillCard({
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <BillStatusBadge status={bill.status} />
+              <BillReturnBadge bill={bill} />
               <CompanyBadge company={bill.company} />
               {mode === "final" && bill.type && bill.company === "MVC" && (
                 <Badge variant="outline">{billTypeShortLabel(bill.type)}</Badge>
@@ -372,6 +375,7 @@ function BillCard({
           <EmailStatus bill={bill} compact />
         </div>
         {bill.remark && <p className="text-xs text-muted-foreground">Remark: {bill.remark}</p>}
+        <BillReturnNotice bill={bill} />
 
         {canManage && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
