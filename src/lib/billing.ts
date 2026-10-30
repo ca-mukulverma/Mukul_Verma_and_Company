@@ -156,6 +156,7 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     createdBy: bill.createdBy,
     createdAt: bill.createdAt,
     amountRequestedFrom: bill.amountRequestedFrom,
+    amountRequestNote: bill.amountRequestNote,
     amountEnteredBy: canSeeAmount ? bill.amountEnteredBy : null,
     amountEnteredAt: canSeeAmount ? bill.amountEnteredAt : null,
     amount: canSeeAmount && bill.amount !== null ? Number(bill.amount) : null,
@@ -432,6 +433,11 @@ export function billToData(input: { clientId?: string | null; other?: z.infer<ty
     };
   }
   return { clientId: input.clientId ?? null, billToName: null, billToAddress: null, billToGstin: null };
+}
+
+// The history line for "sent for the amount", with the billing manager's remark
+export function amountRequestedRemark(targetName: string, note: string | null) {
+  return note ? `Sent to ${targetName}\n${note}` : `Sent to ${targetName}`;
 }
 
 export function hasBillTo(bill: { clientId: string | null; billToName: string | null }) {

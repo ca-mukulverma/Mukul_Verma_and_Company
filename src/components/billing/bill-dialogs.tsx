@@ -297,6 +297,7 @@ export function EditAmountDialog({ bill, onClose, onDone }: DialogProps) {
 export function RequestAmountDialog({ bill, onClose, onDone }: DialogProps) {
   const [users, setUsers] = useState<{ id: string; name: string; role: string }[]>([]);
   const [userId, setUserId] = useState(bill.amountRequestedFrom?.id || "");
+  const [remark, setRemark] = useState("");
   const { saving, run } = useBillAction({ bill, onDone });
 
   useEffect(() => {
@@ -330,12 +331,23 @@ export function RequestAmountDialog({ bill, onClose, onDone }: DialogProps) {
             </SelectContent>
           </Select>
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="request-amount-remark">Remark (optional)</Label>
+          <Textarea
+            id="request-amount-remark"
+            placeholder="Anything they should know before entering the amount"
+            value={remark}
+            maxLength={1000}
+            onChange={(e) => setRemark(e.target.value)}
+          />
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             disabled={!userId || saving}
             onClick={async () => {
-              if (await run({ action: "request_amount", userId }, "Sent for amount")) onClose();
+              const action: BillAction = { action: "request_amount", userId, remark: remark.trim() || undefined };
+              if (await run(action, "Sent for amount")) onClose();
             }}
           >
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Send

@@ -441,6 +441,8 @@ model Bill {
   amount                Decimal?  @db.Decimal(12, 2)
   amountRequestedFromId String?   @db.Char(36)
   amountRequestedFrom   User?     @relation("BillAmountRequestedFrom", fields: [amountRequestedFromId], references: [id])
+  // Optional remark from the billing manager when sending for the amount
+  amountRequestNote     String?   @db.Text
   amountEnteredById     String?   @db.Char(36)
   amountEnteredBy       User?     @relation("BillAmountEnteredBy", fields: [amountEnteredById], references: [id])
   amountEnteredAt       DateTime?

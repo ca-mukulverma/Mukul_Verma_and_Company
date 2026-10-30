@@ -1,6 +1,6 @@
 import { BillStatus, BillType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { BillingAccess, amountSetterWhere, hasBillTo, managesCompany, notifyBillingUsers } from "@/lib/billing";
+import { BillingAccess, amountRequestedRemark, amountSetterWhere, hasBillTo, managesCompany, notifyBillingUsers } from "@/lib/billing";
 import { BILL_TYPE_LABELS, EDITABLE_BILL_STATUSES } from "@/lib/billing-constants";
 import { BatchResult, countLabel } from "@/lib/bill-approvals";
 
@@ -40,7 +40,8 @@ export async function setBillTypes(ids: string[], type: BillType, actor: Actor, 
 
 // The billing manager sends several bills to one partner or Admin for the
 // amount; they get one notification for all of them
-export async function requestAmounts(ids: string[], targetId: string, actor: Actor, access: BillingAccess) {
+export async function requestAmounts(ids: string[], targetId: string, actor: Actor, access: BillingAccess, remark?: string) {
+  const note = remark || null;
   const result: BatchResult = { done: [], skipped: [] };
   const target = await prisma.user.findFirst({ where: { id: targetId, ...amountSetterWhere }, select: { id: true, name: true } });
   if (!target) {
@@ -64,11 +65,11 @@ export async function requestAmounts(ids: string[], targetId: string, actor: Act
     const sent = await prisma.$transaction(async (tx) => {
       const rows = await tx.bill.updateManyAndReturn({
         where: { id: { in: ready }, status: { in: ["draft", "awaiting_amount"] } },
-        data: { status: "awaiting_amount", amountRequestedFromId: target.id },
+        data: { status: "awaiting_amount", amountRequestedFromId: target.id, amountRequestNote: note },
         select: { id: true },
       });
       await tx.billEvent.createMany({
-        data: rows.map((row) => ({ billId: row.id, action: "amount_requested", userId: actor.id, remark: `Sent to ${target.name}` })),
+        data: rows.map((row) => ({ billId: row.id, action: "amount_requested", userId: actor.id, remark: amountRequestedRemark(target.name, note) })),
       });
       return new Set(rows.map((row) => row.id));
     });
@@ -83,7 +84,7 @@ export async function requestAmounts(ids: string[], targetId: string, actor: Act
       [target.id],
       {
         title: "Bills awaiting your amount",
-        content: `${actor.name} asked you to enter the amount for ${countLabel(result.done.length)}.`,
+        content: `${actor.name} asked you to enter the amount for ${countLabel(result.done.length)}.${note ? `\nRemark: ${note}` : ""}`,
         sentById: actor.id,
       },
       "/dashboard/billing?tab=amounts"
