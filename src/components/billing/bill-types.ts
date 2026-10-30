@@ -11,6 +11,7 @@ export interface Bill {
   description: string;
   workDate: string;
   remark: string | null;
+  statusChangedAt: string;
   task: { id: string; title: string } | null;
   client: (ClientOption & { gstin?: string | null }) | null;
   billToName: string | null;
@@ -102,9 +103,19 @@ export interface BatchResult {
   skipped: { id: string; reason: string }[];
 }
 
-export async function runBulkApproval(action: "manager_approve" | "final_approve", ids: string[]) {
-  const response = await axios.post<BatchResult>("/api/bills/bulk", { action, ids });
+export type BulkAction =
+  | { action: "manager_approve" }
+  | { action: "final_approve" }
+  | { action: "set_type"; type: MvcBillTypeValue }
+  | { action: "request_amount"; userId: string };
+
+export async function runBulk(action: BulkAction, ids: string[]) {
+  const response = await axios.post<BatchResult>("/api/bills/bulk", { ...action, ids });
   return response.data;
+}
+
+export async function runBulkApproval(action: "manager_approve" | "final_approve", ids: string[]) {
+  return runBulk({ action }, ids);
 }
 
 export async function runBillAction(billId: string, action: BillAction): Promise<Bill> {

@@ -13,17 +13,21 @@ export function BillTypeSelect({
   onChange,
   className,
   id,
+  disabled,
+  placeholder = "Choose GST / Non-GST",
 }: {
   value: MvcBillTypeValue | null | undefined;
   onChange: (value: MvcBillTypeValue) => void;
   className?: string;
   id?: string;
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   return (
     // "" (not undefined) keeps the choice controlled
-    <Select value={value ?? ""} onValueChange={(v) => onChange(v as MvcBillTypeValue)}>
-      <SelectTrigger id={id} className={cn(!value && "border-amber-500", className)}>
-        <SelectValue placeholder="Choose GST / Non-GST" />
+    <Select value={value ?? ""} onValueChange={(v) => onChange(v as MvcBillTypeValue)} disabled={disabled}>
+      <SelectTrigger id={id} className={cn(!value && !disabled && "border-amber-500", className)}>
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>

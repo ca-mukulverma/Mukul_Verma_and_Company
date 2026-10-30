@@ -45,15 +45,21 @@ export const BILL_TYPE_LABELS: Record<BillTypeValue, string> = {
   BEDGE: "B Edge",
 };
 
+// In plain words: where the bill is and whose turn it is
 export const BILL_STATUS_LABELS: Record<BillStatusValue, string> = {
-  draft: "Draft",
-  awaiting_amount: "Awaiting amount",
-  amount_entered: "Amount entered",
-  manager_approved: "Awaiting final approval",
-  approved: "Approved",
+  draft: "New – to bill",
+  awaiting_amount: "With partner for amount",
+  amount_entered: "Amount in – to approve",
+  manager_approved: "With Admin for final approval",
+  approved: "Billed",
   cancelled: "Cancelled",
   not_billable: "Not billable",
 };
+
+// Stages a bill waits in for someone. Work waiting this many calendar days
+// at its stage is overdue (red alert, Admin told; see lib/billing-pending.ts).
+export const WAITING_BILL_STATUSES: BillStatusValue[] = ["draft", "awaiting_amount", "amount_entered", "manager_approved"];
+export const BILL_OVERDUE_DAYS = 3;
 
 export const GST_RATE_PERCENT = 18;
 

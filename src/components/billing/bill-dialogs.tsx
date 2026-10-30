@@ -99,6 +99,57 @@ function BillSummary({ bill }: { bill: Bill }) {
   );
 }
 
+interface FeeHint {
+  id: string;
+  work: string;
+  amount: number;
+  type: string | null;
+  date: string;
+  similar: boolean;
+}
+
+// The party's earlier fees, similar work first; a click puts the fee in
+function FeeHints({ billId, onPick }: { billId: string; onPick: (amount: number) => void }) {
+  const [hints, setHints] = useState<FeeHint[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get<{ hints: FeeHint[] }>(`/api/bills/${billId}/fee-hints`)
+      .then((response) => !cancelled && setHints(response.data.hints))
+      .catch(() => !cancelled && setHints([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [billId]);
+
+  if (!hints || hints.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground">Earlier fees for this client – click to use</p>
+      <div className="space-y-1">
+        {hints.map((hint) => (
+          <button
+            key={hint.id}
+            type="button"
+            onClick={() => onPick(hint.amount)}
+            className="flex w-full items-center justify-between gap-3 rounded-md border px-2.5 py-1.5 text-left text-xs hover:bg-muted"
+          >
+            <span className="min-w-0">
+              <span className="block truncate">{hint.work}</span>
+              <span className="text-muted-foreground">
+                {format(new Date(hint.date), "d MMM yyyy")}
+                {hint.similar && " · similar work"}
+              </span>
+            </span>
+            <span className="shrink-0 font-semibold">{formatRupees(hint.amount)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
   const [value, setValue] = useState(bill.amount !== null ? String(bill.amount) : "");
   // The billing manager chooses who an MVC bill is issued by along with the amount
@@ -150,6 +201,7 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
               onChange={(e) => setValue(e.target.value)}
             />
           </div>
+          <FeeHints billId={bill.id} onPick={(fee) => setValue(String(fee))} />
           {type === "GST" && valid && (
             <div className="text-sm space-y-1 rounded-md border p-3">
               <div className="flex justify-between"><span>Fee</span><span>{formatRupees(amount)}</span></div>

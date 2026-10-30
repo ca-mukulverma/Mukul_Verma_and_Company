@@ -19,7 +19,7 @@ import { EntityProfiles } from "@/components/billing/entity-profiles";
 import { TallyExport } from "@/components/billing/tally-export";
 import { cn } from "@/lib/utils";
 import { SeriesSettings } from "@/components/billing/series-settings";
-import { WorkEntryForm } from "@/components/billing/work-entry-form";
+import { WorkEntryForm, WorkPrefill } from "@/components/billing/work-entry-form";
 import { BillTypeValue, CompanyValue } from "@/lib/billing-constants";
 
 export interface BillingSummary {
@@ -34,6 +34,8 @@ export interface BillingSummary {
   counts: Record<string, Record<string, number>>;
   awaitingFinalCount: number;
   pendingChangeRequests: number;
+  // Numbered bills to send (again) to Tally
+  tallyDueCount: number;
 }
 
 // Bills are dated on the day Admin approves them, so this reminds Admin to
@@ -81,6 +83,16 @@ function CountBadge({ count }: { count?: number }) {
   return <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{count}</span>;
 }
 
+// Bills with partners for the amount: not the manager's turn, but worth seeing
+function WithPartnersBadge({ count }: { count?: number }) {
+  if (!count) return null;
+  return (
+    <span className="ml-1 rounded-full bg-muted px-1.5 text-xs text-muted-foreground" title={`${count} with partners for the amount`}>
+      +{count} with partners
+    </span>
+  );
+}
+
 export default function BillingPage() {
   return (
     <Suspense>
@@ -95,6 +107,8 @@ function BillingPageContent() {
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   // Bumped after logging work so "My entries" reloads
   const [entriesVersion, setEntriesVersion] = useState(0);
+  // "Log again" on an entry fills the Log work form
+  const [prefill, setPrefill] = useState<WorkPrefill | null>(null);
 
   const loadSummary = useCallback(async () => {
     try {
@@ -111,6 +125,7 @@ function BillingPageContent() {
         counts: {},
         awaitingFinalCount: 0,
         pendingChangeRequests: 0,
+        tallyDueCount: 0,
       });
     }
   }, []);
@@ -156,8 +171,13 @@ function BillingPageContent() {
   const tab = requestedTab && tabs.includes(requestedTab) ? requestedTab : defaultTab;
   const goTo = (value: string) => router.replace(`/dashboard/billing?tab=${value}`, { scroll: false });
   // Used now and then: kept out of the tab bar
-  const settingsTabs = [
-    ...(isManager ? [{ value: "tally", label: "Tally export" }, { value: "connectors", label: "Connectors" }] : []),
+  const settingsTabs: { value: string; label: string; count?: number }[] = [
+    ...(isManager
+      ? [
+          { value: "tally", label: "Tally export", count: summary.tallyDueCount },
+          { value: "connectors", label: "Connectors" },
+        ]
+      : []),
     ...(summary.isAdmin
       ? [
           { value: "series", label: "Number series" },
@@ -196,15 +216,22 @@ function BillingPageContent() {
               </TabsTrigger>
             )}
             {summary.manages.includes("MVC") && (
-              <TabsTrigger value="mvc">MVC bills<CountBadge count={pendingCount("MVC")} /></TabsTrigger>
+              <TabsTrigger value="mvc">
+                MVC bills<CountBadge count={pendingCount("MVC")} />
+                <WithPartnersBadge count={summary.counts.MVC?.awaiting_amount} />
+              </TabsTrigger>
             )}
             {summary.manages.includes("BEDGE") && (
-              <TabsTrigger value="bedge">B Edge bills<CountBadge count={pendingCount("BEDGE")} /></TabsTrigger>
+              <TabsTrigger value="bedge">
+                B Edge bills<CountBadge count={pendingCount("BEDGE")} />
+                <WithPartnersBadge count={summary.counts.BEDGE?.awaiting_amount} />
+              </TabsTrigger>
             )}
             {summary.isAdmin && (
               <TabsTrigger value="final">Final approval<CountBadge count={summary.awaitingFinalCount} /></TabsTrigger>
             )}
-            {isManager && (
+            {/* Only when a request is waiting (or the tab is open from a link) */}
+            {isManager && (summary.pendingChangeRequests > 0 || tab === "requests") && (
               <TabsTrigger value="requests">Change requests<CountBadge count={summary.pendingChangeRequests} /></TabsTrigger>
             )}
             {seesList && <TabsTrigger value="list">Billing list</TabsTrigger>}
@@ -217,6 +244,7 @@ function BillingPageContent() {
                 <Button variant={activeSetting ? "secondary" : "outline"} size="sm" className="shrink-0">
                   <Settings2 className="mr-1 h-4 w-4" />
                   {activeSetting ? activeSetting.label : "Billing settings"}
+                  {!activeSetting && <CountBadge count={settingsTabs.reduce((n, s) => n + (s.count ?? 0), 0)} />}
                   <ChevronDown className="ml-1 h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -224,6 +252,7 @@ function BillingPageContent() {
                 {settingsTabs.map((s) => (
                   <DropdownMenuItem key={s.value} onClick={() => goTo(s.value)}>
                     {s.label}
+                    {s.count ? <span className="ml-auto pl-3 text-xs text-muted-foreground">{s.count} due</span> : null}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
@@ -268,6 +297,7 @@ function BillingPageContent() {
         )}
         <TabsContent value="log" className="mt-4">
           <WorkEntryForm
+            prefill={prefill}
             onLogged={() => {
               setEntriesVersion((v) => v + 1);
               loadSummary();
@@ -275,7 +305,24 @@ function BillingPageContent() {
           />
         </TabsContent>
         <TabsContent value="mine" className="mt-4">
-          <BillList key={entriesVersion} mode="mine" />
+          <BillList
+            key={entriesVersion}
+            mode="mine"
+            onLogAgain={(bill) => {
+              setPrefill({
+                key: Date.now(),
+                company: bill.company,
+                billTo: {
+                  client: bill.client,
+                  other: !bill.client && bill.billToName
+                    ? { name: bill.billToName, address: bill.billToAddress ?? "", gstin: bill.billToGstin ?? "" }
+                    : null,
+                },
+                description: bill.description,
+              });
+              goTo("log");
+            }}
+          />
         </TabsContent>
         {summary.isAdmin && (
           <TabsContent value="series" className="mt-4">

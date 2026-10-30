@@ -11,6 +11,7 @@ import {
   billReturnData,
   billToData,
   canViewBill,
+  defaultBillType,
   describeBill,
   hasBillTo,
   otherPartySchema,
@@ -149,11 +150,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 400 });
   }
 
+  // A bill without a type yet takes the new client's usual one
+  const newClientType =
+    !bill.type && clientId && !other && clientId !== bill.clientId ? await defaultBillType(bill.company, clientId) : null;
+
   const updated = await updateIfStatus(
     bill.id,
     EDITABLE_BILL_STATUSES as BillStatus[],
     {
       ...((clientId !== undefined || other !== undefined) && billToData({ clientId, other })),
+      ...(newClientType && { type: newClientType }),
       ...(description !== undefined && { description }),
       ...(workDate !== undefined && { workDate: new Date(workDate) }),
       ...(remark !== undefined && { remark: remark || null }),
@@ -231,7 +237,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             title: "Bill awaiting your amount",
             content: `${user.name} asked you to enter the amount for: ${billLabel}`,
             sentById: user.id,
-          }, "/dashboard/billing?tab=amounts")
+          }, `/dashboard/billing?tab=amounts&bill=${bill.id}`)
         );
       }
       break;

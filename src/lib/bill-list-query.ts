@@ -82,6 +82,13 @@ export function billListWhere(
       { client: { companyName: { contains: search, mode: "insensitive" } } },
       { billToName: { contains: search, mode: "insensitive" } },
     ];
+    // Bill numbers and fees only where the user sees them: the billing
+    // managers' bills and the Billing List
+    if (view === "manage" || view === "list") {
+      where.OR.push({ billNumber: { contains: search, mode: "insensitive" } });
+      const fee = Number(search.replace(/[₹,\s]/g, ""));
+      if (search.replace(/[₹,\s]/g, "") !== "" && Number.isFinite(fee) && fee > 0) where.OR.push({ amount: fee });
+    }
   }
 
   return { where };

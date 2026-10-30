@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { BillingAccess, getBillingAccess, notifyBillingUsers } from "@/lib/billing";
-import { COMPANY_LABELS } from "@/lib/billing-constants";
+import { BILL_OVERDUE_DAYS, COMPANY_LABELS } from "@/lib/billing-constants";
 import { pendingTallyWhere, tallyTypesFor } from "@/lib/tally";
 
 // Each person's pending billing work, for the 11:58 AM reminder, the red alert
@@ -8,7 +8,7 @@ import { pendingTallyWhere, tallyTypesFor } from "@/lib/tally";
 // waiting longer than ESCALATE_DAYS (calendar days, Sundays included) is
 // overdue: it shows in red and Admin is told about it.
 
-export const ESCALATE_DAYS = 3;
+export const ESCALATE_DAYS = BILL_OVERDUE_DAYS;
 
 export interface PendingGroup {
   key: string;
