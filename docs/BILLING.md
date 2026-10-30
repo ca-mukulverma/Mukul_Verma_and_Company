@@ -147,6 +147,10 @@ GST bills.
   GST / Non-GST for all of them, or sends them all to one partner or Admin
   for the amount; that person gets one notification (`/api/bills/bulk`
   with `set_type` / `request_amount`).
+- **Remark when sending for the amount.** *Send for amount* (one bill or
+  many) takes an optional remark. It goes into the notification and the
+  history, and is shown on the bill's card while it awaits the amount
+  (`amountRequestNote`; replaced the next time the bill is sent).
 - **Amounts straight in the list.** In *Awaiting my amount*, each bill has a
   fee box; *Save all* saves every amount typed. *Enter amount* still opens
   the full window with the earlier fees.

@@ -342,7 +342,7 @@ export function BillList({
               disabled={selected.size === 0 || approving}
               count={selected.size}
               onSetType={(type) => runStep({ action: "set_type", type }, "updated")}
-              onRequest={(userId) => runStep({ action: "request_amount", userId }, "sent for the amount")}
+              onRequest={(userId, remark) => runStep({ action: "request_amount", userId, remark }, "sent for the amount")}
             />
           )}
         </div>
@@ -512,6 +512,11 @@ function BillCard({
           <EmailStatus bill={bill} compact />
         </div>
         {bill.remark && <p className="text-xs text-muted-foreground">Remark: {bill.remark}</p>}
+        {bill.status === "awaiting_amount" && bill.amountRequestNote && (
+          <p className="whitespace-pre-line rounded-md bg-muted px-2 py-1 text-xs">
+            Remark for the amount: {bill.amountRequestNote}
+          </p>
+        )}
         <BillReturnNotice bill={bill} />
 
         {canManage && (
@@ -687,10 +692,11 @@ function BulkStepControls({
   disabled: boolean;
   count: number;
   onSetType: (type: MvcBillTypeValue) => void;
-  onRequest: (userId: string) => void;
+  onRequest: (userId: string, remark?: string) => void;
 }) {
   const [users, setUsers] = useState<{ id: string; name: string; role: string }[]>([]);
   const [userId, setUserId] = useState("");
+  const [remark, setRemark] = useState("");
 
   useEffect(() => {
     axios
@@ -714,7 +720,15 @@ function BulkStepControls({
           ))}
         </SelectContent>
       </Select>
-      <Button size="sm" variant="outline" disabled={disabled || !userId} onClick={() => onRequest(userId)}>
+      <Input
+        className="h-8 w-56"
+        placeholder="Remark (optional)"
+        value={remark}
+        maxLength={1000}
+        disabled={disabled}
+        onChange={(e) => setRemark(e.target.value)}
+      />
+      <Button size="sm" variant="outline" disabled={disabled || !userId} onClick={() => onRequest(userId, remark.trim() || undefined)}>
         <Send className="mr-1 h-3.5 w-3.5" />Send ({count})
       </Button>
     </div>

@@ -6,6 +6,7 @@ import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   BillingAccess,
+  amountRequestedRemark,
   amountSetterWhere,
   billInclude,
   billReturnData,
@@ -46,7 +47,7 @@ const detailsSchema = z.object({
 
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("set_type"), type: z.enum(MVC_BILL_TYPES) }),
-  z.object({ action: z.literal("request_amount"), userId: z.string().min(1) }),
+  z.object({ action: z.literal("request_amount"), userId: z.string().min(1), remark: z.string().trim().max(1000).optional() }),
   // A billing manager may choose who an MVC bill is issued by in the same step
   z.object({ action: z.literal("enter_amount"), amount: z.number().positive().max(1e10), type: z.enum(MVC_BILL_TYPES).optional() }),
   z.object({ action: z.literal("send_back"), remark: z.string().trim().min(3, "Add a remark").max(1000) }),
@@ -223,11 +224,12 @@ export async function POST(request: NextRequest, { params }: Params) {
         );
       }
 
+      const note = input.remark || null;
       const ok = await updateIfStatus(
         bill.id,
         ["draft", "awaiting_amount"],
-        { status: "awaiting_amount", amountRequestedFromId: target.id },
-        { action: "amount_requested", userId: user.id, remark: `Sent to ${target.name}` }
+        { status: "awaiting_amount", amountRequestedFromId: target.id, amountRequestNote: note },
+        { action: "amount_requested", userId: user.id, remark: amountRequestedRemark(target.name, note) }
       );
       if (!ok) return conflict();
 
@@ -235,7 +237,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         after(() =>
           notifyBillingUsers([target.id], {
             title: "Bill awaiting your amount",
-            content: `${user.name} asked you to enter the amount for: ${billLabel}`,
+            content: `${user.name} asked you to enter the amount for: ${billLabel}${note ? `\nRemark: ${note}` : ""}`,
             sentById: user.id,
           }, `/dashboard/billing?tab=amounts&bill=${bill.id}`)
         );

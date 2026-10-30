@@ -12,7 +12,7 @@ const bulkSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("manager_approve"), ids }),
   z.object({ action: z.literal("final_approve"), ids }),
   z.object({ action: z.literal("set_type"), ids, type: z.enum(MVC_BILL_TYPES) }),
-  z.object({ action: z.literal("request_amount"), ids, userId: z.string().min(1) }),
+  z.object({ action: z.literal("request_amount"), ids, userId: z.string().min(1), remark: z.string().trim().max(1000).optional() }),
 ]);
 
 // POST /api/bills/bulk – approve, set the type of, or send for the amount
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   if (input.action === "set_type" || input.action === "request_amount") {
     if (access.manages.length === 0) return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     if (input.action === "set_type") return NextResponse.json(await setBillTypes(uniqueIds, input.type, user, access));
-    const result = await requestAmounts(uniqueIds, input.userId, user, access);
+    const result = await requestAmounts(uniqueIds, input.userId, user, access, input.remark);
     if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
     return NextResponse.json(result);
   }

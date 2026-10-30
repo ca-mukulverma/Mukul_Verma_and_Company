@@ -24,6 +24,7 @@ export interface Bill {
   createdBy: { id: string; name: string };
   createdAt: string;
   amountRequestedFrom: { id: string; name: string } | null;
+  amountRequestNote: string | null;
   amountEnteredBy: { id: string; name: string } | null;
   amountEnteredAt: string | null;
   amount: number | null;
@@ -88,7 +89,7 @@ export interface BillEvent {
 
 export type BillAction =
   | { action: "set_type"; type: MvcBillTypeValue }
-  | { action: "request_amount"; userId: string }
+  | { action: "request_amount"; userId: string; remark?: string }
   | { action: "enter_amount"; amount: number; type?: MvcBillTypeValue }
   | { action: "send_back"; remark: string }
   | { action: "not_billable"; remark?: string }
@@ -107,7 +108,7 @@ export type BulkAction =
   | { action: "manager_approve" }
   | { action: "final_approve" }
   | { action: "set_type"; type: MvcBillTypeValue }
-  | { action: "request_amount"; userId: string };
+  | { action: "request_amount"; userId: string; remark?: string };
 
 export async function runBulk(action: BulkAction, ids: string[]) {
   const response = await axios.post<BatchResult>("/api/bills/bulk", { ...action, ids });
