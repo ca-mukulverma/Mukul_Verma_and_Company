@@ -76,6 +76,21 @@ manager, exactly like a completed task. Admin and the company's billing
 managers are notified of every work entry; the form also lists the partners,
 and the ones ticked under **Also notify partners** are notified too.
 
+- **Several at once:** *Add another* adds a row (client, work, date; the new
+  row starts with the previous row's client and date). Each row becomes its
+  own bill; the remark and partners apply to all of them, and everyone is
+  sent one notification for the lot (`POST /api/bills` with `items`).
+- **Log again:** in *My entries*, *Log again* fills the form with that
+  entry's company, client and work, dated today, for monthly work.
+- **Already logged?** While the work is typed, the form looks for the same
+  party's bills of the last 60 days with the same work, months and years
+  included, so a new month is not a repeat (`/api/bills/duplicates`,
+  `src/lib/bill-similarity.ts`). It shows them in amber (work, date, who
+  logged it, stage; never amounts) and the work can still be logged.
+- *My entries* says where each bill is in plain words ("With Rahul for the
+  amount", "With Admin for final approval", "Billed") and how long it has
+  waited there.
+
 **New client?** Admins and partners see **Add new client** at the end of
 the client search (in *Log work* and in a bill's *Edit details*). It asks
 for the contact person, firm name, email or phone, address and GSTIN, saves
@@ -110,6 +125,45 @@ Each task or work entry becomes **one bill**. Bills are never combined.
 
 Bills never show expenses. They show the professional fee only, plus GST on
 GST bills.
+
+## Making it quick
+
+- **Plain stages.** Statuses say whose turn it is: *New – to bill*, *With
+  partner for amount*, *Amount in – to approve*, *With Admin for final
+  approval*, *Billed*. Each waiting bill shows how many days it has been at
+  its stage: amber from 2 days, red from 3 (overdue, as in the red alert).
+- **Longest-waiting first.** The work lists (the billing manager's stages,
+  *Awaiting my amount*, *Final approval*) show the oldest first; *All*, *My
+  entries* and the Billing List show the newest first.
+- **GST / Non-GST chosen for you.** A new MVC bill takes the type of the
+  client's last bill (not cancelled or not billable), also when a client is
+  chosen later in *Edit details*. The billing manager can still change it.
+- **Earlier fees.** *Enter amount* lists up to four earlier fees of the same
+  party and company, similar work first (`/api/bills/:id/fee-hints`); a
+  click fills the fee in. The billing managers and the person the bill was
+  sent to for the amount see these.
+- **Many bills at once.** In *New – to bill*, *Sent back* and *With
+  partners*, the billing manager ticks bills (or *Select all*) and sets
+  GST / Non-GST for all of them, or sends them all to one partner or Admin
+  for the amount; that person gets one notification (`/api/bills/bulk`
+  with `set_type` / `request_amount`).
+- **Amounts straight in the list.** In *Awaiting my amount*, each bill has a
+  fee box; *Save all* saves every amount typed. *Enter amount* still opens
+  the full window with the earlier fees.
+- **From the notification to the bill.** The "awaiting your amount"
+  notification opens that bill's *Enter amount* window.
+- **Approve & email.** On *Final approval*, Admin can number the bills and
+  open the email window for them in one step (up to 30), or use *Email to
+  parties* on the message shown after approving.
+- **Tally due.** The *Billing settings* button and its *Tally export* item
+  show how many numbered bills are still to be sent (or sent again) to
+  Tally.
+- **Tabs.** *Change requests* appears only while a request is waiting. The
+  company tabs also show, in grey, how many bills are with partners for
+  the amount.
+- **Search** finds bills by bill number and fee too, for the billing
+  managers and in the Billing List.
+- **Filters are remembered** on each device for the billing manager's lists.
 
 ## Roles and visibility
 

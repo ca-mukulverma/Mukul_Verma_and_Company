@@ -143,6 +143,8 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     description: bill.description,
     workDate: bill.workDate,
     remark: bill.remark,
+    // When it reached its current stage, for "waiting 4 days"
+    statusChangedAt: bill.statusChangedAt,
     task: bill.task,
     client: bill.client,
     billToName: bill.billToName,
@@ -184,6 +186,20 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     // Admin may correct the amount at any stage after it is entered
     canEditAmount: access.isAdmin && bill.amount !== null && ADMIN_AMOUNT_EDIT_STATUSES.includes(bill.status),
   };
+}
+
+// The bill type a new bill most likely needs: B Edge bills are always B Edge;
+// an MVC bill takes the type of the client's last bill (GST, or Non-GST in
+// whose name), which the billing manager can still change
+export async function defaultBillType(company: Company, clientId: string | null | undefined): Promise<BillType | null> {
+  if (company === "BEDGE") return "BEDGE";
+  if (!clientId) return null;
+  const last = await prisma.bill.findFirst({
+    where: { clientId, company: "MVC", type: { not: null }, status: { notIn: ["cancelled", "not_billable"] } },
+    orderBy: { createdAt: "desc" },
+    select: { type: true },
+  });
+  return last?.type ?? null;
 }
 
 // Kept on the bill when it is sent back or returned by Admin, so the comment
@@ -239,12 +255,13 @@ export async function ensureDraftBillForTask(taskId: string, userId: string) {
     select: { id: true, title: true, description: true, company: true, clientId: true, bill: { select: { id: true } } },
   });
   if (!task || task.bill) return;
+  const type = await defaultBillType(task.company, task.clientId);
 
   try {
     await prisma.bill.create({
       data: {
         company: task.company,
-        type: task.company === "BEDGE" ? "BEDGE" : null,
+        type,
         description: task.description ? `${task.title}\n${task.description}` : task.title,
         workDate: new Date(),
         taskId: task.id,

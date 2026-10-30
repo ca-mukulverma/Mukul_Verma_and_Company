@@ -27,10 +27,10 @@ interface Summary {
 }
 
 const STAGES = [
-  { status: "draft", label: "Drafts" },
-  { status: "awaiting_amount", label: "Awaiting amount" },
-  { status: "amount_entered", label: "Amount entered" },
-  { status: "manager_approved", label: "Final approval" },
+  { status: "draft", label: "New – to bill" },
+  { status: "awaiting_amount", label: "With partners" },
+  { status: "amount_entered", label: "To approve" },
+  { status: "manager_approved", label: "With Admin" },
 ];
 
 // Dashboard card for partners and admins: bills waiting for their amount and,

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { OPEN_RETURN_WHERE, getBillingAccess } from "@/lib/billing";
+import { pendingTallyWhere, tallyTypesFor } from "@/lib/tally";
 
 // GET /api/bills/summary – numbers for the dashboard billing card
 export async function GET() {
@@ -13,7 +14,8 @@ export async function GET() {
   const access = await getBillingAccess(user.id);
   if (!access) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [awaitingMyAmount, grouped, returned, awaitingFinalCount, pendingChangeRequests] = await Promise.all([
+  const tallyTypes = tallyTypesFor(access);
+  const [awaitingMyAmount, grouped, returned, awaitingFinalCount, pendingChangeRequests, tallyDueCount] = await Promise.all([
     access.canEnterAmounts
       ? prisma.bill.findMany({
           where: { amountRequestedFromId: user.id, status: "awaiting_amount" },
@@ -47,6 +49,10 @@ export async function GET() {
     access.manages.length > 0
       ? prisma.billChangeRequest.count({ where: { status: "pending", bill: { company: { in: access.manages } } } })
       : Promise.resolve(0),
+    // Numbered bills still to be sent (or sent again) to Tally
+    tallyTypes.length > 0
+      ? prisma.bill.count({ where: { OR: tallyTypes.map((type) => pendingTallyWhere(type)) } })
+      : Promise.resolve(0),
   ]);
 
   const awaitingMyAmountCount =
@@ -70,5 +76,6 @@ export async function GET() {
     counts,
     awaitingFinalCount,
     pendingChangeRequests,
+    tallyDueCount,
   });
 }

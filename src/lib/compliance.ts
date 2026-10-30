@@ -8,7 +8,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getBillingManagerIds, notifyBillingUsers } from "@/lib/billing";
+import { defaultBillType, getBillingManagerIds, notifyBillingUsers } from "@/lib/billing";
 import { COMPANY_LABELS, formatRupees } from "@/lib/billing-constants";
 import {
   addMonths,
@@ -568,6 +568,7 @@ export async function completeIfReady(itemId: string, userId: string): Promise<b
   const label = periodLabel(item.frequency, item.periodStart);
   const billing = wt.billable && !item.historical && !item.billId;
   const fee = billing ? await suggestedFee(item) : null;
+  const type = billing ? await defaultBillType(wt.company, item.clientId) : null;
 
   const billId = await prisma.$transaction(async (tx) => {
     const { count } = await tx.complianceItem.updateMany({
@@ -580,7 +581,7 @@ export async function completeIfReady(itemId: string, userId: string): Promise<b
     const bill = await tx.bill.create({
       data: {
         company: wt.company,
-        type: wt.company === "BEDGE" ? "BEDGE" : null,
+        type,
         description:
           `Filing of ${wt.name} for ${label}${item.isNil ? " (Nil)" : ""}` + (item.arn ? `\nARN / Ack. No.: ${item.arn}` : ""),
         workDate: item.filedAt ?? todayIST(),

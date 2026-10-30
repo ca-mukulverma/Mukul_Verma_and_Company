@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Ban, CheckCheck, History, IndianRupee, Loader2, MoreVertical, Pencil, RotateCcw, Search, Send, Undo2, UserPlus } from "lucide-react";
+import { Ban, CheckCheck, Copy, History, Mail, IndianRupee, Loader2, MoreVertical, Pencil, RotateCcw, Search, Send, Undo2, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BillTypeSelect, billTypeShortLabel } from "./bill-type-select";
 import { useDebounce } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
@@ -33,7 +35,9 @@ import {
 } from "@/lib/billing-constants";
 import { CompanyBadge } from "./company-select";
 import { EmailStatus } from "./email-status";
+import { EmailBillsDialog, MAX_EMAIL_BILLS } from "./bill-email-dialog";
 import { BillReturnBadge, BillReturnNotice } from "./bill-return-notice";
+import { WaitingChip, billWhereabouts } from "./bill-progress";
 import {
   BillDialog,
   EditAmountDialog,
@@ -44,7 +48,7 @@ import {
   RemarkDialog,
   RequestAmountDialog,
 } from "./bill-dialogs";
-import { apiErrorMessage, Bill, billParty, runBillAction, runBulkApproval } from "./bill-types";
+import { apiErrorMessage, BatchResult, Bill, billParty, BulkAction, runBillAction, runBulk, runBulkApproval } from "./bill-types";
 
 // manage  – billing manager's bills of one company
 // final   – Admin's final approval queue (all companies)
@@ -64,11 +68,11 @@ const STATUS_STYLES: Record<BillStatusValue, string> = {
 
 // Status filters shown to billing managers
 const MANAGE_FILTERS: { value: string; label: string }[] = [
-  { value: "draft", label: "Drafts" },
+  { value: "draft", label: "New – to bill" },
   { value: "returned", label: "Sent back" },
-  { value: "awaiting_amount", label: "Awaiting amount" },
-  { value: "amount_entered", label: "Amount entered" },
-  { value: "manager_approved", label: "Awaiting final approval" },
+  { value: "awaiting_amount", label: "With partners" },
+  { value: "amount_entered", label: "To approve" },
+  { value: "manager_approved", label: "With Admin" },
   { value: "not_billable", label: "Not billable" },
   { value: "all", label: "All" },
 ];
@@ -82,16 +86,38 @@ export function BillList({
   company,
   counts,
   onChanged,
+  onLogAgain,
 }: {
   mode: BillListMode;
   company?: CompanyValue;
   counts?: Record<string, number>;
+  // "My entries": fill the Log work form with an earlier entry
+  onLogAgain?: (bill: Bill) => void;
   // Called after any change so the page can refresh its counts
   onChanged?: () => void;
 }) {
   const [status, setStatus] = useState(
     mode === "manage" ? "draft" : mode === "amounts" ? "awaiting_amount" : mode === "final" ? "manager_approved" : "all"
   );
+  // The billing manager's last filter is kept for next time, on this device
+  const filterKey = mode === "manage" ? `billing-filter-${company ?? "all"}` : null;
+  useEffect(() => {
+    if (!filterKey) return;
+    try {
+      const saved = window.localStorage.getItem(filterKey);
+      if (saved && MANAGE_FILTERS.some((f) => f.value === saved)) setStatus(saved);
+    } catch {
+      // Storage blocked: start from the default filter
+    }
+  }, [filterKey]);
+  const chooseStatus = (value: string) => {
+    setStatus(value);
+    try {
+      if (filterKey) window.localStorage.setItem(filterKey, value);
+    } catch {
+      // Not remembered; nothing else depends on it
+    }
+  };
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const [bills, setBills] = useState<Bill[] | null>(null);
@@ -100,11 +126,22 @@ export function BillList({
   const [open, setOpen] = useState<{ bill: Bill; dialog: BillDialog } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [approving, setApproving] = useState(false);
+  // Amounts typed straight into the cards of "Awaiting my amount", by bill
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [savingAmounts, setSavingAmounts] = useState(false);
+  // Bills just given final approval, to email to their parties
+  const [emailIds, setEmailIds] = useState<string[] | null>(null);
+  // A notification opens the bill it is about (…&bill=<id>)
+  const focusBillId = useSearchParams().get("bill");
+  const focused = useRef<string | null>(null);
 
   // Bills that can be approved together: the manager's "amount entered" list
   // and Admin's final approval queue
   const approvalAction =
     mode === "final" ? "final_approve" : mode === "manage" && status === "amount_entered" ? "manager_approve" : null;
+  // New and sent-back bills: set the type of, or send for the amount, several at once
+  const bulkSteps = mode === "manage" && ["draft", "returned", "awaiting_amount"].includes(status);
+  const selectable = !!approvalAction || bulkSteps;
 
   const load = useCallback(async () => {
     try {
@@ -133,6 +170,14 @@ export function BillList({
 
   useEffect(() => setPage(1), [status, debouncedSearch]);
 
+  useEffect(() => {
+    if (!bills || !focusBillId || focused.current === focusBillId) return;
+    const bill = bills.find((b) => b.id === focusBillId);
+    if (!bill) return;
+    focused.current = focusBillId;
+    if (mode === "amounts" && bill.status === "awaiting_amount") setOpen({ bill, dialog: "amount" });
+  }, [bills, focusBillId, mode]);
+
   // A changed bill may no longer match the filter, so reload the list
   const handleDone = () => {
     load();
@@ -148,16 +193,22 @@ export function BillList({
     }
   };
 
-  const approve = async (ids: string[]) => {
+  // Admin can email the bills to their parties straight after numbering them
+  const approve = async (ids: string[], thenEmail = false) => {
     if (!approvalAction || ids.length === 0) return;
     setApproving(true);
     try {
       const result = await runBulkApproval(approvalAction, ids);
       if (result.done.length > 0) {
+        const emailable = result.done.slice(0, MAX_EMAIL_BILLS);
+        if (approvalAction === "final_approve" && thenEmail) setEmailIds(emailable);
         toast.success(
           approvalAction === "final_approve"
             ? `${result.done.length} bill${result.done.length === 1 ? "" : "s"} approved and numbered`
-            : `${result.done.length} bill${result.done.length === 1 ? "" : "s"} sent for final approval`
+            : `${result.done.length} bill${result.done.length === 1 ? "" : "s"} sent for final approval`,
+          approvalAction === "final_approve" && !thenEmail
+            ? { action: { label: "Email to parties", onClick: () => setEmailIds(emailable) } }
+            : undefined
         );
       }
       if (result.skipped.length > 0) {
@@ -169,6 +220,44 @@ export function BillList({
     } finally {
       setApproving(false);
     }
+  };
+
+  const reportBatch = (result: BatchResult, done: string) => {
+    if (result.done.length > 0) toast.success(`${result.done.length} bill${result.done.length === 1 ? "" : "s"} ${done}`);
+    if (result.skipped.length > 0) toast.error(`${result.skipped.length} skipped: ${result.skipped[0].reason}`);
+  };
+
+  const runStep = async (action: BulkAction, done: string) => {
+    if (selected.size === 0) return;
+    setApproving(true);
+    try {
+      reportBatch(await runBulk(action, [...selected]), done);
+      handleDone();
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  // Saves every amount typed into the cards, one bill after another
+  const typedAmounts = Object.entries(amounts).filter(([, v]) => Number(v) > 0);
+  const saveAmounts = async () => {
+    setSavingAmounts(true);
+    const failed: string[] = [];
+    for (const [billId, value] of typedAmounts) {
+      try {
+        await runBillAction(billId, { action: "enter_amount", amount: Math.round(Number(value) * 100) / 100 });
+      } catch (error) {
+        failed.push(apiErrorMessage(error));
+      }
+    }
+    const saved = typedAmounts.length - failed.length;
+    if (saved > 0) toast.success(`${saved} amount${saved === 1 ? "" : "s"} saved`);
+    if (failed.length > 0) toast.error(`${failed.length} not saved: ${failed[0]}`);
+    setAmounts({});
+    setSavingAmounts(false);
+    handleDone();
   };
 
   const toggle = (id: string) => {
@@ -194,13 +283,15 @@ export function BillList({
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
         {mode === "manage" ? (
-          <div className="flex flex-wrap gap-2">
+          // One line that scrolls sideways on phones, so the bills start higher up
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
             {MANAGE_FILTERS.map((filter) => (
               <Button
                 key={filter.value}
                 size="sm"
+                className="shrink-0"
                 variant={status === filter.value ? "default" : "outline"}
-                onClick={() => setStatus(filter.value)}
+                onClick={() => chooseStatus(filter.value)}
               >
                 {filter.label}
                 {counts && filter.value !== "all" && (counts[filter.value] ?? 0) > 0 && (
@@ -215,7 +306,7 @@ export function BillList({
         <div className="relative sm:w-64">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search client or work"
+            placeholder={mode === "manage" || mode === "final" ? "Search client, work, bill no. or fee" : "Search client or work"}
             className="pl-8"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -223,7 +314,7 @@ export function BillList({
         </div>
       </div>
 
-      {approvalAction && bills && bills.length > 0 && (
+      {selectable && bills && bills.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
           <label className="flex items-center gap-2 text-sm">
             <Checkbox
@@ -233,10 +324,40 @@ export function BillList({
             />
             Select all
           </label>
-          <Button size="sm" disabled={selected.size === 0 || approving} onClick={() => approve([...selected])}>
-            {approving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <CheckCheck className="mr-1 h-3.5 w-3.5" />}
-            {approvalAction === "final_approve" ? "Give final approval" : "Approve"} ({selected.size})
-          </Button>
+          {approvalAction ? (
+            <>
+              <Button size="sm" disabled={selected.size === 0 || approving} onClick={() => approve([...selected])}>
+                {approving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <CheckCheck className="mr-1 h-3.5 w-3.5" />}
+                {approvalAction === "final_approve" ? "Give final approval" : "Approve"} ({selected.size})
+              </Button>
+              {approvalAction === "final_approve" && (
+                <Button size="sm" variant="outline" disabled={selected.size === 0 || approving} onClick={() => approve([...selected], true)}>
+                  <Mail className="mr-1 h-3.5 w-3.5" />Approve &amp; email ({selected.size})
+                </Button>
+              )}
+            </>
+          ) : (
+            <BulkStepControls
+              company={company}
+              disabled={selected.size === 0 || approving}
+              count={selected.size}
+              onSetType={(type) => runStep({ action: "set_type", type }, "updated")}
+              onRequest={(userId) => runStep({ action: "request_amount", userId }, "sent for the amount")}
+            />
+          )}
+        </div>
+      )}
+
+      {mode === "amounts" && typedAmounts.length > 0 && (
+        <div className="sticky top-2 z-10 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 shadow-sm">
+          <span className="text-sm">{typedAmounts.length} amount{typedAmounts.length === 1 ? "" : "s"} typed</span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="ghost" disabled={savingAmounts} onClick={() => setAmounts({})}>Clear</Button>
+            <Button size="sm" disabled={savingAmounts} onClick={saveAmounts}>
+              {savingAmounts ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <IndianRupee className="mr-1 h-3.5 w-3.5" />}
+              Save all
+            </Button>
+          </div>
         </div>
       )}
 
@@ -261,9 +382,13 @@ export function BillList({
               onSetType={(type) => setType(bill, type)}
               onReopen={() => reopen(bill)}
               onApprove={approvalAction ? () => approve([bill.id]) : undefined}
+              onApproveAndEmail={approvalAction === "final_approve" ? () => approve([bill.id], true) : undefined}
               approving={approving}
-              selected={approvalAction ? selected.has(bill.id) : undefined}
+              selected={selectable ? selected.has(bill.id) : undefined}
               onToggle={() => toggle(bill.id)}
+              inlineAmount={amounts[bill.id] ?? ""}
+              onInlineAmount={(value) => setAmounts((prev) => ({ ...prev, [bill.id]: value }))}
+              onLogAgain={onLogAgain ? () => onLogAgain(bill) : undefined}
             />
           ))}
           {pages > 1 && (
@@ -285,6 +410,7 @@ export function BillList({
       {open?.dialog === "details" && <EditDetailsDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {open?.dialog === "history" && <HistoryDialog bill={open.bill} onClose={() => setOpen(null)} />}
       {open?.dialog === "no_billing" && <NoBillingDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
+      {emailIds && <EmailBillsDialog billIds={emailIds} onClose={() => setEmailIds(null)} onSent={handleDone} />}
     </div>
   );
 }
@@ -296,9 +422,13 @@ function BillCard({
   onSetType,
   onReopen,
   onApprove,
+  onApproveAndEmail,
   approving,
   selected,
   onToggle,
+  inlineAmount,
+  onInlineAmount,
+  onLogAgain,
 }: {
   bill: Bill;
   mode: BillListMode;
@@ -306,10 +436,15 @@ function BillCard({
   onSetType: (type: MvcBillTypeValue) => void;
   onReopen: () => void;
   onApprove?: () => void;
+  onApproveAndEmail?: () => void;
   approving?: boolean;
   // undefined when the bill can't be selected
   selected?: boolean;
   onToggle: () => void;
+  // "Awaiting my amount": the fee typed into the card, saved with "Save all"
+  inlineAmount: string;
+  onInlineAmount: (value: string) => void;
+  onLogAgain?: () => void;
 }) {
   const [title, ...rest] = bill.description.split("\n");
   const clientName = billParty(bill);
@@ -328,6 +463,7 @@ function BillCard({
             <div className="flex flex-wrap items-center gap-2">
               <BillStatusBadge status={bill.status} />
               <BillReturnBadge bill={bill} />
+              <WaitingChip bill={bill} />
               <CompanyBadge company={bill.company} />
               {mode === "final" && bill.type && bill.company === "MVC" && (
                 <Badge variant="outline">{billTypeShortLabel(bill.type)}</Badge>
@@ -368,8 +504,9 @@ function BillCard({
               <>Logged by {bill.createdBy.name}</>
             )}
           </span>
-          {bill.amountRequestedFrom && bill.status === "awaiting_amount" && (
-            <span>Waiting for {bill.amountRequestedFrom.name}</span>
+          {/* The badge says the stage; this says who has it (and, in My entries, where it is) */}
+          {(mode === "mine" || bill.status === "awaiting_amount") && (
+            <span className="font-medium text-foreground/80">{billWhereabouts(bill)}</span>
           )}
           {bill.amountEnteredBy && <span>Amount by {bill.amountEnteredBy.name}</span>}
           <EmailStatus bill={bill} compact />
@@ -472,6 +609,11 @@ function BillCard({
             <Button size="sm" disabled={approving} onClick={onApprove}>
               <CheckCheck className="mr-1 h-3.5 w-3.5" />Give final approval
             </Button>
+            {onApproveAndEmail && (
+              <Button size="sm" variant="outline" disabled={approving} onClick={onApproveAndEmail}>
+                <Mail className="mr-1 h-3.5 w-3.5" />Approve &amp; email
+              </Button>
+            )}
             {bill.canEditAmount && (
               <Button size="sm" variant="outline" onClick={() => onOpen("edit_amount")}>
                 <IndianRupee className="mr-1 h-3.5 w-3.5" />Edit amount
@@ -486,9 +628,34 @@ function BillCard({
           </div>
         )}
 
+        {mode === "mine" && onLogAgain && (
+          <div className="pt-1">
+            <Button size="sm" variant="outline" onClick={onLogAgain}>
+              <Copy className="mr-1 h-3.5 w-3.5" />Log again
+            </Button>
+          </div>
+        )}
+
         {isAwaitingMe && (
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Button size="sm" onClick={() => onOpen("amount")}>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="relative">
+              <IndianRupee className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                step="0.01"
+                placeholder="Fee"
+                aria-label="Fee before GST"
+                className="h-8 w-32 pl-7"
+                value={inlineAmount}
+                onChange={(e) => onInlineAmount(e.target.value)}
+              />
+            </div>
+            {bill.type === "GST" && Number(inlineAmount) > 0 && (
+              <span className="text-xs text-muted-foreground">+ GST {formatRupees(gstAmount(Number(inlineAmount)))}</span>
+            )}
+            <Button size="sm" variant="outline" onClick={() => onOpen("amount")}>
               <IndianRupee className="mr-1 h-3.5 w-3.5" />Enter amount
             </Button>
             <Button size="sm" variant="outline" onClick={() => onOpen("send_back")}>
@@ -504,5 +671,52 @@ function BillCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// For the selected new or sent-back bills: set GST / Non-GST (MVC), or send
+// them all to one partner or Admin for the amount
+function BulkStepControls({
+  company,
+  disabled,
+  count,
+  onSetType,
+  onRequest,
+}: {
+  company?: CompanyValue;
+  disabled: boolean;
+  count: number;
+  onSetType: (type: MvcBillTypeValue) => void;
+  onRequest: (userId: string) => void;
+}) {
+  const [users, setUsers] = useState<{ id: string; name: string; role: string }[]>([]);
+  const [userId, setUserId] = useState("");
+
+  useEffect(() => {
+    axios
+      .get("/api/users", { params: { billAmounts: "1" } })
+      .then((response) => setUsers(response.data.users || []))
+      .catch(() => setUsers([]));
+  }, []);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {company === "MVC" && (
+        <BillTypeSelect value={null} onChange={onSetType} disabled={disabled} className="h-8 w-auto min-w-44" placeholder={`Set type (${count})`} />
+      )}
+      <Select value={userId} onValueChange={setUserId} disabled={disabled}>
+        <SelectTrigger className="h-8 w-auto min-w-44"><SelectValue placeholder="Send for amount to…" /></SelectTrigger>
+        <SelectContent>
+          {users.map((user) => (
+            <SelectItem key={user.id} value={user.id}>
+              {user.name} {user.role === "ADMIN" ? "(Admin)" : "(Partner)"}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button size="sm" variant="outline" disabled={disabled || !userId} onClick={() => onRequest(userId)}>
+        <Send className="mr-1 h-3.5 w-3.5" />Send ({count})
+      </Button>
+    </div>
   );
 }
