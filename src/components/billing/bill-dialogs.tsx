@@ -20,6 +20,7 @@ import {
   MvcBillTypeValue,
 } from "@/lib/billing-constants";
 import { BillTypeSelect } from "./bill-type-select";
+import { BillReturnNotice } from "./bill-return-notice";
 import { BillTo, BillToPicker, billToPayload, billToValid } from "./client-picker";
 import { apiErrorMessage, Bill, BillAction, BillEvent, billParty, EVENT_LABELS, runBillAction } from "./bill-types";
 
@@ -84,13 +85,17 @@ function useBillAction({ bill, onDone }: Pick<DialogProps, "bill" | "onDone">) {
   return { saving, run };
 }
 
+// The bill, and why it was last sent back, so whoever acts on it sees the comment
 function BillSummary({ bill }: { bill: Bill }) {
   const client = billParty(bill) ?? "No client";
   return (
-    <div className="rounded-md bg-muted/50 p-3 text-sm">
-      <p className="font-medium">{client}</p>
-      <p className="text-muted-foreground whitespace-pre-line line-clamp-3">{bill.description}</p>
-    </div>
+    <>
+      <div className="rounded-md bg-muted/50 p-3 text-sm">
+        <p className="font-medium">{client}</p>
+        <p className="text-muted-foreground whitespace-pre-line line-clamp-3">{bill.description}</p>
+      </div>
+      <BillReturnNotice bill={bill} />
+    </>
   );
 }
 

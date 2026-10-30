@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { sendPushForNotification } from "@/lib/web-push";
 import { dashboardCache } from "@/lib/cache";
 import { BILL_TYPE_LABELS, BILL_TYPES } from "@/lib/billing-constants";
+import { billReturnData } from "@/lib/billing";
 
 export async function GET(request: NextRequest) {
   try {
@@ -368,17 +369,13 @@ export async function POST(request: NextRequest) {
             select: { id: true },
           });
           if (waiting.length === 0) return;
+          const remark = `${updatedUser.name} can no longer enter amounts`;
           await tx.bill.updateMany({
             where: { id: { in: waiting.map((b) => b.id) }, status: "awaiting_amount" },
-            data: { status: "draft", amountRequestedFromId: null },
+            data: { status: "draft", amountRequestedFromId: null, ...billReturnData("sent_back", remark, session.user.id) },
           });
           await tx.billEvent.createMany({
-            data: waiting.map((b) => ({
-              billId: b.id,
-              action: "sent_back",
-              userId: session.user.id,
-              remark: `${updatedUser.name} can no longer enter amounts`,
-            })),
+            data: waiting.map((b) => ({ billId: b.id, action: "sent_back", userId: session.user.id, remark })),
           });
         });
       }

@@ -68,6 +68,12 @@ enum BillStatus {
   not_billable
 }
 
+// How a bill last went back a step (see docs/BILLING.md)
+enum BillReturnKind {
+  sent_back      // by the person asked for the amount: back to the billing manager
+  final_rejected // by Admin at final approval: back to the billing manager
+}
+
 // What happened to the last email of a bill (see docs/BILLING.md)
 enum BillEmailStatus {
   sent    // accepted by Gmail; no failure reported
@@ -123,6 +129,7 @@ model User {
   billsCreated            Bill[]         @relation("BillCreatedBy")
   billsAmountRequested    Bill[]         @relation("BillAmountRequestedFrom")
   billsAmountEntered      Bill[]         @relation("BillAmountEnteredBy")
+  billsReturned           Bill[]         @relation("BillReturnedBy")
   billEvents              BillEvent[]
   billChangesRequested    BillChangeRequest[] @relation("BillChangeRequestedBy")
   billChangesDecided      BillChangeRequest[] @relation("BillChangeDecidedBy")
@@ -437,6 +444,16 @@ model Bill {
   amountEnteredById     String?   @db.Char(36)
   amountEnteredBy       User?     @relation("BillAmountEnteredBy", fields: [amountEnteredById], references: [id])
   amountEnteredAt       DateTime?
+
+  // The last time the bill was sent back or returned by Admin, with the
+  // comment, shown on the bill until final approval so the next person sees
+  // why. returnCount counts every time it went back.
+  returnKind   BillReturnKind?
+  returnRemark String?         @db.Text
+  returnedAt   DateTime?
+  returnedById String?         @db.Char(36)
+  returnedBy   User?           @relation("BillReturnedBy", fields: [returnedById], references: [id])
+  returnCount  Int             @default(0)
 
   // Given at admin final approval
   financialYear String?   @db.VarChar(7) // e.g. "2026-27"

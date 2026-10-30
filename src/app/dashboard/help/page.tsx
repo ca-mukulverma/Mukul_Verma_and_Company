@@ -70,6 +70,7 @@ const SECTIONS: Section[] = [
     steps: [
       "Log work: enter work done that is not a task (tasks go to billing by themselves when completed). My entries shows what you logged.",
       "If a bill is sent to you for the amount (Awaiting my amount): Enter amount, Send back with a remark, or Not billable with the reason if you feel it should not be billed. Admin and the billing managers are told and can reopen it.",
+      "A bill that was sent back, or returned by Admin, shows a red Sent back / Returned by Admin badge and the comment in full. Billing managers find them under the Sent back filter. Deal with the comment before sending the bill on again.",
       "Billing managers work in MVC bills / B Edge bills; Admin gives Final approval. Tally export, Connectors and Admin's setup (number series, company profiles, bill emails) are in the Billing settings menu.",
       "Bills are dated on the day of final approval, so approve them before the month ends.",
     ],
