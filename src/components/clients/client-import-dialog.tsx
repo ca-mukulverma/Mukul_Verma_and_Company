@@ -23,9 +23,18 @@ interface PreviewRow {
   duplicate: string | null;
 }
 
+interface Extras {
+  logins: number;
+  setups: number;
+  payments: number;
+  problems: { sheet: string; row: number; client: string | null; problem: string; skipped: boolean }[];
+}
+
 interface Preview {
   summary: { total: number; ready: number; errors: number; duplicates: number };
   rows: PreviewRow[];
+  // Logins, compliance setup and payments of a client export
+  extras: Extras;
 }
 
 function errorMessage(error: unknown, fallback: string) {
@@ -202,6 +211,52 @@ export function ClientImportDialog({ onImported }: { onImported?: () => void }) 
               <p className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
                 <CheckCircle2 className="h-4 w-4" />All {preview.summary.total} rows are ready.
               </p>
+            )}
+            {(preview.extras.logins > 0 || preview.extras.setups > 0 || preview.extras.payments > 0 || preview.extras.problems.length > 0) && (
+              <div className="space-y-2 rounded-md border p-3 text-sm">
+                <p>
+                  With the clients being added: <strong>{preview.extras.logins}</strong> logins,{" "}
+                  <strong>{preview.extras.setups}</strong> compliance works and <strong>{preview.extras.payments}</strong> TDS/RCM
+                  payments.
+                </p>
+                {preview.extras.setups > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Each work is tracked from its &lsquo;Track from&rsquo; month; the periods from then until now are added as Pending.
+                  </p>
+                )}
+                {preview.extras.problems.some((p) => !p.skipped) && (
+                  <div className="max-h-48 overflow-auto rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Sheet</TableHead>
+                          <TableHead className="w-14">Row</TableHead>
+                          <TableHead>Client</TableHead>
+                          <TableHead>Problem (row left out)</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {preview.extras.problems
+                          .filter((p) => !p.skipped)
+                          .map((p) => (
+                            <TableRow key={`${p.sheet}-${p.row}`}>
+                              <TableCell>{p.sheet}</TableCell>
+                              <TableCell>{p.row}</TableCell>
+                              <TableCell>{p.client || "—"}</TableCell>
+                              <TableCell className="text-red-700 dark:text-red-400">{p.problem}</TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+                {preview.extras.problems.some((p) => p.skipped) && (
+                  <p className="text-xs text-muted-foreground">
+                    {preview.extras.problems.filter((p) => p.skipped).length} rows belong to clients that are skipped, so they are
+                    left out too.
+                  </p>
+                )}
+              </div>
             )}
             {preview.summary.errors > 0 && (
               <p className="text-xs text-muted-foreground">

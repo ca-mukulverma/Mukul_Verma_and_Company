@@ -9,8 +9,10 @@ import {
   importClientRows,
   readClientRows,
 } from "@/lib/client-import";
+import { checkClientExtras, extrasSummary } from "@/lib/client-extras";
 
-const MAX_FILE_BYTES = 2 * 1024 * 1024;
+// Requests to Vercel functions are limited to 4.5 MB
+const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 // Admins and partners can add clients
 async function requireClientCreator() {
@@ -37,6 +39,8 @@ export async function GET() {
 // POST /api/clients/import – form data: file (.xlsx) and mode
 //   mode=preview: check every row and report, nothing is saved
 //   mode=import:  create the rows that pass every check
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   const user = await requireClientCreator();
   if (!user) {
@@ -47,10 +51,11 @@ export async function POST(request: NextRequest) {
   const file = form.get("file");
   const mode = form.get("mode") === "import" ? "import" : "preview";
   if (!(file instanceof File)) return NextResponse.json({ error: "Choose the Excel file" }, { status: 400 });
-  if (file.size > MAX_FILE_BYTES) return NextResponse.json({ error: "The file is larger than 2 MB" }, { status: 400 });
+  if (file.size > MAX_FILE_BYTES) return NextResponse.json({ error: "The file is larger than 4 MB" }, { status: 400 });
 
   try {
-    const rows = await checkClientRows(await readClientRows(await file.arrayBuffer()));
+    const buffer = await file.arrayBuffer();
+    const rows = await checkClientRows(await readClientRows(buffer));
     if (rows.length === 0) return NextResponse.json({ error: "No clients were found in the file" }, { status: 400 });
 
     const summary = {
@@ -60,9 +65,12 @@ export async function POST(request: NextRequest) {
       duplicates: rows.filter((r) => r.errors.length === 0 && r.duplicate).length,
     };
 
-    if (mode === "preview") return NextResponse.json({ summary, rows });
+    // Logins, compliance setup and payments, when the file is a client export
+    const extras = await checkClientExtras(buffer, rows);
 
-    const created = await importClientRows(rows, user.id);
+    if (mode === "preview") return NextResponse.json({ summary, rows, extras: extrasSummary(extras) });
+
+    const created = await importClientRows(rows, user.id, extras);
     await clientCache.invalidate("*");
     return NextResponse.json({ summary, created });
   } catch (error) {

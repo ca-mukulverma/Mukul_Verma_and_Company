@@ -1,5 +1,9 @@
 import ExcelJS from "exceljs";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ClientPhone } from "@/lib/client-contacts";
+import { registrationsPayload, registrationsProblem } from "@/lib/client-documents";
+import { ClientExtras, createItemsForImported, extrasWrites } from "@/lib/client-extras";
 
 // Bulk client import from an Excel sheet (Admin, Partner). The template has a
 // "Clients" sheet to fill in and an "Instructions" sheet.
@@ -15,6 +19,16 @@ const COLUMNS = [
   { key: "address", header: "Address", width: 40, max: 150, note: "Optional. Up to 150 characters." },
   { key: "tallyLedgerName", header: "Tally Ledger Name", width: 28, max: 100, note: "Optional. Only if the client's ledger in Tally has a different name." },
   { key: "notes", header: "Notes", width: 36, max: 2000, note: "Optional." },
+  { key: "otherPhones", header: "Other phones", width: 32, max: 400, note: "Optional. More numbers separated by ';', e.g. 9876500000 (Accountant, WhatsApp); 0755 2550000 (Office)." },
+  { key: "pan", header: "PAN", width: 12, max: 10, note: "Optional. e.g. ABCDE1234F" },
+  { key: "tan", header: "TAN", width: 12, max: 10, note: "Optional. e.g. BPLA12345B" },
+  { key: "cin", header: "CIN / LLPIN", width: 24, max: 21, note: "Optional. e.g. U74999MP2020PTC012345 or AAB-1234" },
+  { key: "udyamNumber", header: "Udyam number", width: 22, max: 19, note: "Optional. e.g. UDYAM-MP-12-0012345" },
+  { key: "iec", header: "IEC", width: 12, max: 10, note: "Optional. 10 characters." },
+  { key: "responsibleName", header: "Responsible person", width: 22, max: 50, note: "Optional. Who gets compliance reminders, if not the owner. Empty or 'Owner' means the owner." },
+  { key: "responsiblePhone", header: "Responsible phone", width: 16, max: 15, note: "Optional." },
+  { key: "responsibleEmail", header: "Responsible email", width: 28, max: 75, note: "Optional." },
+  { key: "connector", header: "Connector", width: 22, max: 100, note: "Optional. Name of a connector already in Billing → Connectors." },
 ] as const;
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
@@ -25,6 +39,8 @@ export interface ImportRow {
   data: ClientRowData;
   errors: string[];
   duplicate: string | null; // why the row matches an existing client or an earlier row
+  phones?: ClientPhone[]; // the owner's numbers, when more than one
+  connectorId?: string | null;
 }
 
 export async function buildClientTemplate(): Promise<Buffer> {
@@ -41,7 +57,7 @@ export async function buildClientTemplate(): Promise<Buffer> {
     header.getCell(i + 1).note = c.note;
   });
   // Keep phone numbers and GSTINs as text so Excel doesn't turn them into numbers
-  for (const key of ["phone", "gstin"] as const) {
+  for (const key of ["phone", "gstin", "otherPhones", "responsiblePhone"] as const) {
     sheet.getColumn(key).numFmt = "@";
   }
 
@@ -50,6 +66,7 @@ export async function buildClientTemplate(): Promise<Buffer> {
   const lines: [string, string][] = [
     ["How to use", "Fill one client per row on the 'Clients' sheet, starting from row 2. Do not change the column headings."],
     ["", "Then upload this file in Clients → Import from Excel. You will see a check of every row before anything is saved."],
+    ["", "A file from Clients → Export to Excel can be uploaded here as it is."],
     ["Required", "Contact Person, and at least one of Email or Phone."],
     ["Duplicates", "Rows with the same GSTIN, email or phone as an existing client (or an earlier row) are skipped."],
     ["Limit", `Up to ${MAX_IMPORT_ROWS} clients per file.`],
@@ -127,10 +144,26 @@ export async function readClientRows(buffer: ArrayBuffer): Promise<{ row: number
 const normalisePhone = (phone: string) => phone.replace(/[\s\-().]/g, "");
 
 // Checks every row and marks duplicates of existing clients or earlier rows
+// "9876500000 (Accountant, WhatsApp); 0755 2550000 (Office)" as phone entries
+function parseOtherPhones(text: string): ClientPhone[] | string {
+  const phones: ClientPhone[] = [];
+  for (const part of text.split(";").map((p) => p.trim()).filter(Boolean)) {
+    const match = part.match(/^([^(]+?)\s*(?:\((.*)\))?$/);
+    const number = match ? normalisePhone(match[1]) : "";
+    if (!/^\+?\d{6,14}$/.test(number)) return `Other phones: "${part}" is not a phone number`;
+    const notes = (match?.[2] ?? "").split(",").map((n) => n.trim()).filter(Boolean);
+    const label = notes.find((n) => n.toLowerCase() !== "whatsapp")?.slice(0, 20) || "Other";
+    phones.push({ number, label, whatsapp: notes.some((n) => n.toLowerCase() === "whatsapp") });
+  }
+  return phones;
+}
+
 export async function checkClientRows(rows: { row: number; data: ClientRowData }[]): Promise<ImportRow[]> {
-  const existing = await prisma.client.findMany({
-    select: { gstin: true, email: true, phone: true, contactPerson: true },
-  });
+  const [existing, connectors] = await Promise.all([
+    prisma.client.findMany({ select: { gstin: true, email: true, phone: true, contactPerson: true } }),
+    prisma.connector.findMany({ select: { id: true, name: true } }),
+  ]);
+  const connectorIds = new Map(connectors.map((c) => [c.name.trim().toLowerCase(), c.id]));
   const seen = {
     gstin: new Map<string, string>(),
     email: new Map<string, string>(),
@@ -154,6 +187,31 @@ export async function checkClientRows(rows: { row: number; data: ClientRowData }
     if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) errors.push("Email is not valid");
     if (d.phone && !/^\+?\d{6,14}$/.test(d.phone)) errors.push("Phone should be 6–15 digits");
     if (d.gstin && !/^\d{2}[A-Z0-9]{13}$/.test(d.gstin)) errors.push("GSTIN should be 15 characters starting with the state code");
+    if (d.responsibleName?.toLowerCase() === "owner") d.responsibleName = null;
+    if (d.responsibleEmail) d.responsibleEmail = d.responsibleEmail.toLowerCase();
+    if (d.responsiblePhone) d.responsiblePhone = normalisePhone(d.responsiblePhone);
+    if (d.responsibleEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.responsibleEmail)) errors.push("Responsible email is not valid");
+    if ((d.responsiblePhone || d.responsibleEmail) && !d.responsibleName) errors.push("Responsible person's name is missing");
+    Object.assign(d, registrationsPayload(d));
+    const registrationProblem = registrationsProblem(d);
+    if (registrationProblem) errors.push(registrationProblem);
+
+    let phones: ClientPhone[] | undefined;
+    if (d.otherPhones) {
+      const parsed = parseOtherPhones(d.otherPhones);
+      if (typeof parsed === "string") errors.push(parsed);
+      else if (parsed.length) {
+        phones = [...(d.phone ? [{ number: d.phone, label: "Owner", whatsapp: true }] : []), ...parsed];
+        if (phones.length > 10) errors.push("At most 10 phone numbers");
+      }
+    }
+
+    let connectorId: string | null = null;
+    if (d.connector) {
+      connectorId = connectorIds.get(d.connector.toLowerCase()) ?? null;
+      if (!connectorId) errors.push(`Connector "${d.connector}" was not found in Billing → Connectors`);
+    }
+
     for (const c of COLUMNS) {
       const value = d[c.key];
       if (value && value.length > c.max) errors.push(`${c.header.replace("*", "")} is longer than ${c.max} characters`);
@@ -171,18 +229,21 @@ export async function checkClientRows(rows: { row: number; data: ClientRowData }
       if (d.email) seen.email.set(d.email, label);
       if (d.phone) seen.phone.set(d.phone, label);
     }
-    return { row, data: d, errors, duplicate };
+    return { row, data: d, errors, duplicate, phones, connectorId };
   });
 }
 
-// Creates the rows that passed every check, managed by the person importing;
-// returns how many were created
-export async function importClientRows(rows: ImportRow[], userId: string) {
+// Creates the rows that passed every check, managed by the person importing,
+// with their logins, compliance setup and payments from the other sheets;
+// returns how many clients were created
+export async function importClientRows(rows: ImportRow[], userId: string, extras?: ClientExtras) {
   const ready = rows.filter((r) => r.errors.length === 0 && !r.duplicate);
   if (ready.length === 0) return 0;
+  const ids = new Map(ready.map((r) => [r.row, crypto.randomUUID()]));
   await prisma.$transaction([
     prisma.client.createMany({
-      data: ready.map(({ data }) => ({
+      data: ready.map(({ row, data, phones, connectorId }) => ({
+        id: ids.get(row)!,
         contactPerson: data.contactPerson!,
         companyName: data.companyName,
         email: data.email,
@@ -191,10 +252,22 @@ export async function importClientRows(rows: ImportRow[], userId: string) {
         address: data.address,
         tallyLedgerName: data.tallyLedgerName,
         notes: data.notes,
+        ...(phones && { phones: phones as unknown as Prisma.InputJsonValue, phone: phones[0].number }),
+        pan: data.pan,
+        tan: data.tan,
+        cin: data.cin,
+        udyamNumber: data.udyamNumber,
+        iec: data.iec,
+        ownerIsResponsible: !data.responsibleName,
+        responsibleName: data.responsibleName,
+        responsiblePhone: data.responsibleName ? data.responsiblePhone : null,
+        responsibleEmail: data.responsibleName ? data.responsibleEmail : null,
+        connectorId: connectorId ?? null,
         isGuest: false,
         managerId: userId,
       })),
     }),
+    ...(extras ? extrasWrites(extras, ids) : []),
     prisma.activity.create({
       data: {
         type: "client",
@@ -204,5 +277,6 @@ export async function importClientRows(rows: ImportRow[], userId: string) {
       },
     }),
   ]);
+  if (extras?.setups.length) await createItemsForImported([...new Set(extras.setups.map((s) => ids.get(s.clientRow)!))]);
   return ready.length;
 }

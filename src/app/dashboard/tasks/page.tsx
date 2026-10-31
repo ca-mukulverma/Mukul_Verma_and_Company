@@ -1,6 +1,7 @@
 "use client";
 
 import { HelpLink } from "@/components/help/help-link";
+import { TaskExportButton, TaskImportDialog } from "@/components/tasks/task-transfer";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -771,13 +772,17 @@ export default function TasksPage() {
         </div>
 
         {canManageTasks && (
-          <Button 
-            onClick={() => router.push("/dashboard/tasks/create")} 
-            className="w-full sm:w-auto mt-2 sm:mt-0"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create Task
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row mt-2 sm:mt-0">
+            <TaskExportButton />
+            <TaskImportDialog onImported={() => fetchTasks(true)} />
+            <Button 
+              onClick={() => router.push("/dashboard/tasks/create")} 
+              className="w-full sm:w-auto"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create Task
+            </Button>
+          </div>
         )}
       </div>
 
