@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ClientPhone } from "@/lib/client-contacts";
 import { registrationsPayload, registrationsProblem } from "@/lib/client-documents";
+import { ClientExtras, createItemsForImported, extrasWrites } from "@/lib/client-extras";
 
 // Bulk client import from an Excel sheet (Admin, Partner). The template has a
 // "Clients" sheet to fill in and an "Instructions" sheet.
@@ -232,14 +233,17 @@ export async function checkClientRows(rows: { row: number; data: ClientRowData }
   });
 }
 
-// Creates the rows that passed every check, managed by the person importing;
-// returns how many were created
-export async function importClientRows(rows: ImportRow[], userId: string) {
+// Creates the rows that passed every check, managed by the person importing,
+// with their logins, compliance setup and payments from the other sheets;
+// returns how many clients were created
+export async function importClientRows(rows: ImportRow[], userId: string, extras?: ClientExtras) {
   const ready = rows.filter((r) => r.errors.length === 0 && !r.duplicate);
   if (ready.length === 0) return 0;
+  const ids = new Map(ready.map((r) => [r.row, crypto.randomUUID()]));
   await prisma.$transaction([
     prisma.client.createMany({
-      data: ready.map(({ data, phones, connectorId }) => ({
+      data: ready.map(({ row, data, phones, connectorId }) => ({
+        id: ids.get(row)!,
         contactPerson: data.contactPerson!,
         companyName: data.companyName,
         email: data.email,
@@ -263,6 +267,7 @@ export async function importClientRows(rows: ImportRow[], userId: string) {
         managerId: userId,
       })),
     }),
+    ...(extras ? extrasWrites(extras, ids) : []),
     prisma.activity.create({
       data: {
         type: "client",
@@ -272,5 +277,6 @@ export async function importClientRows(rows: ImportRow[], userId: string) {
       },
     }),
   ]);
+  if (extras?.setups.length) await createItemsForImported([...new Set(extras.setups.map((s) => ids.get(s.clientRow)!))]);
   return ready.length;
 }

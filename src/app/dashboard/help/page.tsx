@@ -86,7 +86,7 @@ const SECTIONS: Section[] = [
       "Send to Client emails the client what they asked for (returns, challans, ITR, certificates) in one go.",
       "New task (Admins and Partners) creates a task already linked to the client.",
       "Client pickers show the last 5 clients you picked at the top.",
-      "Export to Excel (Admins and Partners) downloads the details of all clients, or only the ones you tick. The file can be uploaded again in Import from Excel.",
+      "Export to Excel (Admins and Partners) downloads the details of all clients, or only the ones you tick, with their compliance setup and TDS/RCM payments. Admin can also include logins and passwords. The file can be uploaded again in Import from Excel. Compliance history is a separate download in the same window.",
     ],
     link: { href: "/dashboard/clients", label: "Open Clients" },
   },

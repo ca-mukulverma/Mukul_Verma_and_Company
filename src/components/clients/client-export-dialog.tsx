@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Download, Loader2, Search } from "lucide-react";
+import { Download, History, KeyRound, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -37,12 +37,15 @@ export function ClientExportDialog() {
   const [clients, setClients] = useState<ClientOption[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
-  const [busy, setBusy] = useState<"all" | "selected" | null>(null);
+  const [busy, setBusy] = useState<"all" | "selected" | "history" | null>(null);
+  const [canExportLogins, setCanExportLogins] = useState(false);
+  const [includeLogins, setIncludeLogins] = useState(false);
 
   const load = async () => {
     try {
-      const response = await axios.get<{ clients: ClientOption[] }>("/api/clients/export");
+      const response = await axios.get<{ clients: ClientOption[]; canExportLogins: boolean }>("/api/clients/export");
       setClients(response.data.clients);
+      setCanExportLogins(response.data.canExportLogins);
     } catch {
       toast.error("Could not load the clients");
     }
@@ -78,15 +81,16 @@ export function ClientExportDialog() {
       return next;
     });
 
-  const download = async (which: "all" | "selected") => {
+  const download = async (which: "all" | "selected" | "history") => {
     setBusy(which);
     try {
+      const ids = which === "all" || (which === "history" && selected.size === 0) ? undefined : [...selected];
       await downloadBillFile({
         method: "post",
         url: "/api/clients/export",
-        data: which === "all" ? {} : { ids: [...selected] },
+        data: which === "history" ? { ids, file: "history" } : { ids, includeLogins },
       });
-      setOpen(false);
+      if (which !== "history") setOpen(false);
     } catch (error) {
       toast.error(await blobErrorMessage(error, "Could not export the clients"));
     } finally {
@@ -103,6 +107,7 @@ export function ClientExportDialog() {
         else {
           setSelected(new Set());
           setSearch("");
+          setIncludeLogins(false);
         }
       }}
     >
@@ -117,8 +122,8 @@ export function ClientExportDialog() {
         <DialogHeader>
           <DialogTitle>Export clients to Excel</DialogTitle>
           <DialogDescription>
-            Download the details of all clients, or tick the ones you need. The file can be uploaded again in Import from
-            Excel.
+            Download the details of all clients, or tick the ones you need, with their compliance setup and TDS/RCM
+            payments. The file can be uploaded again in Import from Excel.
           </DialogDescription>
         </DialogHeader>
 
@@ -176,6 +181,28 @@ export function ClientExportDialog() {
                   Showing {SHOWN} of {matching.length}. Search to find the others, or use Tick all.
                 </p>
               )}
+            </div>
+            {canExportLogins && (
+              <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                  <Checkbox checked={includeLogins} onCheckedChange={(v) => setIncludeLogins(v === true)} />
+                  <KeyRound className="h-4 w-4" />
+                  Include logins and passwords
+                </label>
+                <p className="pl-6 text-xs text-muted-foreground">
+                  The file will have every portal password of these clients. Keep it safe and delete it after use.
+                </p>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-2 rounded-md border p-3 text-sm">
+              <p className="text-muted-foreground">
+                Compliance history: every period, filing date and ARN of {selected.size ? `the ${selected.size} selected` : "all"}{" "}
+                clients, as a separate record. It is not imported.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => download("history")} disabled={busy !== null}>
+                {busy === "history" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <History className="mr-2 h-4 w-4" />}
+                Download
+              </Button>
             </div>
           </div>
         )}

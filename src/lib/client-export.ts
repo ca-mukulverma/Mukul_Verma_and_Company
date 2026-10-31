@@ -2,14 +2,52 @@ import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { clientPhones } from "@/lib/client-contacts";
 import { formatIndianDate } from "@/lib/billing-constants";
+import { STATUS_LABELS } from "@/lib/compliance";
+import { monthKey, periodLabel } from "@/lib/compliance-periods";
+import {
+  FREQUENCY_LABELS,
+  LOGIN_COLUMNS,
+  PAYMENT_COLUMNS,
+  SETUP_COLUMNS,
+  SHEETS,
+  trackFromFor,
+} from "@/lib/client-extras";
 
 // Client details as an Excel file (Admin, Partner): every client, or the ones
-// picked. The first columns carry the same headings as the import template,
-// so the "Clients" sheet can be uploaded again in Clients → Import from Excel.
+// picked, with their compliance setup, TDS/RCM payments and (Admin only)
+// logins. The sheets carry the import's headings, so the whole file can be
+// uploaded again in Clients → Import from Excel.
 
 export const MAX_EXPORT_CLIENTS = 10000;
+// Keeps the history file within what one response can carry
+export const MAX_HISTORY_ROWS = 40000;
 
-export async function buildClientExport(ids: string[] | null, downloadedBy: string): Promise<Buffer> {
+type Column = { key: string; header: string; width: number };
+
+function addSheet(workbook: ExcelJS.Workbook, name: string, columns: readonly Column[], textKeys: string[] = []) {
+  const sheet = workbook.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }] });
+  sheet.columns = columns.map((c) => ({ header: c.header, key: c.key, width: c.width }));
+  const header = sheet.getRow(1);
+  header.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F2937" } };
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
+  for (const key of ["gstin", ...textKeys]) sheet.getColumn(key).numFmt = "@";
+  return sheet;
+}
+
+const clientCells = (client: { contactPerson: string; companyName: string | null; gstin: string | null }) => ({
+  client: client.companyName || client.contactPerson,
+  contactPerson: client.contactPerson,
+  gstin: client.gstin ?? "",
+});
+
+const amount = (value: { toString(): string } | null) => (value === null ? null : Number(value.toString()));
+
+export async function buildClientExport(
+  ids: string[] | null,
+  downloadedBy: string,
+  options: { includeLogins: boolean }
+): Promise<Buffer> {
   const clients = await prisma.client.findMany({
     where: ids ? { id: { in: ids } } : {},
     include: {
@@ -17,9 +55,27 @@ export async function buildClientExport(ids: string[] | null, downloadedBy: stri
       connector: { select: { name: true } },
       parentClient: { select: { contactPerson: true, companyName: true } },
       _count: { select: { tasks: true } },
+      ...(options.includeLogins && { credentials: { orderBy: { createdAt: "asc" as const } } }),
+      complianceSubscriptions: {
+        where: { active: true },
+        include: { workType: { select: { name: true } } },
+        orderBy: { workType: { sortOrder: "asc" } },
+      },
+      obligations: { where: { active: true }, orderBy: [{ kind: "asc" }, { createdAt: "asc" }] },
     },
     orderBy: [{ companyName: "asc" }, { contactPerson: "asc" }],
   });
+
+  // Periods of the tracked works, to tell where each one is up to
+  const items = await prisma.complianceItem.findMany({
+    where: { clientId: { in: clients.map((c) => c.id) } },
+    select: { clientId: true, workTypeId: true, periodStart: true, status: true, historical: true },
+  });
+  const itemsOf = new Map<string, typeof items>();
+  for (const item of items) {
+    const key = `${item.clientId}|${item.workTypeId}`;
+    itemsOf.set(key, [...(itemsOf.get(key) ?? []), item]);
+  }
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "MV Company";
@@ -96,6 +152,53 @@ export async function buildClientExport(ids: string[] | null, downloadedBy: stri
     row.alignment = { vertical: "top", wrapText: true };
   }
 
+  if (options.includeLogins) {
+    const logins = addSheet(workbook, SHEETS.logins, LOGIN_COLUMNS, ["username", "password"]);
+    for (const client of clients) {
+      for (const login of client.credentials ?? []) {
+        logins.addRow({ ...clientCells(client), title: login.title, username: login.username, password: login.password });
+      }
+    }
+  }
+
+  const setup = addSheet(workbook, SHEETS.setup, [...SETUP_COLUMNS, { key: "since", header: "Tracked since", width: 13 }], [
+    "trackFrom",
+    "trackTill",
+  ]);
+  setup.getCell(1, SETUP_COLUMNS.length + 1).note = "For reference only; not read on import.";
+  setup.getCell("F1").note = "The first period still to be done. Earlier periods are not added on import.";
+  for (const client of clients) {
+    for (const sub of client.complianceSubscriptions) {
+      if (sub.endPeriod && sub.endPeriod < sub.startPeriod) continue;
+      setup.addRow({
+        ...clientCells(client),
+        work: sub.workType.name,
+        frequency: FREQUENCY_LABELS[sub.frequency],
+        trackFrom: trackFromFor(sub, itemsOf.get(`${client.id}|${sub.workTypeId}`) ?? []),
+        trackTill: sub.endPeriod ? monthKey(sub.endPeriod) : "",
+        feeNil: amount(sub.feeNil),
+        feeNonNil: amount(sub.feeNonNil),
+        since: monthKey(sub.startPeriod),
+      });
+    }
+  }
+
+  const payments = addSheet(workbook, SHEETS.payments, PAYMENT_COLUMNS, ["fromMonth", "toMonth"]);
+  for (const client of clients) {
+    for (const ob of client.obligations) {
+      payments.addRow({
+        ...clientCells(client),
+        kind: ob.kind,
+        category: ob.category,
+        payee: ob.payee,
+        fixedAmount: amount(ob.fixedAmount),
+        ratePercent: amount(ob.ratePercent),
+        fromMonth: monthKey(ob.fromMonth),
+        toMonth: ob.toMonth ? monthKey(ob.toMonth) : "",
+      });
+    }
+  }
+
   const info = workbook.addWorksheet("About");
   info.columns = [{ width: 18 }, { width: 80 }];
   info.addRows([
@@ -103,10 +206,95 @@ export async function buildClientExport(ids: string[] | null, downloadedBy: stri
     ["Downloaded by", downloadedBy],
     ["Clients", ids ? `${clients.length} selected` : `All ${clients.length}`],
     ["", ""],
-    ["Import again", "The 'Clients' sheet can be uploaded in Clients → Import from Excel. The columns from Contact Person to"],
+    ["Logins", options.includeLogins ? "Included. This file has passwords: keep it safe and delete it after use." : "Not included"],
+    ["", ""],
+    ["Import again", "Upload this file in Clients → Import from Excel. On the Clients sheet the columns from Contact Person to"],
     ["", "Connector are imported; the ones after are for reference. Every client comes back as a permanent client."],
-    ["", "Clients already in the app (same GSTIN, email or phone) are skipped."],
-    ["Not included", "Logins and passwords, documents, compliance works, history and bills."],
+    ["", "Clients already in the app (same GSTIN, email or phone) are skipped, with their logins and compliance."],
+    ["Compliance setup", "Each work is tracked again from 'Track from': the first period that was still open. Change it if needed."],
+    ["", "Periods from then until now are added as Pending."],
+    ["Not included", "Documents, compliance history (a separate download), client history and bills."],
+  ]);
+  info.getColumn(1).font = { bold: true };
+
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+// Every period of the clients' compliance works, as a record (not imported)
+export async function countComplianceHistory(ids: string[] | null) {
+  return prisma.complianceItem.count({ where: ids ? { clientId: { in: ids } } : {} });
+}
+
+export async function buildComplianceHistoryExport(ids: string[] | null, downloadedBy: string): Promise<Buffer> {
+  const items = await prisma.complianceItem.findMany({
+    where: ids ? { clientId: { in: ids } } : {},
+    include: {
+      client: { select: { contactPerson: true, companyName: true, gstin: true } },
+      workType: { select: { name: true, sortOrder: true } },
+      completedBy: { select: { name: true } },
+    },
+    orderBy: [{ periodStart: "asc" }],
+    take: MAX_HISTORY_ROWS,
+  });
+  // Client, then work, then period
+  items.sort(
+    (a, b) =>
+      (a.client.companyName || a.client.contactPerson).localeCompare(b.client.companyName || b.client.contactPerson) ||
+      a.workType.sortOrder - b.workType.sortOrder ||
+      a.workType.name.localeCompare(b.workType.name) ||
+      a.periodStart.getTime() - b.periodStart.getTime()
+  );
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "MV Company";
+  workbook.created = new Date();
+  const money = { numFmt: "#,##0.00" };
+  const sheet = addSheet(workbook, SHEETS.history, [
+    { key: "client", header: "Client", width: 30 },
+    { key: "contactPerson", header: "Contact person", width: 22 },
+    { key: "gstin", header: "GSTIN", width: 18 },
+    { key: "work", header: "Work", width: 22 },
+    { key: "period", header: "Period", width: 14 },
+    { key: "dueDate", header: "Due date", width: 12 },
+    { key: "status", header: "Status", width: 14 },
+    { key: "dataReceived", header: "Data received", width: 13 },
+    { key: "filedAt", header: "Filed on", width: 12 },
+    { key: "arn", header: "ARN / acknowledgement", width: 24 },
+    { key: "nil", header: "Nil", width: 6 },
+    { key: "taxPayable", header: "Tax payable", width: 13 },
+    { key: "fee", header: "Fee", width: 11 },
+    { key: "filedBy", header: "Filed by", width: 18 },
+    { key: "past", header: "Entered as past period", width: 12 },
+  ], ["arn"]);
+  sheet.getColumn("taxPayable").numFmt = money.numFmt;
+  sheet.getColumn("fee").numFmt = money.numFmt;
+
+  for (const item of items) {
+    sheet.addRow({
+      ...clientCells(item.client),
+      work: item.workType.name,
+      period: periodLabel(item.frequency, item.periodStart),
+      dueDate: formatIndianDate(item.dueDate),
+      status: STATUS_LABELS[item.status],
+      dataReceived: item.dataReceivedAt ? formatIndianDate(item.dataReceivedAt) : "",
+      filedAt: item.filedAt ? formatIndianDate(item.filedAt) : "",
+      arn: item.arn ?? "",
+      nil: item.isNil === null ? "" : item.isNil ? "Yes" : "No",
+      taxPayable: amount(item.taxPayable),
+      fee: amount(item.fee),
+      filedBy: item.completedBy?.name ?? "",
+      past: item.historical ? "Yes" : "",
+    });
+  }
+
+  const info = workbook.addWorksheet("About");
+  info.columns = [{ width: 18 }, { width: 80 }];
+  info.addRows([
+    ["Downloaded on", formatIndianDate(new Date(), "medium")],
+    ["Downloaded by", downloadedBy],
+    ["Periods", String(items.length)],
+    ["", ""],
+    ["Note", "A record of every period. It is not read by the import; the Compliance setup sheet of the client export is."],
   ]);
   info.getColumn(1).font = { bold: true };
 
