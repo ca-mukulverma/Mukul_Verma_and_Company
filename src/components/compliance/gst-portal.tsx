@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { HelpLink } from "@/components/help/help-link";
 import { useActivePolling } from "@/hooks/use-active-polling";
 import { cn } from "@/lib/utils";
 import {
@@ -234,7 +235,10 @@ function QueueForm({ clients, jobs, onQueued }: { clients: PortalClient[]; jobs:
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Download from the GST portal</CardTitle>
+        <CardTitle className="flex items-center gap-1 text-lg">
+          Download from the GST portal
+          <HelpLink section="gst-portal" />
+        </CardTitle>
         <CardDescription>
           The helper on the office PC opens the portal and fills in the saved login. Someone types the captcha and OTP there; the files are then saved into each client&apos;s periods, as if uploaded by you.
         </CardDescription>

@@ -408,6 +408,14 @@ client's page ([GST_WORKING.md](GST_WORKING.md)). TDS figures are entered
 when marking returns filed. It is plain arithmetic done by the app, always
 live and free.
 
+## GST portal downloads
+
+Compliance → **GST portal** queues downloads of GSTR-1, GSTR-3B and GSTR-2B
+files from the GST portal. A helper program on an office PC opens the portal
+and fills in the client's saved GST login; staff type the captcha and OTP
+there, and the files are saved into the client's periods as if uploaded by
+hand. Setup and use: [GST_PORTAL_DOWNLOADS.md](GST_PORTAL_DOWNLOADS.md).
+
 ## Overview and notifications
 
 - **Overview** shows, for each work, overdue, due in 7 days, data pending, data
@@ -609,6 +617,8 @@ which is several years of return PDFs.
   see [GST_WORKING.md](GST_WORKING.md#for-developers); WhatsApp:
   `src/components/compliance/whatsapp-send.ts` and the extension in
   `public/whatsapp-extension` (`__APP_ORIGIN__` is filled in on download).
+- GST portal downloads and the office helper program: see
+  [GST_PORTAL_DOWNLOADS.md](GST_PORTAL_DOWNLOADS.md#for-developers).
 - API: `src/app/api/compliance/*`; daily job: `src/app/api/cron/compliance`
   (uses `CRON_SECRET`, runs at 01:30 UTC); page: `src/app/dashboard/compliance`;
   components: `src/components/compliance/*`.
