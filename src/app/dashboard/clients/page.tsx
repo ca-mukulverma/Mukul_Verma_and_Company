@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { canCreateClient, canEditClient, canModifyClient } from "@/lib/permissions";
 import { ClientImportDialog } from "@/components/clients/client-import-dialog";
+import { ClientExportDialog } from "@/components/clients/client-export-dialog";
 import { DataTable } from "@/components/ui/data-table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ClientListSkeleton } from "@/components/loading/client-skeleton";
@@ -626,7 +627,7 @@ const deleteClient = async () => {
 
         {/* Create buttons for admins and partners */}
         {canAddClients && (
-  <div className="flex flex-row gap-2">
+  <div className="flex flex-row flex-wrap gap-2">
     <Button asChild className="flex-1">
       <Link href="/dashboard/clients/create">
         <div className="flex items-center justify-center">
@@ -637,6 +638,7 @@ const deleteClient = async () => {
       </Link>
     </Button>
     <ClientImportDialog onImported={refresh} />
+    <ClientExportDialog />
     <Button variant="outline" asChild className="flex-1">
       <Link href="/dashboard/clients/guest/create">
         <div className="flex items-center justify-center">

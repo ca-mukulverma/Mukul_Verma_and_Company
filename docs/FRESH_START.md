@@ -41,5 +41,31 @@ Removes all client work so every client can be loaded again at once
    compliance files in R2 (`clients/`). Staff photos stay. These can't be
    brought back, as backups don't include files.
 
+### Keeping clients and tasks for after the fresh start
+
+Before the fresh start (Admin or Partner):
+
+1. Clients → **Export to Excel** → Export all. The file has every client's
+   details: contacts, other phones, GSTIN, PAN, TAN, CIN, Udyam, IEC, the
+   responsible person, connector, address, Tally ledger and notes.
+2. Tasks → **Export tasks**. Admin gets every task; a partner gets the tasks
+   they created or are assigned.
+
+After the fresh start:
+
+1. Clients → Import from Excel → upload the clients file as it is. Everyone
+   comes back as a permanent client. Logins, documents, compliance, history
+   and bills are not in the file.
+2. Edit the tasks file if needed (delete rows, change due dates), then
+   Tasks → **Import tasks**. Each row becomes a new task created by the person
+   importing; clients are found again by GSTIN, then name, and staff by email.
+   "Start every task as Pending" is ticked by default; Completed and Cancelled
+   rows always come back as Pending. Comments and bills are not carried over,
+   and no notifications are sent. A row with the same title and client as an
+   existing task is skipped, so uploading twice is safe.
+
+Code: `src/lib/client-export.ts`, `src/lib/client-import.ts`,
+`src/lib/task-transfer.ts`.
+
 Code: `src/lib/fresh-start.ts`, `src/lib/neon-backup.ts`,
 `src/app/api/admin/fresh-start`, `src/app/api/admin/backups`.
