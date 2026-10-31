@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth"; 
+import { authOptions, getSessionUser } from "@/lib/auth";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Passwords: signed-in staff only (the middleware skips /api routes)
+  if (!getSessionUser(await getServerSession(authOptions))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const resolvedParams = await params;
   const clientId = resolvedParams.id;
 
