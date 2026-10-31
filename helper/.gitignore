@@ -1,5 +1,0 @@
-node_modules/
-downloads/
-.env
-# The settings template is committed (the app's .gitignore ignores .env*)
-!.env.example
