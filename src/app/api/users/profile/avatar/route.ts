@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getSessionUser } from "@/lib/auth";
 import crypto from "crypto";
 
 // Upload or update avatar
@@ -128,6 +128,11 @@ export async function DELETE(_req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Signs Cloudinary uploads: signed-in users only
+  if (!getSessionUser(await getServerSession(authOptions))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { folder, timestamp } = await req.json();
 

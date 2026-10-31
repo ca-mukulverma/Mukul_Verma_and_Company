@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!getSessionUser(await getServerSession(authOptions))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const resolvedParams = await params;
     const clientId = resolvedParams.id;
@@ -173,6 +177,10 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!getSessionUser(await getServerSession(authOptions))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const resolvedParams = await params;
     const clientId = resolvedParams.id;
@@ -187,7 +195,11 @@ export async function PATCH(
       );
     }
 
-    // Update the pinned status
+    // Update the pinned status (only an entry of this client)
+    const entry = await prisma.clientHistory.findFirst({ where: { id: entryId, clientId }, select: { id: true } });
+    if (!entry) {
+      return NextResponse.json({ error: "History entry not found" }, { status: 404 });
+    }
     const updatedEntry = await prisma.clientHistory.update({
       where: { id: entryId },
       data: { pinned },
