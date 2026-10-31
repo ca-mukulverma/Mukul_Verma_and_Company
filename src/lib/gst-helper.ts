@@ -57,7 +57,8 @@ export async function loadHelperJob(
     return { error: NextResponse.json({ error: "Cancelled by staff", cancelled: true }, { status: 409 }) };
   }
   if (!(HELPER_STATUSES as readonly string[]).includes(job.status)) {
-    return { error: NextResponse.json({ error: `The job is ${job.status.toLowerCase()}` }, { status: 409 }) };
+    const state = job.status === "QUEUED" ? "is queued again, not running" : "has finished";
+    return { error: NextResponse.json({ error: `The job ${state}` }, { status: 409 }) };
   }
   return { job };
 }

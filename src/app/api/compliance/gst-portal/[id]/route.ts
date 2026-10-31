@@ -24,7 +24,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (!unfinished) return badRequest("This job has already finished");
     const { count } = await prisma.gstPortalJob.updateMany({
       where: { id, status: { in: [...UNFINISHED_STATUSES] } },
-      data: { status: "CANCELLED", finishedAt: new Date(), log: appendLog(job.log, [`Cancelled by ${access.name}`]) as object[] },
+      data: { status: "CANCELLED", finishedAt: new Date(), progress: null, log: appendLog(job.log, [`Cancelled by ${access.name}`]) as object[] },
     });
     if (!count) return badRequest("This job has already finished");
     return NextResponse.json({ ok: true });
