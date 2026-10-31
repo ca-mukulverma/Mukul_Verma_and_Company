@@ -1,0 +1,28 @@
+{
+  "name": "gst-portal-helper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runs the GST portal downloads queued in the office app (see docs/GST_PORTAL_DOWNLOADS.md)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx --env-file=.env src/main.ts",
+    "once": "tsx --env-file=.env src/main.ts --once",
+    "inspect": "tsx --env-file-if-exists=.env src/inspect.ts",
+    "record": "playwright codegen https://services.gst.gov.in/services/login",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "jszip": "3.10.1",
+    "pdfjs-dist": "4.10.38",
+    "playwright": "1.63.0",
+    "tsx": "^4.20.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  }
+}
