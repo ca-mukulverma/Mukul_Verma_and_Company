@@ -410,8 +410,9 @@ live and free.
 
 ## GST portal downloads
 
-Compliance → **GST portal** queues downloads of GSTR-1, GSTR-3B and GSTR-2B
-files from the GST portal. A helper program on an office PC opens the portal
+Compliance → Clients → the client → **GST portal**, just below the GST
+working, queues downloads of the client's GSTR-1, GSTR-3B and GSTR-2B files
+from the GST portal. A helper program on an office PC opens the portal
 and fills in the client's saved GST login; staff type the captcha and OTP
 there, and the files are saved into the client's periods as if uploaded by
 hand. Setup and use: [GST_PORTAL_DOWNLOADS.md](GST_PORTAL_DOWNLOADS.md).

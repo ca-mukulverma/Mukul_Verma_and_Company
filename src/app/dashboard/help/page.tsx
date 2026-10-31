@@ -69,14 +69,14 @@ const SECTIONS: Section[] = [
     id: "gst-portal",
     title: "GST portal downloads",
     steps: [
-      "Compliance → GST portal downloads clients' GSTR-1, GSTR-3B and GSTR-2B files from the GST portal and saves them into their periods, as if you had uploaded them.",
-      "Tick the clients, the months, the returns and the files, then Queue. Each client's GST login must be saved under Clients → Credentials with “GST” in the title; otherwise the username and password are typed at the PC too.",
+      "Compliance → Clients → the client → GST portal (just below the GST working) downloads the client's GSTR-1, GSTR-3B and GSTR-2B files from the GST portal and saves them into its periods and the GST working, as if you had uploaded them.",
+      "Tick the months, the returns and the files, then Queue download. The client's GST login must be saved under Clients → Credentials with “GST” in the title; otherwise the username and password are typed at the PC too.",
       "When the amber banner says so, go to the helper PC and type the captcha and OTP. The helper does everything else and logs out.",
       "GSTR-1 JSON takes the portal about 20 minutes; the helper asks for it first and collects it at the end. Anything not ready yet is collected by the client's next download.",
       "Cancel stops a job; Run again queues it again. Open a job's Log to see each file saved and anything not available for a period.",
       "Setting up the helper PC and checking the portal steps: docs/GST_PORTAL_DOWNLOADS.md.",
     ],
-    link: { href: "/dashboard/compliance?tab=gst-portal", label: "Open GST portal" },
+    link: { href: "/dashboard/compliance?tab=clients", label: "Open Compliance clients" },
   },
   {
     id: "billing",

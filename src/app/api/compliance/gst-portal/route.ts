@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { partyName } from "@/lib/compliance";
-import { badRequest, monthString, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
+import { badRequest, monthString, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 import {
   GST_PORTAL_FORMATS,
   GST_PORTAL_RETURNS,
@@ -16,17 +16,23 @@ import {
 
 const JOB_LIST = 40;
 
-// GET /api/compliance/gst-portal – the latest jobs, GSTR-1 JSON waiting to be
-// collected and when the helper was last seen. ?clients=1 also lists the
-// clients with a GSTIN and whether their GST login is saved.
+// GET /api/compliance/gst-portal?clientId=… – one client's latest jobs, its
+// GSTR-1 JSON waiting to be collected, whether its GST login is saved, other
+// clients waiting for the captcha at the helper PC and when the helper was
+// last seen. Without clientId it lists every client's jobs; ?clients=1 also
+// lists the clients with a GSTIN and whether their GST login is saved.
 export async function GET(request: NextRequest) {
   const { error } = await requireComplianceAccess();
   if (error) return error;
-  const withClients = request.nextUrl.searchParams.get("clients") === "1";
+  const search = request.nextUrl.searchParams;
+  const clientId = search.get("clientId");
+  const withClients = !clientId && search.get("clients") === "1";
+  const forClient = clientId ? { clientId } : {};
 
   const clientName = { select: { contactPerson: true, companyName: true, gstin: true } } as const;
-  const [jobs, pendingJson, seen, clients] = await Promise.all([
+  const [jobs, pendingJson, seen, clients, client, othersWaiting] = await Promise.all([
     prisma.gstPortalJob.findMany({
+      where: forClient,
       orderBy: { createdAt: "desc" },
       take: JOB_LIST,
       select: {
@@ -48,7 +54,7 @@ export async function GET(request: NextRequest) {
       },
     }),
     prisma.gstJsonRequest.findMany({
-      where: { status: "REQUESTED" },
+      where: { status: "REQUESTED", ...forClient },
       orderBy: { requestedAt: "asc" },
       select: { id: true, clientId: true, returnType: true, month: true, requestedAt: true, client: clientName },
     }),
@@ -60,7 +66,14 @@ export async function GET(request: NextRequest) {
           select: { id: true, contactPerson: true, companyName: true, gstin: true, credentials: { select: { title: true } } },
         })
       : null,
+    clientId
+      ? prisma.client.findUnique({ where: { id: clientId }, select: { gstin: true, credentials: { select: { title: true } } } })
+      : null,
+    clientId
+      ? prisma.gstPortalJob.findMany({ where: { status: "WAITING_LOGIN", NOT: { clientId } }, select: { client: clientName } })
+      : null,
   ]);
+  if (clientId && !client) return notFound("Client not found");
 
   return NextResponse.json({
     jobs: jobs.map(({ client, requestedBy, ...job }) => ({
@@ -72,6 +85,10 @@ export async function GET(request: NextRequest) {
     })),
     pendingJson: pendingJson.map(({ client, ...r }) => ({ ...r, clientName: partyName(client), gstin: client.gstin })),
     helperSeen: (seen?.value as { at: string; name: string } | null) ?? null,
+    ...(client && {
+      client: { gstin: client.gstin, hasLogin: client.credentials.some((cr) => isGstPortalLogin(cr.title)) },
+      othersWaiting: othersWaiting!.map((j) => partyName(j.client)),
+    }),
     ...(clients && {
       clients: clients.map((c) => ({
         id: c.id,

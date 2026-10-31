@@ -11,7 +11,6 @@ import { ComplianceOverview } from "@/components/compliance/overview";
 import { ComplianceSheet } from "@/components/compliance/sheet";
 import { ClientsPanel } from "@/components/compliance/clients-panel";
 import { ComplianceReco } from "@/components/compliance/reco";
-import { GstPortalPanel } from "@/components/compliance/gst-portal";
 import { ComplianceSetup, WorkType } from "@/components/compliance/setup";
 import { apiError } from "@/components/compliance/types";
 import { HelpLink } from "@/components/help/help-link";
@@ -36,7 +35,7 @@ export default function CompliancePage() {
   );
 }
 
-const TABS = ["overview", "gst", "tds", "work", "reco", "gst-portal", "clients", "setup"] as const;
+const TABS = ["overview", "gst", "tds", "work", "reco", "clients", "setup"] as const;
 type Tab = (typeof TABS)[number];
 
 function CompliancePageContent() {
@@ -114,7 +113,6 @@ function CompliancePageContent() {
             <TabsTrigger value="tds">TDS sheet<OverdueBadge count={overdue?.tds} /></TabsTrigger>
             <TabsTrigger value="work">Other work<OverdueBadge count={overdue?.work} /></TabsTrigger>
             <TabsTrigger value="reco">Reconciliation</TabsTrigger>
-            <TabsTrigger value="gst-portal">GST portal</TabsTrigger>
             <TabsTrigger value="clients">Clients</TabsTrigger>
             {isManager && <TabsTrigger value="setup">Setup</TabsTrigger>}
           </TabsList>
@@ -152,9 +150,6 @@ function CompliancePageContent() {
           </TabsContent>
           <TabsContent value="reco" className="mt-4">
             <ComplianceReco isManager={isManager} />
-          </TabsContent>
-          <TabsContent value="gst-portal" className="mt-4">
-            <GstPortalPanel />
           </TabsContent>
           <TabsContent value="clients" className="mt-4">
             <ClientsPanel workTypes={workTypes} isManager={isManager} initialClientId={params.get("client")} />
