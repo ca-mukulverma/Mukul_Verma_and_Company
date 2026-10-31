@@ -1,7 +1,8 @@
 # GST portal downloads
 
-Compliance → **GST portal** downloads clients' GST returns from the real GST
-portal and saves each file into the client's period, exactly as if a staff
+Compliance → Clients → the client → **GST portal** (just below the GST
+working) downloads the client's GST returns from the real GST portal and
+saves each file into the client's period, exactly as if a staff
 member had uploaded it: standard file name, figures read for the
 [GST working](GST_WORKING.md), and a filed return's PDF marks the period
 filed.
@@ -81,19 +82,23 @@ GSTR-1 PDF for the figures, or check them in the working.
 
 ## Daily use
 
-1. Compliance → **GST portal**: tick the clients, choose the financial year
-   and months (*All months* ticks those that are over), the returns
-   (GSTR-1, GSTR-3B, GSTR-2B) and the files (PDF, JSON, Excel for GSTR-2B),
-   and **Queue**. Up to 50 clients and 24 months at a time; a client that
-   already has a download queued or running can't be queued again.
-2. When the amber banner shows, go to the helper PC and type the captcha and
+1. Compliance → Clients → the client → **GST portal** (shown for GST
+   clients, below the GST working): choose the financial year and months
+   (*All months* ticks those that are over), the returns (GSTR-1, GSTR-3B,
+   GSTR-2B) and the files (PDF, JSON, Excel for GSTR-2B), and **Queue
+   download**. Up to 24 months at a time; a client that already has a
+   download queued or running can't be queued again. With several GSTINs,
+   pick the state's GSTIN at the top first: each GSTIN is its own login.
+2. When the amber banner shows (other clients waiting at the PC are named
+   below it), go to the helper PC and type the captcha and
    OTP. Nothing else needs to be clicked.
 3. The list shows each job's status, files saved, progress or error, and a
    **Log**. **Cancel** stops a job at its next step; **Run again** queues a
    finished one again.
 
 The bar at the top is green when the helper was seen in the last 30
-minutes, amber otherwise. The tab refreshes every 15 seconds only while a
+minutes, amber otherwise. As files are saved the client's periods and GST
+working refresh by themselves. The section refreshes every 15 seconds only while a
 job is queued or running, and only while someone is using the app.
 
 ## Running the helper at startup
@@ -186,9 +191,10 @@ the helper's logic, not the real portal.
 - Tables: `GstPortalJob`, `GstJsonRequest` (migration
   `20261108000000_add_gst_portal_downloads`). Helper last seen:
   `ComplianceSetting` key `gstHelperSeen`, written at most every 5 minutes.
-- Staff API: `src/app/api/compliance/gst-portal` (GET, POST) and
-  `…/gst-portal/[id]` (PATCH cancel / retry); screen:
-  `src/components/compliance/gst-portal.tsx`.
+- Staff API: `src/app/api/compliance/gst-portal` (GET `?clientId=`, POST)
+  and `…/gst-portal/[id]` (PATCH cancel / retry); screen:
+  `src/components/compliance/gst-portal.tsx` (`ClientGstPortal`), shown on
+  the client's page in `clients-panel.tsx` below the GST working.
 - Helper API: `src/app/api/gst-helper` (`claim`, `jobs/[id]/status`,
   `upload-url`, `document`, `json-requests`, `finish`), shared code in
   `src/lib/gst-helper.ts`. The key is sent in `X-GST-Helper-Key`; SHA-256
