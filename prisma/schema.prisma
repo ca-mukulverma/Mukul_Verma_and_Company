@@ -144,6 +144,7 @@ model User {
   gstWorkingChecks        GstWorkingCheck[]     @relation("GstWorkingCheckedBy")
   obligationLinesResolved ComplianceObligationLine[]
   clientDispatches        ClientDispatch[]
+  gstPortalJobs           GstPortalJob[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -203,6 +204,8 @@ model Client {
   complianceNotes         ComplianceNote[]
   dispatches              ClientDispatch[]
   gstWorkingChecks        GstWorkingCheck[]
+  gstPortalJobs           GstPortalJob[]
+  gstJsonRequests         GstJsonRequest[]
   
   @@index([managerId])
   @@index([contactPerson]) // Index for searching by contact person name
@@ -969,6 +972,69 @@ model ComplianceSetting {
   key       String   @id @db.VarChar(40)
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// ─── GST portal downloads ───────────────────────────────────────────────────
+// Staff queue downloads; the helper program on an office PC opens the GST
+// portal, staff type the captcha and OTP, and the helper saves the returns
+// into the client's periods (see docs/GST_PORTAL_DOWNLOADS.md).
+enum GstPortalJobStatus {
+  QUEUED
+  CLAIMED
+  WAITING_LOGIN
+  RUNNING
+  DONE
+  PARTLY_DONE
+  FAILED
+  CANCELLED
+}
+
+// One client, one portal login
+model GstPortalJob {
+  id            String             @id @default(uuid()) @db.Char(36)
+  clientId      String             @db.Char(36)
+  client        Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // Month keys ("2025-04"), GSTR1 / GSTR3B / GSTR2B, PDF / JSON / EXCEL
+  months        String[]
+  returns       String[]
+  formats       String[]
+  status        GstPortalJobStatus @default(QUEUED)
+  progress      String?            @db.VarChar(200)
+  // The last ~40 lines: [{ at, text }]
+  log           Json?
+  filesSaved    Int                @default(0)
+  error         String?            @db.Text
+  helperName    String?            @db.VarChar(60)
+  claimedAt     DateTime?
+  heartbeatAt   DateTime?
+  finishedAt    DateTime?
+  requestedById String?            @db.Char(36)
+  requestedBy   User?              @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  jsonRequests  GstJsonRequest[]
+
+  @@index([status, createdAt])
+  @@index([clientId, createdAt])
+}
+
+// A GSTR-1 "Generate JSON" request: the portal prepares the file in about
+// 20 minutes, so it may be collected by a later job of the same client
+model GstJsonRequest {
+  id           String        @id @default(uuid()) @db.Char(36)
+  clientId     String        @db.Char(36)
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  jobId        String?       @db.Char(36)
+  job          GstPortalJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  returnType   String        @db.VarChar(10)
+  month        String        @db.VarChar(7)
+  // REQUESTED | DOWNLOADED | EXPIRED | FAILED
+  status       String        @default("REQUESTED") @db.VarChar(12)
+  parts        Int?
+  requestedAt  DateTime      @default(now())
+  downloadedAt DateTime?
+
+  @@index([clientId, returnType, month, status])
 }
 
 // ─── Send to Client ─────────────────────────────────────────────────────────
