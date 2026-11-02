@@ -36,12 +36,12 @@ const valueOf = (h: Heads, key: Column) => (key === "total" ? h.taxable + totalT
 type Selection = "year" | string;
 const amount = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function fyOf(month: string) {
+export function fyOf(month: string) {
   const [y, m] = month.split("-").map(Number);
   return m >= 4 ? y : y - 1;
 }
 const fyLabel = (fy: number) => `FY ${fy}-${String((fy + 1) % 100).padStart(2, "0")}`;
-function previousMonth() {
+export function previousMonth() {
   const [y, m] = currentMonthKey().split("-").map(Number);
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
 }
@@ -65,7 +65,7 @@ function Issues({ issues }: { issues: Issue[] }) {
 }
 
 // ‹ FY 2025-26 › : earlier and later years with a tap, no list to open
-function FyStepper({ fy, setFy }: { fy: number; setFy: (fy: number) => void }) {
+export function FyStepper({ fy, setFy }: { fy: number; setFy: (fy: number) => void }) {
   const current = fyOf(currentMonthKey());
   return (
     <div className="flex items-center gap-1">

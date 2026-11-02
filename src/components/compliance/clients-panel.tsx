@@ -29,6 +29,7 @@ import { uploadComplianceFile } from "./upload";
 import { OldPeriods } from "./old-periods";
 import { ClientRef, ReturnUpload } from "./return-upload";
 import { ClientGstWorking } from "./gst-working";
+import { ClientGstPortal } from "./gst-portal";
 import { EditClientDialog } from "./edit-client-dialog";
 import { GSTIN_PATTERN, gstState } from "@/lib/gst-states";
 import { matchesSearch } from "@/lib/search-text";
@@ -502,6 +503,11 @@ function ClientDetailView({
       {hasGst && (
         <Box title={`GST working${several ? ` · ${data.client.state}` : ""}`}>
           <ClientGstWorking clientId={data.client.id} email={data.client.email} refresh={uploads} />
+        </Box>
+      )}
+      {hasGst && (
+        <Box title={`GST portal${several ? ` · ${data.client.state}` : ""}`}>
+          <ClientGstPortal clientId={data.client.id} refresh={uploads} />
         </Box>
       )}
       <Works data={data} workTypes={workTypes} isManager={isManager} onChanged={reload} />

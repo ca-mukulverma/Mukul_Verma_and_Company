@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ComplianceOverview } from "@/components/compliance/overview";
 import { ComplianceSheet } from "@/components/compliance/sheet";
 import { ClientsPanel } from "@/components/compliance/clients-panel";
+import { GstPortalRound } from "@/components/compliance/gst-portal";
 import { ComplianceReco } from "@/components/compliance/reco";
 import { ComplianceSetup, WorkType } from "@/components/compliance/setup";
 import { apiError } from "@/components/compliance/types";
@@ -35,7 +36,7 @@ export default function CompliancePage() {
   );
 }
 
-const TABS = ["overview", "gst", "tds", "work", "reco", "clients", "setup"] as const;
+const TABS = ["overview", "gst", "tds", "work", "reco", "clients", "downloads", "setup"] as const;
 type Tab = (typeof TABS)[number];
 
 function CompliancePageContent() {
@@ -114,6 +115,7 @@ function CompliancePageContent() {
             <TabsTrigger value="work">Other work<OverdueBadge count={overdue?.work} /></TabsTrigger>
             <TabsTrigger value="reco">Reconciliation</TabsTrigger>
             <TabsTrigger value="clients">Clients</TabsTrigger>
+            <TabsTrigger value="downloads">GST downloads</TabsTrigger>
             {isManager && <TabsTrigger value="setup">Setup</TabsTrigger>}
           </TabsList>
           <TabsContent value="overview" className="mt-4">
@@ -153,6 +155,9 @@ function CompliancePageContent() {
           </TabsContent>
           <TabsContent value="clients" className="mt-4">
             <ClientsPanel workTypes={workTypes} isManager={isManager} initialClientId={params.get("client")} />
+          </TabsContent>
+          <TabsContent value="downloads" className="mt-4">
+            {tab === "downloads" && <GstPortalRound />}
           </TabsContent>
           {isManager && (
             <TabsContent value="setup" className="mt-4">
