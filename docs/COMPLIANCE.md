@@ -408,6 +408,12 @@ client's page ([GST_WORKING.md](GST_WORKING.md)). TDS figures are entered
 when marking returns filed. It is plain arithmetic done by the app, always
 live and free.
 
+## GST portal downloads (planned)
+
+Downloading returns from the GST portal through a browser extension is
+planned, not built: see [GST_PORTAL_EXTENSION_PLAN.md](GST_PORTAL_EXTENSION_PLAN.md).
+Until then, download from the portal and use **Upload documents**.
+
 ## Overview and notifications
 
 - **Overview** shows, for each work, overdue, due in 7 days, data pending, data
