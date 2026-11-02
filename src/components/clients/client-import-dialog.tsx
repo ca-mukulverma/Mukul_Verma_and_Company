@@ -21,6 +21,7 @@ interface PreviewRow {
   data: { contactPerson: string | null; companyName: string | null; email: string | null; phone: string | null };
   errors: string[];
   duplicate: string | null;
+  sharedContact: string | null;
 }
 
 interface Extras {
@@ -31,7 +32,7 @@ interface Extras {
 }
 
 interface Preview {
-  summary: { total: number; ready: number; errors: number; duplicates: number };
+  summary: { total: number; ready: number; errors: number; duplicates: number; shared: number };
   rows: PreviewRow[];
   // Logins, compliance setup and payments of a client export
   extras: Extras;
@@ -48,11 +49,14 @@ export function ClientImportDialog({ onImported }: { onImported?: () => void }) 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState<"template" | "check" | "import" | null>(null);
+  // Asked once for the whole file: add clients that share an email or phone with another client
+  const [allowShared, setAllowShared] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setFile(null);
     setPreview(null);
+    setAllowShared(false);
     if (input.current) input.current.value = "";
   };
 
@@ -79,12 +83,14 @@ export function ClientImportDialog({ onImported }: { onImported?: () => void }) 
     const form = new FormData();
     form.append("file", chosen);
     form.append("mode", mode);
+    if (mode === "import" && allowShared) form.append("allowSharedContact", "true");
     return axios.post(`/api/clients/import`, form);
   };
 
   const check = async (chosen: File) => {
     setFile(chosen);
     setPreview(null);
+    setAllowShared(false);
     setBusy("check");
     try {
       const response = await send(chosen, "preview");
@@ -113,7 +119,8 @@ export function ClientImportDialog({ onImported }: { onImported?: () => void }) 
     }
   };
 
-  const problems = preview?.rows.filter((r) => r.errors.length > 0 || r.duplicate) ?? [];
+  const problems = preview?.rows.filter((r) => r.errors.length > 0 || r.duplicate || r.sharedContact) ?? [];
+  const toAdd = (preview?.summary.ready ?? 0) + (allowShared ? preview?.summary.shared ?? 0 : 0);
 
   return (
     <Dialog
@@ -184,6 +191,21 @@ export function ClientImportDialog({ onImported }: { onImported?: () => void }) 
               </div>
             </div>
 
+            {preview.summary.shared > 0 && (
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-blue-300 bg-blue-50 p-3 text-sm dark:border-blue-900 dark:bg-blue-950/40">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4"
+                  checked={allowShared}
+                  onChange={(e) => setAllowShared(e.target.checked)}
+                />
+                <span>
+                  <strong>{preview.summary.shared}</strong> client{preview.summary.shared === 1 ? " has" : "s have"} the same
+                  email or phone as another client. Add {preview.summary.shared === 1 ? "it" : "them all"} anyway?
+                </span>
+              </label>
+            )}
+
             {problems.length > 0 ? (
               <div className="max-h-64 overflow-auto rounded-md border">
                 <Table>
@@ -199,8 +221,18 @@ export function ClientImportDialog({ onImported }: { onImported?: () => void }) 
                       <TableRow key={r.row}>
                         <TableCell>{r.row}</TableCell>
                         <TableCell>{r.data.companyName || r.data.contactPerson || "—"}</TableCell>
-                        <TableCell className={r.errors.length ? "text-red-700 dark:text-red-400" : "text-amber-700 dark:text-amber-400"}>
-                          {r.errors.length ? r.errors.join("; ") : r.duplicate}
+                        <TableCell
+                          className={
+                            r.errors.length
+                              ? "text-red-700 dark:text-red-400"
+                              : r.duplicate
+                                ? "text-amber-700 dark:text-amber-400"
+                                : "text-blue-700 dark:text-blue-400"
+                          }
+                        >
+                          {r.errors.length
+                            ? r.errors.join("; ")
+                            : r.duplicate ?? `${r.sharedContact} (${allowShared ? "will be added" : "not added unless allowed"})`}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -269,9 +301,9 @@ export function ClientImportDialog({ onImported }: { onImported?: () => void }) 
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={runImport} disabled={!preview || preview.summary.ready === 0 || busy !== null}>
+          <Button onClick={runImport} disabled={!preview || toAdd === 0 || busy !== null}>
             {busy === "import" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Add {preview?.summary.ready ?? 0} client{preview?.summary.ready === 1 ? "" : "s"}
+            Add {toAdd} client{toAdd === 1 ? "" : "s"}
           </Button>
         </DialogFooter>
       </DialogContent>

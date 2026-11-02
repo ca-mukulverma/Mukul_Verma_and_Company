@@ -38,7 +38,8 @@ export interface ImportRow {
   row: number; // row number in the sheet
   data: ClientRowData;
   errors: string[];
-  duplicate: string | null; // why the row matches an existing client or an earlier row
+  duplicate: string | null; // why the row matches an existing client or an earlier row (skipped)
+  sharedContact: string | null; // same email or phone as another client; added only when allowed
   phones?: ClientPhone[]; // the owner's numbers, when more than one
   connectorId?: string | null;
 }
@@ -68,7 +69,8 @@ export async function buildClientTemplate(): Promise<Buffer> {
     ["", "Then upload this file in Clients → Import from Excel. You will see a check of every row before anything is saved."],
     ["", "A file from Clients → Export to Excel can be uploaded here as it is."],
     ["Required", "Contact Person, and at least one of Email or Phone."],
-    ["Duplicates", "Rows with the same GSTIN, email or phone as an existing client (or an earlier row) are skipped."],
+    ["Duplicates", "Rows with the same GSTIN as an existing client (or an earlier row), or the same name, company and email/phone, are skipped."],
+    ["Shared email/phone", "Clients may share an email or phone (e.g. one owner, several businesses). You confirm these once before importing."],
     ["Limit", `Up to ${MAX_IMPORT_ROWS} clients per file.`],
     ["", ""],
     ["Column", "What to enter"],
@@ -160,7 +162,7 @@ function parseOtherPhones(text: string): ClientPhone[] | string {
 
 export async function checkClientRows(rows: { row: number; data: ClientRowData }[]): Promise<ImportRow[]> {
   const [existing, connectors] = await Promise.all([
-    prisma.client.findMany({ select: { gstin: true, email: true, phone: true, contactPerson: true } }),
+    prisma.client.findMany({ select: { gstin: true, email: true, phone: true, contactPerson: true, companyName: true } }),
     prisma.connector.findMany({ select: { id: true, name: true } }),
   ]);
   const connectorIds = new Map(connectors.map((c) => [c.name.trim().toLowerCase(), c.id]));
@@ -168,11 +170,37 @@ export async function checkClientRows(rows: { row: number; data: ClientRowData }
     gstin: new Map<string, string>(),
     email: new Map<string, string>(),
     phone: new Map<string, string>(),
+    // Same person, company and email/phone: the same client uploaded again
+    identity: new Map<string, string>(),
+  };
+  const who = (contactPerson: string | null, companyName: string | null) =>
+    `${(contactPerson ?? "").trim().toLowerCase()}|${(companyName ?? "").trim().toLowerCase()}`;
+  const remember = (
+    c: { gstin: string | null; email: string | null; phone: string | null; contactPerson: string | null; companyName: string | null },
+    label: string,
+  ) => {
+    const name = who(c.contactPerson, c.companyName);
+    if (c.gstin) seen.gstin.set(c.gstin, label);
+    if (c.email) {
+      if (!seen.email.has(c.email)) seen.email.set(c.email, label);
+      seen.identity.set(`${name}|e:${c.email}`, label);
+    }
+    if (c.phone) {
+      if (!seen.phone.has(c.phone)) seen.phone.set(c.phone, label);
+      seen.identity.set(`${name}|p:${c.phone}`, label);
+    }
   };
   for (const c of existing) {
-    if (c.gstin) seen.gstin.set(c.gstin.toUpperCase(), `existing client ${c.contactPerson}`);
-    if (c.email) seen.email.set(c.email.toLowerCase(), `existing client ${c.contactPerson}`);
-    if (c.phone) seen.phone.set(normalisePhone(c.phone), `existing client ${c.contactPerson}`);
+    remember(
+      {
+        gstin: c.gstin?.toUpperCase() ?? null,
+        email: c.email?.toLowerCase() ?? null,
+        phone: c.phone ? normalisePhone(c.phone) : null,
+        contactPerson: c.contactPerson,
+        companyName: c.companyName,
+      },
+      `existing client ${c.companyName || c.contactPerson}`,
+    );
   }
 
   return rows.map(({ row, data }) => {
@@ -217,29 +245,47 @@ export async function checkClientRows(rows: { row: number; data: ClientRowData }
       if (value && value.length > c.max) errors.push(`${c.header.replace("*", "")} is longer than ${c.max} characters`);
     }
 
+    const name = who(d.contactPerson, d.companyName);
     let duplicate: string | null = null;
     if (d.gstin && seen.gstin.has(d.gstin)) duplicate = `Same GSTIN as ${seen.gstin.get(d.gstin)}`;
-    else if (d.email && seen.email.has(d.email)) duplicate = `Same email as ${seen.email.get(d.email)}`;
-    else if (d.phone && seen.phone.has(d.phone)) duplicate = `Same phone as ${seen.phone.get(d.phone)}`;
+    else if (d.email && seen.identity.has(`${name}|e:${d.email}`)) duplicate = `Same client as ${seen.identity.get(`${name}|e:${d.email}`)}`;
+    else if (d.phone && seen.identity.has(`${name}|p:${d.phone}`)) duplicate = `Same client as ${seen.identity.get(`${name}|p:${d.phone}`)}`;
 
-    // Later rows with the same details are duplicates of this one
-    if (errors.length === 0 && !duplicate) {
-      const label = `row ${row}`;
-      if (d.gstin) seen.gstin.set(d.gstin, label);
-      if (d.email) seen.email.set(d.email, label);
-      if (d.phone) seen.phone.set(d.phone, label);
+    // A different client with the same email or phone can still be added
+    const shared: string[] = [];
+    if (!duplicate) {
+      if (d.email && seen.email.has(d.email)) shared.push(`Same email as ${seen.email.get(d.email)}`);
+      if (d.phone && seen.phone.has(d.phone)) shared.push(`Same phone as ${seen.phone.get(d.phone)}`);
     }
-    return { row, data: d, errors, duplicate, phones, connectorId };
+    const sharedContact = shared.length ? shared.join("; ") : null;
+
+    // Later rows with the same details are compared with this one
+    if (errors.length === 0 && !duplicate) remember(d, `row ${row}`);
+    return { row, data: d, errors, duplicate, sharedContact, phones, connectorId };
   });
 }
 
 // Creates the rows that passed every check, managed by the person importing,
 // with their logins, compliance setup and payments from the other sheets;
 // returns how many clients were created
-export async function importClientRows(rows: ImportRow[], userId: string, extras?: ClientExtras) {
-  const ready = rows.filter((r) => r.errors.length === 0 && !r.duplicate);
+export async function importClientRows(
+  rows: ImportRow[],
+  userId: string,
+  extras?: ClientExtras,
+  allowSharedContact = false,
+) {
+  const ready = rows.filter((r) => r.errors.length === 0 && !r.duplicate && (allowSharedContact || !r.sharedContact));
   if (ready.length === 0) return 0;
   const ids = new Map(ready.map((r) => [r.row, crypto.randomUUID()]));
+  // Logins, setup and payments only for the clients actually added
+  if (extras) {
+    extras = {
+      ...extras,
+      logins: extras.logins.filter((l) => ids.has(l.clientRow)),
+      setups: extras.setups.filter((s) => ids.has(s.clientRow)),
+      payments: extras.payments.filter((p) => ids.has(p.clientRow)),
+    };
+  }
   await prisma.$transaction([
     prisma.client.createMany({
       data: ready.map(({ row, data, phones, connectorId }) => ({

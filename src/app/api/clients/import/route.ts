@@ -39,6 +39,7 @@ export async function GET() {
 // POST /api/clients/import – form data: file (.xlsx) and mode
 //   mode=preview: check every row and report, nothing is saved
 //   mode=import:  create the rows that pass every check
+//   allowSharedContact=true: also create rows whose email/phone another client already uses
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
@@ -50,6 +51,8 @@ export async function POST(request: NextRequest) {
   const form = await request.formData();
   const file = form.get("file");
   const mode = form.get("mode") === "import" ? "import" : "preview";
+  // Asked once in the dialog: also add clients sharing an email or phone with another client
+  const allowSharedContact = form.get("allowSharedContact") === "true";
   if (!(file instanceof File)) return NextResponse.json({ error: "Choose the Excel file" }, { status: 400 });
   if (file.size > MAX_FILE_BYTES) return NextResponse.json({ error: "The file is larger than 4 MB" }, { status: 400 });
 
@@ -60,9 +63,10 @@ export async function POST(request: NextRequest) {
 
     const summary = {
       total: rows.length,
-      ready: rows.filter((r) => r.errors.length === 0 && !r.duplicate).length,
+      ready: rows.filter((r) => r.errors.length === 0 && !r.duplicate && !r.sharedContact).length,
       errors: rows.filter((r) => r.errors.length > 0).length,
       duplicates: rows.filter((r) => r.errors.length === 0 && r.duplicate).length,
+      shared: rows.filter((r) => r.errors.length === 0 && !r.duplicate && r.sharedContact).length,
     };
 
     // Logins, compliance setup and payments, when the file is a client export
@@ -70,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     if (mode === "preview") return NextResponse.json({ summary, rows, extras: extrasSummary(extras) });
 
-    const created = await importClientRows(rows, user.id, extras);
+    const created = await importClientRows(rows, user.id, extras, allowSharedContact);
     await clientCache.invalidate("*");
     return NextResponse.json({ summary, created });
   } catch (error) {
