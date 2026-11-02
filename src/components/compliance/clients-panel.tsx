@@ -422,13 +422,6 @@ function ClientDetailView({
     load();
   }, [load]);
 
-  // Files saved by a GST portal download: reload the periods and the working
-  const portalSaved = useCallback(() => {
-    load();
-    onChanged();
-    setUploads((u) => u + 1);
-  }, [load, onChanged]);
-
   if (!data) return <Loader2 className="mx-auto mt-8 h-6 w-6 animate-spin" />;
   const reload = () => {
     load();
@@ -514,7 +507,7 @@ function ClientDetailView({
       )}
       {hasGst && (
         <Box title={`GST portal${several ? ` · ${data.client.state}` : ""}`}>
-          <ClientGstPortal clientId={data.client.id} onSaved={portalSaved} />
+          <ClientGstPortal clientId={data.client.id} refresh={uploads} />
         </Box>
       )}
       <Works data={data} workTypes={workTypes} isManager={isManager} onChanged={reload} />

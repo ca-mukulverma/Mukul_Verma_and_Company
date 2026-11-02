@@ -1,55 +1,86 @@
-// GST portal downloads (docs/GST_PORTAL_DOWNLOADS.md): names shared by the
-// staff screen, the staff API and the helper API. No server imports, so the
-// browser can use it too.
+import type { FileCheck, ItemInfo, PortalFile } from "@/lib/gst-read/working";
 
-export const GST_PORTAL_RETURNS = ["GSTR1", "GSTR3B", "GSTR2B"] as const;
-export type GstPortalReturn = (typeof GST_PORTAL_RETURNS)[number];
+// GST portal downloads with the browser extension
+// (docs/GST_PORTAL_EXTENSION_PLAN.md): which of a period's return files are
+// saved in the app, which are missing and worth fetching, and which can't be
+// on the portal yet. Plain functions, used by the API and in the browser.
 
-export const GST_PORTAL_FORMATS = ["PDF", "JSON", "EXCEL"] as const;
-export type GstPortalFormat = (typeof GST_PORTAL_FORMATS)[number];
+export type { PortalFile } from "@/lib/gst-read/working";
 
-export const RETURN_LABELS: Record<GstPortalReturn, string> = { GSTR1: "GSTR-1", GSTR3B: "GSTR-3B", GSTR2B: "GSTR-2B" };
-export const FORMAT_LABELS: Record<GstPortalFormat, string> = { PDF: "PDF", JSON: "JSON", EXCEL: "Excel" };
+// saved: in the app · missing: should be on the portal, not saved (ticked by
+// default) · not_yet: the return isn't due or filed yet (2B: not generated) ·
+// if_filed: only there if that return was filed (IFF, GSTR-1A)
+export type PortalFileState = "saved" | "missing" | "not_yet" | "if_filed";
 
-// A job the helper is working on, or waiting to start
-export const UNFINISHED_STATUSES = ["QUEUED", "CLAIMED", "WAITING_LOGIN", "RUNNING"] as const;
-// The helper has the job
-export const HELPER_STATUSES = ["CLAIMED", "WAITING_LOGIN", "RUNNING"] as const;
-export const FINISHED_STATUSES = ["DONE", "PARTLY_DONE", "FAILED", "CANCELLED"] as const;
-
-export type GstPortalJobStatus = (typeof UNFINISHED_STATUSES)[number] | (typeof FINISHED_STATUSES)[number];
-
-export const STATUS_LABELS: Record<GstPortalJobStatus, string> = {
-  QUEUED: "Queued",
-  CLAIMED: "Starting",
-  WAITING_LOGIN: "Waiting for login",
-  RUNNING: "Downloading",
-  DONE: "Done",
-  PARTLY_DONE: "Partly done",
-  FAILED: "Failed",
-  CANCELLED: "Cancelled",
-};
-
-// A job with no news from the helper for this long has stopped
-export const STALE_JOB_MINUTES = 30;
-// The helper counts as running if seen within this time
-export const HELPER_SEEN_MINUTES = 30;
-// "Helper last seen" is written at most this often
-export const HELPER_SEEN_WRITE_MINUTES = 5;
-export const HELPER_SEEN_KEY = "gstHelperSeen";
-
-export const MAX_LOG_LINES = 40;
-
-export interface JobLogLine {
-  at: string;
-  text: string;
+export interface PortalFileRow {
+  kind: PortalFile;
+  month: string;
+  label: string;
+  state: PortalFileState;
+  docId: string | null;
 }
 
-// Keeps the last MAX_LOG_LINES lines
-export function appendLog(log: unknown, lines: string[], at = new Date()): JobLogLine[] {
-  const old = Array.isArray(log) ? (log as JobLogLine[]) : [];
-  const added = lines.map((text) => ({ at: at.toISOString(), text: text.slice(0, 500) }));
-  return [...old, ...added].slice(-MAX_LOG_LINES);
+export interface PortalPeriod {
+  start: string;
+  title: string;
+  quarterly: boolean;
+  files: PortalFileRow[];
+}
+
+// For filters: the box on the portal's Returns Dashboard each file comes from
+export const PORTAL_RETURNS = ["GSTR1", "GSTR3B", "GSTR2B"] as const;
+export type PortalReturn = (typeof PORTAL_RETURNS)[number];
+export const RETURN_LABELS: Record<PortalReturn, string> = { GSTR1: "GSTR-1", GSTR3B: "GSTR-3B", GSTR2B: "GSTR-2B" };
+export const RETURN_OF: Record<PortalFile, PortalReturn> = {
+  GSTR1_JSON: "GSTR1",
+  GSTR1_PDF: "GSTR1",
+  GSTR1A_PDF: "GSTR1",
+  GSTR3B_PDF: "GSTR3B",
+  GSTR2B_JSON: "GSTR2B",
+};
+
+export const STATE_LABELS: Record<PortalFileState, string> = {
+  saved: "Saved",
+  missing: "Missing",
+  not_yet: "Not due yet",
+  if_filed: "Only if filed",
+};
+
+const FILED = new Set(["filed", "completed"]);
+
+// "2026-06" → "2026-07-<day>"
+function nextMonthDay(month: string, day: number) {
+  const [y, m] = month.split("-").map(Number);
+  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+  return `${next}-${String(day).padStart(2, "0")}`;
+}
+
+// Usual due days when the period has no item in the sheet (GSTR-1 on the
+// 11th, IFF on the 13th, GSTR-3B on the 20th); GSTR-2B is generated on the 14th
+function expected(info: ItemInfo | null, fallbackDue: string, today: string) {
+  if (info && FILED.has(info.status)) return true;
+  if (info?.status === "not_required") return false;
+  return today > (info?.dueDate ?? fallbackDue);
+}
+
+// today: "2026-11-02" (IST)
+export function portalState(file: FileCheck, period: { gstr1: ItemInfo | null; gstr3b: ItemInfo | null; quarterly: boolean }, today: string): PortalFileState {
+  if (file.state === "ok") return "saved";
+  if (file.state === "optional") return "if_filed";
+  // The month itself isn't over
+  if (file.month >= today.slice(0, 7)) return "not_yet";
+  switch (file.kind) {
+    case "GSTR1_JSON":
+    case "GSTR1_PDF":
+      return expected(period.gstr1, nextMonthDay(file.month, period.quarterly ? 13 : 11), today) ? "missing" : "not_yet";
+    case "GSTR1A_PDF":
+      // Listed as missing only when the GSTR-1A is marked filed
+      return "missing";
+    case "GSTR3B_PDF":
+      return expected(period.gstr3b, nextMonthDay(file.month, 20), today) ? "missing" : "not_yet";
+    case "GSTR2B_JSON":
+      return today >= nextMonthDay(file.month, 14) ? "missing" : "not_yet";
+  }
 }
 
 // A client's GST portal login: a credential titled with "GST", but not the
@@ -58,6 +89,4 @@ export function isGstPortalLogin(title: string) {
   return /gst/i.test(title) && !/e[\s-]*way|\bewb\b|e[\s-]*invoice|\beinv|\birp\b/i.test(title);
 }
 
-// "2025-04" → "Apr 2025"
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-export const portalMonthLabel = (key: string) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
+export const fileKey = (f: Pick<PortalFileRow, "kind" | "month">) => `${f.kind}:${f.month}`;

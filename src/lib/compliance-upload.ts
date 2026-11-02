@@ -12,7 +12,7 @@ import { standardFileName, uniqueFileName } from "@/lib/document-names";
 // Records a file that is already in R2 as a ComplianceDocument, exactly as a
 // staff upload does: standard name, history event, completion, the period's
 // GST figures, and a filed return's PDF marking the period filed. Used by
-// POST /api/compliance/documents and the GST portal helper (api/gst-helper).
+// POST /api/compliance/documents.
 // The caller has already run checkUploadAllowed.
 // null: the object isn't in R2 (the upload didn't finish).
 export async function recordComplianceUpload(

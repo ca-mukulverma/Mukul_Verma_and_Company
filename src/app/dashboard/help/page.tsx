@@ -62,21 +62,10 @@ const SECTIONS: Section[] = [
       "The colour key above the sheet explains the colours. A lock means an earlier period or step must be finished first.",
       "The header row and client names stay in view while you scroll a long sheet.",
       "Setup (Admins and Partners) stays on the Compliance page: work types, teams, due dates, files needed and fees.",
+      "GST downloads lists, for a month, the clients whose GST return files aren't all saved. On a client's page, the GST portal box (below the GST working) shows each month's files as saved, missing, not due yet or only if filed.",
+      "With the GST extension installed (Chrome or Edge; the GST portal box shows how), Log in to the GST portal opens the portal with the client's saved GST login filled in. You type the captcha and OTP; Log out and close when done.",
     ],
     link: { href: "/dashboard/compliance", label: "Open Compliance" },
-  },
-  {
-    id: "gst-portal",
-    title: "GST portal downloads",
-    steps: [
-      "Compliance → Clients → the client → GST portal (just below the GST working) downloads the client's GSTR-1, GSTR-3B and GSTR-2B files from the GST portal and saves them into its periods and the GST working, as if you had uploaded them.",
-      "Tick the months, the returns and the files, then Queue download. The client's GST login must be saved under Clients → Credentials with “GST” in the title; otherwise the username and password are typed at the PC too.",
-      "When the amber banner says so, go to the helper PC and type the captcha and OTP. The helper does everything else and logs out.",
-      "GSTR-1 JSON takes the portal about 20 minutes; the helper asks for it first and collects it at the end. Anything not ready yet is collected by the client's next download.",
-      "Cancel stops a job; Run again queues it again. Open a job's Log to see each file saved and anything not available for a period.",
-      "Setting up the helper PC and checking the portal steps: docs/GST_PORTAL_DOWNLOADS.md.",
-    ],
-    link: { href: "/dashboard/compliance?tab=clients", label: "Open Compliance clients" },
   },
   {
     id: "billing",

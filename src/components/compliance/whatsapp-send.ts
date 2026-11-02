@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+import { downloadExtensionZip } from "./extension-zip";
 
 // How reminder chats are opened. "web": WhatsApp Web in its own window beside
 // the app, reused for every chat; "desktop": the WhatsApp app on the computer;
@@ -66,16 +66,7 @@ export function onExtensionProgress(handler: (job: ExtensionJob) => void) {
 
 // The extension as a ZIP, set up for this app's address
 export async function downloadExtension() {
-  const zip = new JSZip();
-  for (const name of ["manifest.json", "background.js", "bridge.js", "whatsapp.js"]) {
-    const response = await fetch(`/whatsapp-extension/${name}`);
-    if (!response.ok) throw new Error("The extension files couldn't be loaded");
-    const text = await response.text();
-    zip.file(`mvc-whatsapp/${name}`, name === "manifest.json" ? text.replace("__APP_ORIGIN__", window.location.origin) : text);
-  }
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(await zip.generateAsync({ type: "blob" }));
-  link.download = "mvc-whatsapp-extension.zip";
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  await downloadExtensionZip("whatsapp-extension", ["manifest.json", "background.js", "bridge.js", "whatsapp.js"], { root: "mvc-whatsapp", fileName: "mvc-whatsapp-extension.zip" }, (name, text) =>
+    name === "manifest.json" ? text.replace("__APP_ORIGIN__", window.location.origin) : text
+  );
 }

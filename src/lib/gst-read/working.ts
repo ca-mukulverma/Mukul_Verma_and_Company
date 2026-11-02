@@ -102,11 +102,19 @@ export interface Issue {
   text: string;
 }
 
+// The return files a period needs, as downloaded from the GST portal (an IFF
+// is GSTR1_*: the portal shows it in the GSTR-1 box)
+export const PORTAL_FILES = ["GSTR1_JSON", "GSTR1_PDF", "GSTR1A_PDF", "GSTR3B_PDF", "GSTR2B_JSON"] as const;
+export type PortalFile = (typeof PORTAL_FILES)[number];
+
 export interface FileCheck {
   label: string;
   // "optional": not needed if that return wasn't filed (IFF, GSTR-1A)
   state: "ok" | "missing" | "optional";
   docId: string | null;
+  kind: PortalFile;
+  // The return period on the portal ("2026-06"); a quarterly 3B/2B: the quarter's last month
+  month: string;
 }
 
 export interface PeriodResult {
@@ -116,6 +124,9 @@ export interface PeriodResult {
   rows: Partial<Record<RowKey, Heads>>;
   issues: Issue[];
   files: FileCheck[];
+  // The period's GSTR-1 and GSTR-3B (null: no period in the sheet)
+  gstr1: ItemInfo | null;
+  gstr3b: ItemInfo | null;
   hasDifference: boolean;
   // Figures for the swing check and the reconciliation figures on the items
   netSales: number | null;
@@ -195,8 +206,8 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
   const last = months[months.length - 1];
   const issues: Issue[] = [];
   const files: FileCheck[] = [];
-  const file = (label: string, found: { doc: DocRead } | null, optional = false) =>
-    files.push({ label, state: found ? "ok" : optional ? "optional" : "missing", docId: found?.doc.id ?? null });
+  const file = (label: string, kind: PortalFile, month: string, found: { doc: DocRead } | null, optional = false) =>
+    files.push({ label, kind, month, state: found ? "ok" : optional ? "optional" : "missing", docId: found?.doc.id ?? null });
 
   // ── GSTR-1 (and IFF): the JSON for every row, the PDF for amendments ──
   let sales: SalesRows | null = null;
@@ -206,8 +217,8 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
     const name = iff ? "IFF" : "GSTR-1";
     const json = latest(docs, isSales(["GSTR1", "IFF"], "JSON", month));
     const pdf = latest(docs, isSales(["GSTR1", "IFF"], "PDF", month));
-    file(`${name} JSON${quarterly || months.length > 1 ? ` ${short(month)}` : ""}`, json, iff);
-    file(`${name} PDF${quarterly || months.length > 1 ? ` ${short(month)}` : ""}`, pdf, iff);
+    file(`${name} JSON${quarterly || months.length > 1 ? ` ${short(month)}` : ""}`, "GSTR1_JSON", month, json, iff);
+    file(`${name} PDF${quarterly || months.length > 1 ? ` ${short(month)}` : ""}`, "GSTR1_PDF", month, pdf, iff);
     if (!json && !pdf) {
       if (!iff) issues.push({ severity: "missing", text: `${name} for ${monthLabel(month)} not uploaded` });
       else issues.push({ severity: "check", text: `No IFF for ${monthLabel(month)} uploaded (fine if no IFF was filed)` });
@@ -249,17 +260,17 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
     const read = latest(docs, (r): r is SalesRead => r.form === "GSTR1A" && r.month === month);
     if (read) {
       oneA = addRows(oneA, read.read.rows);
-      file(`GSTR-1A PDF${months.length > 1 ? ` ${short(month)}` : ""}`, read);
+      file(`GSTR-1A PDF${months.length > 1 ? ` ${short(month)}` : ""}`, "GSTR1A_PDF", month, read);
     }
   }
   if (!oneA && input.gstr1?.gstr1aFiled) {
-    file("GSTR-1A PDF", null);
+    file("GSTR-1A PDF", "GSTR1A_PDF", last, null);
     issues.push({ severity: "missing", text: "GSTR-1A was filed: upload its PDF" });
   }
 
   // ── GSTR-3B ──
   const threeB = latest(docs, (r): r is Gstr3bRead => r.form === "GSTR3B" && r.month === last);
-  file("GSTR-3B PDF", threeB);
+  file("GSTR-3B PDF", "GSTR3B_PDF", last, threeB);
   if (!threeB) issues.push({ severity: "missing", text: "GSTR-3B PDF not uploaded" });
   else {
     if (threeB.read.unread.length) issues.push({ severity: "check", text: `GSTR-3B tables not read: ${threeB.read.unread.join(", ")}` });
@@ -273,7 +284,7 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
   const quarter2b = quarterly ? latest(docs, (r): r is Gstr2bRead => r.form === "GSTR2B" && r.quarterly && r.month === last && r.part !== "part") : null;
   for (const month of quarter2b ? [last] : months) {
     const summary = quarter2b ?? latest(docs, (r): r is Gstr2bRead => r.form === "GSTR2B" && r.month === month && r.part !== "part" && r.quarterly === false);
-    file(`GSTR-2B${!quarter2b && months.length > 1 ? ` ${short(month)}` : ""}`, summary);
+    file(`GSTR-2B${!quarter2b && months.length > 1 ? ` ${short(month)}` : ""}`, "GSTR2B_JSON", month, summary);
     if (!summary) {
       twoBMissing = true;
       const parts = docs.filter((d) => d.read.form === "GSTR2B" && d.read.month === month);
@@ -341,6 +352,8 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
     rows,
     issues,
     files,
+    gstr1: input.gstr1,
+    gstr3b: input.gstr3b,
     hasDifference: issues.some((i) => i.severity === "difference"),
     netSales: rows.net_after_1a?.taxable ?? null,
     netSalesTax: rows.net_after_1a ? totalTax(rows.net_after_1a) : null,
