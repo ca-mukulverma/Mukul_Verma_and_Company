@@ -3,20 +3,26 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Check, ChevronLeft, ChevronRight, CircleDashed, Clock, ExternalLink, KeyRound, Loader2, UserCheck } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CircleDashed, Clock, Download, ExternalLink, KeyRound, LogIn, LogOut, Loader2, PanelTop, Puzzle, UserCheck } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { fileKey, PORTAL_RETURNS, PortalFileRow, PortalFileState, PortalReturn, RETURN_LABELS, RETURN_OF, STATE_LABELS } from "@/lib/gst-portal";
 import type { ClientPortalFiles, RoundPortalFiles } from "@/lib/gst-portal-files";
+import type { PortalSettings } from "@/lib/gst-portal-settings";
+import { downloadGstExtension, gstExtensionVersion, isOpen, onPortalStatus, PortalRun, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
 import { FyStepper, fyOf, previousMonth } from "./gst-working";
 import { apiError, currentMonthKey } from "./types";
 
 // GST portal downloads (docs/GST_PORTAL_EXTENSION_PLAN.md). Stage 1: which
 // GST return files are saved in the app and which are missing, on the
 // client's page (below the GST working) and for all clients in a month (the
-// download round). Nothing here polls: it loads when opened and after uploads.
+// download round). Stage 2: open the GST portal with the client's login
+// filled in through the browser extension; staff type the captcha and OTP.
+// Nothing here polls: it loads when opened and after uploads, and the
+// extension reports what happens in the portal tab.
 
 const STATE_STYLES: Record<PortalFileState, string> = {
   saved: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
@@ -149,11 +155,190 @@ export function ClientGstPortal({ clientId, refresh }: { clientId: string; refre
           <KeyRound className="h-3.5 w-3.5" /> No GST login saved (Clients → Credentials, with “GST” in the title): staff type the username and password on the portal.
         </p>
       )}
-      <p className="text-xs text-muted-foreground">
-        {ticked.size} file{ticked.size === 1 ? "" : "s"} ticked. Until downloading from the portal is ready, download the ticked files by hand and use
-        Upload documents above.
-      </p>
+      <PortalLogin clientId={data.client.id} clientName={data.client.name} ticked={ticked.size} />
     </div>
+  );
+}
+
+// ─── The GST portal tab, through the extension ──────────────────────────────
+
+const ENDED_TEXT: Partial<Record<PortalRun["status"], string>> = {
+  "logged-out": "Logged out of the GST portal.",
+  closed: "The GST portal tab was closed. If you were logged in, the portal logs out on its own after a while.",
+  "timed-out": "Nobody completed the login in time, so the portal tab was closed.",
+  failed: "The GST portal couldn't be opened.",
+};
+
+function PortalLogin({ clientId, clientName, ticked }: { clientId: string; clientName: string; ticked: number }) {
+  // undefined: not checked yet (the page has just loaded)
+  const [version, setVersion] = useState<string | null | undefined>(undefined);
+  const [run, setRun] = useState<PortalRun | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [installing, setInstalling] = useState(false);
+
+  useEffect(() => {
+    const installed = gstExtensionVersion();
+    setVersion(installed);
+    if (!installed) return;
+    portalStatus().then((a) => a.ok && setRun(a.run ?? null));
+    return onPortalStatus(setRun);
+  }, []);
+
+  if (version === undefined) return null;
+  if (!version) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed p-2 text-sm">
+        <span className="text-muted-foreground">Install the GST extension (Chrome or Edge) to log in to the GST portal from here.</span>
+        <Button size="sm" variant="outline" onClick={() => setInstalling(true)}>
+          <Puzzle className="mr-1 h-4 w-4" /> Install the GST extension
+        </Button>
+        {installing && <InstallDialog onClose={() => setInstalling(false)} />}
+      </div>
+    );
+  }
+
+  const act = async (work: () => Promise<{ ok: boolean; error?: string; run?: PortalRun | null }>) => {
+    setBusy(true);
+    try {
+      const answer = await work();
+      if (answer.run !== undefined) setRun(answer.run ?? null);
+      if (!answer.ok) toast.error(answer.error ?? "The GST extension couldn't do that");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const start = () =>
+    act(async () => {
+      let answer: { settings: PortalSettings; login: { username: string; password: string } | null };
+      try {
+        answer = (await axios.post("/api/compliance/gst-portal/login", { clientId })).data;
+      } catch (e) {
+        return { ok: false, error: apiError(e, "Could not get the GST login") };
+      }
+      return portalLogin({ runId: crypto.randomUUID(), clientId, clientName, settings: answer.settings, login: answer.login });
+    });
+
+  // The portal tab open now (for this client or another)
+  const live = isOpen(run) ? run : null;
+  const mine = live?.clientId === clientId ? live : null;
+
+  return (
+    <div className="space-y-2 rounded-md border p-2 text-sm">
+      {live && !mine && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span>
+            The GST portal is open for <span className="font-medium">{live.clientName}</span> (one client at a time in this browser).
+          </span>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => act(() => showPortal(live.runId))}>
+            <PanelTop className="mr-1 h-4 w-4" /> Show
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => act(() => portalLogout(live.runId))}>
+            <LogOut className="mr-1 h-4 w-4" /> Log out there
+          </Button>
+        </div>
+      )}
+      {mine && (
+        <div className="space-y-2">
+          <p className="font-medium">
+            {mine.status === "waiting-login" && (
+              <span className="text-amber-800 dark:text-amber-300">
+                <KeyRound className="mr-1 inline h-4 w-4" />
+                Type the captcha (and the OTP, if asked) in the GST portal tab.
+              </span>
+            )}
+            {mine.status === "logged-in" && (
+              <span className="text-emerald-700 dark:text-emerald-400">
+                <Check className="mr-1 inline h-4 w-4" />
+                Logged in to the GST portal.
+              </span>
+            )}
+            {mine.status === "logging-out" && (
+              <span>
+                <Loader2 className="mr-1 inline h-4 w-4 animate-spin" />
+                Logging out…
+              </span>
+            )}
+          </p>
+          {mine.note && <p className="text-xs text-amber-700 dark:text-amber-400">{mine.note}</p>}
+          {mine.status === "logged-in" && (
+            <p className="text-xs text-muted-foreground">
+              Fetching the ticked files from here comes in the next update. For now, download them in the portal tab, upload them with Upload
+              documents above, then log out.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => act(() => showPortal(mine.runId))}>
+              <PanelTop className="mr-1 h-4 w-4" /> Show the portal tab
+            </Button>
+            <Button size="sm" variant="outline" disabled={busy || mine.status === "logging-out"} onClick={() => act(() => portalLogout(mine.runId))}>
+              <LogOut className="mr-1 h-4 w-4" /> {mine.status === "logged-in" ? "Log out and close" : "Cancel"}
+            </Button>
+          </div>
+        </div>
+      )}
+      {!live && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" disabled={busy} onClick={start}>
+            {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <LogIn className="mr-1 h-4 w-4" />}
+            Log in to the GST portal
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {run && run.clientId === clientId && ENDED_TEXT[run.status]
+              ? ENDED_TEXT[run.status]
+              : `Opens the portal in a new tab with the login filled in; you type the captcha and OTP.${ticked ? ` ${ticked} file${ticked === 1 ? "" : "s"} ticked.` : ""}`}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InstallDialog({ onClose }: { onClose: () => void }) {
+  const [downloading, setDownloading] = useState(false);
+  const download = async () => {
+    setDownloading(true);
+    try {
+      await downloadGstExtension();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not download the extension");
+    } finally {
+      setDownloading(false);
+    }
+  };
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Install the GST extension</DialogTitle>
+          <DialogDescription>Once on each computer, in Chrome or Edge. It only works on the GST portal and on this app.</DialogDescription>
+        </DialogHeader>
+        <ol className="list-decimal space-y-1.5 pl-5 text-sm">
+          <li>
+            <Button size="sm" variant="outline" onClick={download} disabled={downloading}>
+              {downloading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />} Download the extension
+            </Button>{" "}
+            and unzip it (right-click → Extract all). Keep the <span className="font-mono">mvc-gst</span> folder where it won&apos;t be deleted.
+          </li>
+          <li>
+            Open <span className="font-mono">chrome://extensions</span> (Edge: <span className="font-mono">edge://extensions</span>) in the address bar.
+          </li>
+          <li>Turn on <span className="font-medium">Developer mode</span>.</li>
+          <li>
+            Click <span className="font-medium">Load unpacked</span> and choose the <span className="font-mono">mvc-gst</span> folder.
+          </li>
+          <li>Reload this page.</li>
+        </ol>
+        <p className="text-xs text-muted-foreground">
+          To update it later, download it again, replace the folder&apos;s files and click the reload arrow on the extension in the extensions page.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
