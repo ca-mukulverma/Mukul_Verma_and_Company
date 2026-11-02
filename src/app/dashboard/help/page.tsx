@@ -62,6 +62,8 @@ const SECTIONS: Section[] = [
       "The colour key above the sheet explains the colours. A lock means an earlier period or step must be finished first.",
       "The header row and client names stay in view while you scroll a long sheet.",
       "Setup (Admins and Partners) stays on the Compliance page: work types, teams, due dates, files needed and fees.",
+      "GST downloads lists, for a month, the clients whose GST return files aren't all saved. On a client's page, the GST portal box (below the GST working) shows each month's files as saved, missing, not due yet or only if filed.",
+      "With the GST extension installed (Chrome or Edge; the GST portal box shows how), Log in to the GST portal opens the portal with the client's saved GST login filled in. You type the captcha and OTP; Log out and close when done.",
     ],
     link: { href: "/dashboard/compliance", label: "Open Compliance" },
   },

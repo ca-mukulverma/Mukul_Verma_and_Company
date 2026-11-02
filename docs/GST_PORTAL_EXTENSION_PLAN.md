@@ -1,7 +1,7 @@
 # GST portal downloads with a browser extension: plan
 
-Status: **agreed plan, not built yet** (Nov 2026). This document is the
-brief for the session that builds it. It replaces the helper-PC design that
+Status: **stages 1 and 2 built** (Nov 2026; see [Progress](#progress)), the
+rest planned. This document is the brief for the sessions that build it. It replaces the helper-PC design that
 was built and then removed (see [Background](#1-background)).
 
 ## Contents
@@ -461,6 +461,35 @@ uploading that one by hand.
 | 10 | Download round (many clients), notifications, error screenshots | 20 clients in about an hour |
 | 11 | Store listings (Chrome, Edge) with auto-update; docs for staff and admin | Installed from the store on all PCs |
 | — | Separately: encrypt `Credential.password` at rest | |
+
+### Progress
+
+**Stage 1 (built).** Each file the GST working checks carries its kind
+(`GSTR1_JSON`, `GSTR1_PDF`, `GSTR1A_PDF`, `GSTR3B_PDF`, `GSTR2B_JSON`) and
+portal month (`FileCheck` in `src/lib/gst-read/working.ts`), so "missing" is
+the working's own list, not a second copy of the rules. `src/lib/gst-portal.ts`
+adds the state: *saved*, *missing* (ticked by default), *not due yet* (return
+not filed and its due date not passed; GSTR-2B before the 14th) or *only if
+filed* (IFF months, GSTR-1A). Shown in the client's **GST portal** box and in
+**Compliance → GST downloads** (the round list; starting a round is stage 10).
+Read-only, no new tables, no polling.
+
+**Stage 2 (built, tested against the mock portal only).** `public/gst-extension`
+(MV3): the bridge on the app's pages, the background worker opening the portal
+tab, filling the login (`chrome.scripting`, fields from the portal settings),
+reporting *logged in* from the address, logging out and closing the tab, and
+closing it after `loginWaitMinutes` if nobody logs in. The app asks
+`POST /api/compliance/gst-portal/login` only when staff click. Portal
+settings are one built-in version for now (`src/lib/gst-portal-settings.ts`,
+from the helper's selectors); stage 6 moves them to the database. Test:
+`node --test tests/gst-extension/e2e.test.mjs` (Playwright loads the unpacked
+extension against a mock portal and a stand-in app page).
+
+**Still to check on the real portal (stage 0 / first pilot login):** the
+login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
+address matches `services.gst.gov.in/services/auth/`, and that the logout
+address logs out. A wrong one is a settings change in the app, not an
+extension update. The ticked files are not fetched yet (stage 3).
 
 ## 18. Testing
 

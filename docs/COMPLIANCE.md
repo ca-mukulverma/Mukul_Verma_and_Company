@@ -408,11 +408,29 @@ client's page ([GST_WORKING.md](GST_WORKING.md)). TDS figures are entered
 when marking returns filed. It is plain arithmetic done by the app, always
 live and free.
 
-## GST portal downloads (planned)
+## GST portal: missing files and login (first stages)
 
-Downloading returns from the GST portal through a browser extension is
-planned, not built: see [GST_PORTAL_EXTENSION_PLAN.md](GST_PORTAL_EXTENSION_PLAN.md).
-Until then, download from the portal and use **Upload documents**.
+Downloading returns from the GST portal through a browser extension is being
+built in stages: see [GST_PORTAL_EXTENSION_PLAN.md](GST_PORTAL_EXTENSION_PLAN.md).
+What works now:
+
+- **Client's page → GST portal** (below the GST working): for each month (or
+  quarter) of the year, every GST return file is shown as **Saved**,
+  **Missing** (should be on the portal; ticked), **Not due yet** (the return
+  isn't due or filed yet; GSTR-2B before the 14th) or **Only if filed** (IFF,
+  GSTR-1A).
+- **Compliance → GST downloads**: for a month, every client whose GST files
+  aren't all saved, with filters (My clients, GSTR-1 / 3B / 2B, Quarterly).
+- **Log in to the GST portal** in the same box, with the **GST extension**
+  installed (Chrome or Edge; the box shows the install steps): a portal tab
+  opens next to the app with the client's saved GST login filled in (the
+  first credential with "GST" in its title, not the e-way bill / e-invoice
+  one) and the cursor in the captcha. Staff type the captcha and OTP; the box
+  shows when the login is done, and **Log out and close** logs out and closes
+  the tab. One client at a time per browser.
+
+Fetching the ticked files comes next; until then, download them in the
+portal tab and use **Upload documents**.
 
 ## Overview and notifications
 
@@ -615,6 +633,15 @@ which is several years of return PDFs.
   see [GST_WORKING.md](GST_WORKING.md#for-developers); WhatsApp:
   `src/components/compliance/whatsapp-send.ts` and the extension in
   `public/whatsapp-extension` (`__APP_ORIGIN__` is filled in on download).
+- GST portal: missing files `src/lib/gst-portal.ts` (states, browser-safe) and
+  `src/lib/gst-portal-files.ts` (client year, round month; built on the GST
+  working's `loadPeriods`), API `src/app/api/compliance/gst-portal/*`, UI
+  `src/components/compliance/gst-portal.tsx`; portal settings
+  `src/lib/gst-portal-settings.ts`; extension `public/gst-extension`
+  (`__APP_MATCH__` and `__APP_ORIGIN__` are filled in on download) and the
+  app side `src/components/compliance/gst-extension.ts`; test
+  `node --test tests/gst-extension/e2e.test.mjs`. See
+  [GST_PORTAL_EXTENSION_PLAN.md](GST_PORTAL_EXTENSION_PLAN.md).
 - API: `src/app/api/compliance/*`; daily job: `src/app/api/cron/compliance`
   (uses `CRON_SECRET`, runs at 01:30 UTC); page: `src/app/dashboard/compliance`;
   components: `src/components/compliance/*`.
