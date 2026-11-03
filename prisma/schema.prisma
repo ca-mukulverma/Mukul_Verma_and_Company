@@ -147,6 +147,9 @@ model User {
   // Whether this person marks attendance on Today (admin turns it off for
   // selected partners). Admins never mark attendance.
   marksAttendance         Boolean        @default(true)
+  // Partner gets a notification each time someone marks attendance
+  // (admins always do)
+  attendanceAlerts        Boolean        @default(false)
   attendances             Attendance[]
 
   // For frequently accessed active users

@@ -94,12 +94,12 @@ export default function AttendancePage() {
   const thisMonth = report ? report.today.slice(0, 7) : null;
   const todayIsWorkingDay = !!report && report.days.includes(report.today);
 
-  const toggle = async (userId: string, value: boolean) => {
+  const toggle = async (userId: string, value: boolean, field: "marksAttendance" | "attendanceAlerts" = "marksAttendance") => {
     if (!report) return;
     setSaving(userId);
     try {
-      await axios.patch("/api/attendance/report", { userId, marksAttendance: value });
-      setReport({ ...report, people: report.people.map((p) => (p.id === userId ? { ...p, marksAttendance: value } : p)) });
+      await axios.patch("/api/attendance/report", { userId, [field]: value });
+      setReport({ ...report, people: report.people.map((p) => (p.id === userId ? { ...p, [field]: value } : p)) });
     } catch {
       toast.error("Could not save. Try again.");
     } finally {
@@ -254,6 +254,37 @@ export default function AttendancePage() {
                     </span>
                   </label>
                 ))}
+              </CardContent>
+            </Card>
+
+            <Card data-showme="attendance-alerts">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">Who gets “came to office” notifications</CardTitle>
+                <CardDescription>
+                  Each time someone marks attendance, a notification (“Staff A came to office · 10:04 am”) goes to
+                  the admin and to the partners turned on here.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="divide-y p-0">
+                {report.people
+                  .filter((p) => p.role === "PARTNER")
+                  .map((person) => (
+                    <label key={person.id} className="flex items-center justify-between gap-3 px-6 py-3">
+                      <span className="text-sm">{person.name}</span>
+                      <span className="flex items-center gap-2">
+                        {saving === person.id && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                        <Switch
+                          checked={person.attendanceAlerts}
+                          disabled={saving === person.id}
+                          onCheckedChange={(value) => toggle(person.id, value, "attendanceAlerts")}
+                          aria-label={`${person.name} gets came to office notifications`}
+                        />
+                      </span>
+                    </label>
+                  ))}
+                {!report.people.some((p) => p.role === "PARTNER") && (
+                  <p className="px-6 py-3 text-sm text-muted-foreground">No partners.</p>
+                )}
               </CardContent>
             </Card>
           </>
