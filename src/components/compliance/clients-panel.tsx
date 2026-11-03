@@ -272,17 +272,19 @@ function AddWorkDialog({
   clientIds,
   workTypes,
   existing = [],
+  initialTicked = [],
   onClose,
   onDone,
 }: {
   clientIds: string[];
   workTypes: WorkType[];
   existing?: string[];
+  initialTicked?: string[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const active = workTypes.filter((w) => w.active);
-  const [ticked, setTicked] = useState<string[]>([]);
+  const [ticked, setTicked] = useState<string[]>(initialTicked);
   const chosen = active.filter((w) => ticked.includes(w.id));
   const [quarterly, setQuarterly] = useState(false);
   const [startPeriod, setStartPeriod] = useState(currentMonthKey());
@@ -1105,5 +1107,126 @@ function Documents({ data, onChanged }: { data: ClientDetail; onChanged: () => v
         </div>
       )}
     </Box>
+  );
+}
+
+// "Add work" on a sheet: choose the clients, then the works of that sheet
+// (ticked already) as in Compliance → Clients. Clients that already have a
+// work can be ticked too, to track it from an earlier month.
+export function SheetAddWork({
+  workTypes,
+  sheetWorkTypeIds,
+  onDone,
+}: {
+  workTypes: WorkType[];
+  sheetWorkTypeIds: string[];
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [clients, setClients] = useState<ClientListItem[] | null>(null);
+  const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const [checked, setChecked] = useState<string[]>([]);
+  const [step, setStep] = useState<"clients" | "works">("clients");
+
+  useEffect(() => {
+    if (!open || clients) return;
+    axios
+      .get<{ clients: ClientListItem[] }>("/api/compliance/clients")
+      .then(({ data }) => setClients(data.clients))
+      .catch((error) => toast.error(apiError(error)));
+  }, [open, clients]);
+
+  const hasAll = (c: ClientListItem) => sheetWorkTypeIds.length > 0 && sheetWorkTypeIds.every((id) => c.works.some((w) => w.workTypeId === id));
+  const visible = (clients ?? []).filter((c) => (showAll || !hasAll(c)) && matchesSearch(search, c.name, c.gstin, c.state));
+  const chosen = (clients ?? []).filter((c) => checked.includes(c.id));
+  // Works every chosen client already has
+  const existing = sheetWorkTypeIds.filter((id) => chosen.length > 0 && chosen.every((c) => c.works.some((w) => w.workTypeId === id)));
+
+  const close = () => {
+    setOpen(false);
+    setStep("clients");
+    setChecked([]);
+    setSearch("");
+    setClients(null);
+  };
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        <Plus className="mr-1 h-4 w-4" /> Add work
+      </Button>
+      {open && step === "clients" && (
+        <Dialog open onOpenChange={(o) => !o && close()}>
+          <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Add work: choose clients</DialogTitle>
+              <DialogDescription>
+                Tick the clients to add {sheetWorkTypeIds.map((id) => workTypes.find((w) => w.id === id)?.name).filter(Boolean).join(" / ") || "work"} to. Next you choose the works, frequency and first period.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input className="pl-8" placeholder="Search client or GSTIN" value={search} onChange={(e) => setSearch(e.target.value)} />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <label className="flex items-center gap-2">
+                  <Checkbox
+                    checked={visible.length > 0 && visible.every((c) => checked.includes(c.id))}
+                    onCheckedChange={(v) => setChecked(v === true ? [...new Set([...checked, ...visible.map((c) => c.id)])] : checked.filter((id) => !visible.some((c) => c.id === id)))}
+                  />
+                  Select all shown
+                </label>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox checked={showAll} onCheckedChange={(v) => setShowAll(v === true)} />
+                  Also clients that already have it (to add earlier months)
+                </label>
+              </div>
+              <div className="max-h-[50vh] overflow-y-auto rounded-md border">
+                {!clients ? (
+                  <Loader2 className="mx-auto my-6 h-5 w-5 animate-spin" />
+                ) : visible.length === 0 ? (
+                  <p className="p-4 text-center text-sm text-muted-foreground">No client to show.</p>
+                ) : (
+                  visible.map((c) => (
+                    <label key={c.id} className="flex cursor-pointer items-start gap-2 border-b p-2 text-sm last:border-0 hover:bg-muted/50">
+                      <Checkbox
+                        checked={checked.includes(c.id)}
+                        onCheckedChange={(v) => setChecked((s) => (v === true ? [...s, c.id] : s.filter((id) => id !== c.id)))}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{c.name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {c.gstin ? `${c.gstin} · ` : ""}
+                          {hasAll(c) ? "Already has it" : "Not set up yet"}
+                        </span>
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={close}>Cancel</Button>
+              <Button disabled={checked.length === 0} onClick={() => setStep("works")}>Next ({checked.length})</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      {open && step === "works" && (
+        <AddWorkDialog
+          clientIds={checked}
+          workTypes={workTypes}
+          existing={existing}
+          initialTicked={sheetWorkTypeIds.filter((id) => workTypes.some((w) => w.id === id && w.active))}
+          onClose={close}
+          onDone={() => {
+            close();
+            onDone();
+          }}
+        />
+      )}
+    </>
   );
 }
