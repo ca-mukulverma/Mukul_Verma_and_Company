@@ -47,6 +47,14 @@ import {
   useBillingOptions,
 } from "@/components/clients/client-extra-fields";
 import { RegistrationValues, emptyRegistrations, registrationsPayload, registrationsProblem } from "@/lib/client-documents";
+import {
+  ClientWorksFields,
+  ClientWorksValue,
+  clientWorksProblem,
+  emptyClientWorks,
+  saveClientWorks,
+  useComplianceWorkTypes,
+} from "@/components/compliance/client-works-fields";
 
 // Schema for permanent client
 const clientFormSchema = z.object({
@@ -75,6 +83,10 @@ export default function ClientCreatePage() {
 
   const router = useRouter();
   const { data: session, status } = useSession();
+  // Admins and Partners can set up the client's recurring compliance work here
+  const isComplianceManager = session?.user?.role === "ADMIN" || session?.user?.role === "PARTNER";
+  const complianceWorkTypes = useComplianceWorkTypes(isComplianceManager);
+  const [works, setWorks] = useState<ClientWorksValue>(emptyClientWorks);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -147,7 +159,7 @@ export default function ClientCreatePage() {
       toast.error("Please provide either an email or phone number");
       return;
     }
-    const problem = contactsProblem(contacts) ?? registrationsProblem(registrations);
+    const problem = contactsProblem(contacts) ?? registrationsProblem(registrations) ?? clientWorksProblem(works);
     if (problem) {
       toast.error(problem);
       return;
@@ -158,7 +170,7 @@ export default function ClientCreatePage() {
 
     try {
       // Include source and referrer from URL in the API request if available
-      await axios.post("/api/clients", {
+      const { data: created } = await axios.post<{ client: { id: string } }>("/api/clients", {
         ...data,
         ...contactsData,
         ...registrationsPayload(registrations),
@@ -169,13 +181,22 @@ export default function ClientCreatePage() {
         referrer: referrerParam
       });
 
-      toast.success(`Client ${data.contactPerson} created successfully!`);
-      setSuccessMessage(`Client ${data.contactPerson} has been created successfully.`);
+      // The chosen recurring work, now that the client exists
+      let worksNote = "";
+      if (complianceWorkTypes && works.workTypeIds.length > 0) {
+        const result = await saveClientWorks(created.client.id, complianceWorkTypes, works);
+        if (result.added.length) worksNote = ` Recurring work added: ${result.added.join(", ")}.`;
+        for (const p of result.problems) toast.error(`Client saved, but ${p}. Add it in Compliance → Clients.`);
+      }
+
+      toast.success(`Client ${data.contactPerson} created successfully!${worksNote}`);
+      setSuccessMessage(`Client ${data.contactPerson} has been created successfully.${worksNote}`);
 
       // Reset form
       form.reset();
       setContacts(emptyContacts());
       setRegistrations(emptyRegistrations());
+      setWorks(emptyClientWorks());
 
       // Redirect after short delay
       setTimeout(() => {
@@ -326,6 +347,10 @@ export default function ClientCreatePage() {
                     options={billingOptions}
                     clientName={form.watch("companyName") || form.watch("contactPerson")}
                   />
+
+                  {complianceWorkTypes && (
+                    <ClientWorksFields workTypes={complianceWorkTypes} value={works} onChange={setWorks} />
+                  )}
                 </TabsContent>
                 
                 <TabsContent value="additional" className="space-y-4 mt-0">
