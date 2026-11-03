@@ -30,6 +30,16 @@ const SECTIONS: Section[] = [
     link: { href: "/dashboard/my-work", label: "Open Today" },
   },
   {
+    id: "whats-new",
+    title: "What's new",
+    steps: [
+      "When something new is added to the app, a short card tells you about it the next time you open the app, and a notification arrives on your phone.",
+      "Show me opens the page and points at the button to tap. Got it closes the card.",
+      "Menu → What's new lists every card again, so you can read it or press Show me any time.",
+    ],
+    link: { href: "/dashboard/whats-new", label: "Open What's new" },
+  },
+  {
     id: "attendance",
     title: "Attendance",
     steps: [

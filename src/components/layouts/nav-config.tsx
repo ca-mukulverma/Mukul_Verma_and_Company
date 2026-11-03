@@ -8,6 +8,7 @@ import {
   ListTodo,
   Receipt,
   Settings,
+  Sparkles,
   Users,
 } from "lucide-react";
 
@@ -80,6 +81,7 @@ export function navGroups(role: string): NavGroup[] {
       title: "Settings",
       items: [
         { title: "Settings", href: "/dashboard/settings", icon: Settings, roles: STAFF_ROLES, shortcut: "s" },
+        { title: "What's new", href: "/dashboard/whats-new", icon: Sparkles, roles: STAFF_ROLES, shortcut: "w" },
         { title: "Help", href: "/dashboard/help", icon: HelpCircle, roles: STAFF_ROLES, shortcut: "e" },
       ],
     },

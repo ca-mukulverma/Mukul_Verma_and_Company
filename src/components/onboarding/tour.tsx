@@ -5,9 +5,11 @@ import { CalendarCheck, ClipboardList, HelpCircle, ListTodo, Receipt, Search, Sm
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/components/language-provider";
+import { TOUR_CLOSED_EVENT } from "@/lib/whats-new";
 
 export const START_TOUR_EVENT = "app:start-tour";
-const DONE_KEY = "tour-done-v1";
+export const TOUR_DONE_KEY = "tour-done-v1";
+const DONE_KEY = TOUR_DONE_KEY;
 
 interface Step {
   icon: React.ComponentType<{ className?: string }>;
@@ -83,6 +85,8 @@ export function Tour({ role }: { role: string }) {
     } catch {
       // Shown again next time
     }
+    // What's new waits for the tour
+    window.dispatchEvent(new Event(TOUR_CLOSED_EVENT));
   };
 
   const step = steps[index];

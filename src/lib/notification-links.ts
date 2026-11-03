@@ -7,6 +7,7 @@ export function notificationLink(n: { title: string; content?: string | null; ta
   if (taskId) return `/dashboard/tasks/${taskId}`;
   const title = n.title.toLowerCase();
   if (title.startsWith("your day")) return "/dashboard/my-work";
+  if (title.startsWith("new in the app")) return "/dashboard/whats-new";
   if (title.includes("awaiting your amount")) return "/dashboard/billing?tab=amounts";
   if (title.includes("final approval")) return "/dashboard/billing?tab=final";
   if (title.includes("bill") || title.includes("work logged") || title.includes("tally")) return "/dashboard/billing";
