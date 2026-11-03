@@ -62,6 +62,9 @@ The checks are made on the server, not only hidden on screen.
    **Add work** button (Admins and Partners): choose the clients (those
    without the sheet's works are listed; tick *Also clients that already have
    it* to add earlier months), then the works, frequency and first period.
+   A new client's works can also be ticked straight away on **Clients →
+   Create New Client** (Admins and Partners), under *Recurring work
+   (Compliance)*: works, GST frequency, first period and fees.
 4. For clients who pay **rent, transport, legal fees** etc. under RCM, or
    deduct **TDS on fixed payments**, open the client and add them under
    **Monthly RCM and TDS payments** (see [RCM and fixed TDS](#rcm-and-fixed-tds-never-missed)).
