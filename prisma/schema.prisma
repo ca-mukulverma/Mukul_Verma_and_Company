@@ -144,6 +144,10 @@ model User {
   gstWorkingChecks        GstWorkingCheck[]     @relation("GstWorkingCheckedBy")
   obligationLinesResolved ComplianceObligationLine[]
   clientDispatches        ClientDispatch[]
+  // Whether this person marks attendance on Today (admin turns it off for
+  // selected partners). Admins never mark attendance.
+  marksAttendance         Boolean        @default(true)
+  attendances             Attendance[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -1011,4 +1015,17 @@ model ClientDispatch {
 
   @@index([clientId, createdAt])
   @@index([createdAt])
+}
+
+// One "present" mark: the person tapped Mark attendance on Today.
+// date is the India calendar day; markedAt is the server's time of the tap.
+model Attendance {
+  id       String   @id @default(uuid()) @db.Char(36)
+  userId   String   @db.Char(36)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date     DateTime @db.Date
+  markedAt DateTime @default(now())
+
+  @@unique([userId, date])
+  @@index([date])
 }

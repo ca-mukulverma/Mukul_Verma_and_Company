@@ -1,0 +1,147 @@
+import { prisma } from "@/lib/prisma";
+import { todayIST, utcDate } from "@/lib/compliance-periods";
+
+// Attendance: staff tap "Mark attendance" on Today once a day; the admin sees
+// the times on the Attendance page. Sundays are skipped. Admins never mark,
+// and the admin can turn marking off for selected people (marksAttendance).
+//
+// Cheap on purpose: the "marked today?" check rides along with the Today
+// request, a mark is one insert, and the report is read only when the admin
+// opens it. No background job, no polling.
+
+export interface AttendanceToday {
+  // Whether this person marks attendance at all
+  required: boolean;
+  // Sunday in India: no attendance
+  sunday: boolean;
+  // ISO time of today's mark, or null
+  markedAt: string | null;
+}
+
+export function isSunday(date: Date) {
+  return date.getUTCDay() === 0;
+}
+
+export function marksAttendance(user: { role: string; marksAttendance: boolean; isActive?: boolean }) {
+  return user.role !== "ADMIN" && user.marksAttendance && user.isActive !== false;
+}
+
+export async function getAttendanceToday(userId: string): Promise<AttendanceToday> {
+  const today = todayIST();
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+      marksAttendance: true,
+      attendances: { where: { date: today }, select: { markedAt: true }, take: 1 },
+    },
+  });
+  return {
+    required: !!user && marksAttendance(user),
+    sunday: isSunday(today),
+    markedAt: user?.attendances[0]?.markedAt.toISOString() ?? null,
+  };
+}
+
+export type MarkResult =
+  | { ok: true; markedAt: string; alreadyMarked: boolean }
+  | { ok: false; error: string; status: number };
+
+// Marks today's attendance with the server's time. A second tap keeps the
+// first time.
+export async function markAttendance(userId: string): Promise<MarkResult> {
+  const today = todayIST();
+  if (isSunday(today)) return { ok: false, error: "No attendance on Sunday.", status: 400 };
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, marksAttendance: true, isActive: true },
+  });
+  if (!user || !marksAttendance(user)) {
+    return { ok: false, error: "You don't need to mark attendance.", status: 403 };
+  }
+
+  // Insert unless already there (also safe when two taps arrive together)
+  const { count } = await prisma.attendance.createMany({ data: [{ userId, date: today }], skipDuplicates: true });
+  const row = await prisma.attendance.findUnique({
+    where: { userId_date: { userId, date: today } },
+    select: { markedAt: true },
+  });
+  if (!row) return { ok: false, error: "Could not mark attendance. Try again.", status: 500 };
+  return { ok: true, markedAt: row.markedAt.toISOString(), alreadyMarked: count === 0 };
+}
+
+export interface AttendancePerson {
+  id: string;
+  name: string;
+  role: string;
+  // Off: this person doesn't mark attendance and isn't in the report
+  marksAttendance: boolean;
+}
+
+export interface AttendanceReport {
+  month: string; // YYYY-MM
+  today: string; // YYYY-MM-DD (India)
+  // Working days of the month (Sundays left out), YYYY-MM-DD
+  days: string[];
+  // Everyone who can mark, including those switched off (for the switches)
+  people: AttendancePerson[];
+  // marks[userId][YYYY-MM-DD] = ISO time marked
+  marks: Record<string, Record<string, string>>;
+}
+
+export function parseMonth(value: string | null): { year: number; month: number } | null {
+  const match = value?.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12 || year < 2000 || year > 2100) return null;
+  return { year, month };
+}
+
+export function workingDays(year: number, month: number): Date[] {
+  const days: Date[] = [];
+  for (let d = utcDate(year, month, 1); d.getUTCMonth() === month - 1; d = new Date(d.getTime() + 86_400_000)) {
+    if (!isSunday(d)) days.push(d);
+  }
+  return days;
+}
+
+const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+
+export async function getAttendanceReport(year: number, month: number): Promise<AttendanceReport> {
+  const first = utcDate(year, month, 1);
+  const next = utcDate(year, month + 1, 1);
+
+  const [users, rows] = await Promise.all([
+    prisma.user.findMany({
+      where: { isActive: true, role: { not: "ADMIN" } },
+      select: { id: true, name: true, role: true, marksAttendance: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.attendance.findMany({
+      where: { date: { gte: first, lt: next } },
+      select: { userId: true, date: true, markedAt: true },
+    }),
+  ]);
+
+  const marks: AttendanceReport["marks"] = {};
+  for (const row of rows) {
+    (marks[row.userId] ??= {})[dayKey(row.date)] = row.markedAt.toISOString();
+  }
+
+  return {
+    month: `${year}-${String(month).padStart(2, "0")}`,
+    today: dayKey(todayIST()),
+    days: workingDays(year, month).map(dayKey),
+    people: users,
+    marks,
+  };
+}
+
+export async function setMarksAttendance(userId: string, value: boolean) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (!user || user.role === "ADMIN") return false;
+  await prisma.user.update({ where: { id: userId }, data: { marksAttendance: value } });
+  return true;
+}

@@ -27,6 +27,8 @@ import { CompanyBadge } from "@/components/billing/company-select";
 import { HelpLink } from "@/components/help/help-link";
 import { useLanguage } from "@/components/language-provider";
 import type { DueState, MyComplianceItem, MyTask, MyWork } from "@/lib/my-work";
+import type { AttendanceToday } from "@/lib/attendance";
+import { AttendanceCard } from "@/components/attendance/attendance-card";
 
 const DUE_STYLES: Record<DueState, string> = {
   overdue: "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
@@ -82,14 +84,14 @@ function Tile({ label, value, tone, icon: Icon }: { label: string; value: number
 export default function MyWorkPage() {
   const { data: session } = useSession();
   const { t } = useLanguage();
-  const [work, setWork] = useState<MyWork | null>(null);
+  const [work, setWork] = useState<(MyWork & { attendance?: AttendanceToday }) | null>(null);
   const [error, setError] = useState(false);
   const [busyTask, setBusyTask] = useState<string | null>(null);
   const isManager = session?.user?.role === "ADMIN" || session?.user?.role === "PARTNER";
 
   const load = useCallback(async () => {
     try {
-      const response = await axios.get<MyWork>("/api/my-work");
+      const response = await axios.get<MyWork & { attendance?: AttendanceToday }>("/api/my-work");
       setWork(response.data);
       setError(false);
     } catch {
@@ -163,6 +165,8 @@ export default function MyWorkPage() {
           </Button>
         </div>
       </div>
+
+      {work && <AttendanceCard attendance={work.attendance} />}
 
       {error && (
         <Card>
