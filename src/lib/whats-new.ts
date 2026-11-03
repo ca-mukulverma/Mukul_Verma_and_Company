@@ -35,6 +35,34 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "attendance-alerts",
+    date: "2026-11-03",
+    audience: "admin",
+    title: { en: "New: “Came to office” notifications", hi: "नया: “ऑफिस आए” सूचना" },
+    steps: {
+      en: [
+        "Each time someone marks attendance, you get a notification: “Staff A came to office · 10:04 am”.",
+        "To send these to partners too, turn them on under “Who gets came to office notifications” on Admin → Attendance.",
+      ],
+      hi: [
+        "जब भी कोई हाज़िरी लगाता है, आपको सूचना मिलती है: “Staff A came to office · 10:04 am”।",
+        "पार्टनर्स को भी भेजने के लिए, एडमिन → हाज़िरी में “Who gets came to office notifications” में उन्हें चालू करें।",
+      ],
+    },
+    showMe: {
+      href: "/dashboard/attendance",
+      target: "attendance-alerts",
+      hint: {
+        en: "Turn on the partners who should get a notification when staff come in.",
+        hi: "जिन पार्टनर्स को स्टाफ़ के आने की सूचना मिलनी चाहिए, उन्हें यहाँ चालू करें।",
+      },
+    },
+    push: {
+      title: "New in the app: Came to office notifications",
+      body: "You now get a notification each time someone marks attendance. Tap to choose which partners get them too.",
+    },
+  },
+  {
     id: "attendance-report",
     date: "2026-11-03",
     audience: "admin",

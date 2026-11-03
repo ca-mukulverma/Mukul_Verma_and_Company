@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { todayIST, utcDate } from "@/lib/compliance-periods";
+import { sendPushToUser } from "@/lib/web-push";
 
 // Attendance: staff tap "Mark attendance" on Today once a day; the admin sees
 // the times on the Attendance page. Sundays are skipped. Admins never mark,
@@ -77,6 +78,8 @@ export interface AttendancePerson {
   role: string;
   // Off: this person doesn't mark attendance and isn't in the report
   marksAttendance: boolean;
+  // Partners: gets a notification when someone marks attendance
+  attendanceAlerts: boolean;
 }
 
 export interface AttendanceReport {
@@ -116,7 +119,7 @@ export async function getAttendanceReport(year: number, month: number): Promise<
   const [users, rows] = await Promise.all([
     prisma.user.findMany({
       where: { isActive: true, role: { not: "ADMIN" } },
-      select: { id: true, name: true, role: true, marksAttendance: true },
+      select: { id: true, name: true, role: true, marksAttendance: true, attendanceAlerts: true },
       orderBy: { name: "asc" },
     }),
     prisma.attendance.findMany({
@@ -144,4 +147,49 @@ export async function setMarksAttendance(userId: string, value: boolean) {
   if (!user || user.role === "ADMIN") return false;
   await prisma.user.update({ where: { id: userId }, data: { marksAttendance: value } });
   return true;
+}
+
+// Only partners are chosen; admins always get the alerts
+export async function setAttendanceAlerts(userId: string, value: boolean) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (user?.role !== "PARTNER") return false;
+  await prisma.user.update({ where: { id: userId }, data: { attendanceAlerts: value } });
+  return true;
+}
+
+const alertTime = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true });
+
+// "Staff A came to office · 10:04 am" to every admin and the partners with
+// alerts on (not to the person who marked). Bell notification + phone push.
+export async function sendArrivalAlerts(userId: string, markedAt: string) {
+  const [person, recipients] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+    prisma.user.findMany({
+      where: {
+        isActive: true,
+        id: { not: userId },
+        OR: [{ role: "ADMIN" }, { role: "PARTNER", attendanceAlerts: true }],
+      },
+      select: { id: true, role: true },
+    }),
+  ]);
+  if (!person || recipients.length === 0) return;
+
+  const time = alertTime.format(new Date(markedAt));
+  const title = `${person.name} came to office`.slice(0, 75);
+  const content = `${person.name} marked attendance at ${time}.`;
+  await prisma.notification.createMany({
+    data: recipients.map((r) => ({ title, content, sentById: userId, sentToId: r.id })),
+  });
+  await Promise.all(
+    recipients.map((r) =>
+      sendPushToUser(r.id, {
+        title,
+        body: content,
+        // Only the admin can open the report
+        url: r.role === "ADMIN" ? "/dashboard/attendance" : "/dashboard",
+        tag: `arrival-${userId}`,
+      })
+    )
+  );
 }

@@ -47,6 +47,7 @@ const SECTIONS: Section[] = [
       "There is no attendance on Sundays, and the button doesn't show for people who don't mark attendance.",
       "Only the admin sees the report: Admin → Attendance shows who has marked today and the time each person marked on every day of the month, and downloads it for Excel.",
       "On the same page the admin turns attendance off for the partners (or anyone) who don't need to mark it.",
+      "Each time someone marks attendance, the admin gets a notification (“… came to office”). The admin chooses which partners get it too, on the same page.",
     ],
   },
   {
