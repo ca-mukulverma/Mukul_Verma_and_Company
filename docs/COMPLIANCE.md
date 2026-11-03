@@ -58,6 +58,10 @@ The checks are made on the server, not only hidden on screen.
    already has, with an earlier first period, adds the missed periods (e.g.
    TDS payment set up from November, then October added); otherwise that
    client is skipped.
+   The **GST sheet**, **TDS sheet** and **Other work** sheet have the same
+   **Add work** button (Admins and Partners): choose the clients (those
+   without the sheet's works are listed; tick *Also clients that already have
+   it* to add earlier months), then the works, frequency and first period.
 4. For clients who pay **rent, transport, legal fees** etc. under RCM, or
    deduct **TDS on fixed payments**, open the client and add them under
    **Monthly RCM and TDS payments** (see [RCM and fixed TDS](#rcm-and-fixed-tds-never-missed)).

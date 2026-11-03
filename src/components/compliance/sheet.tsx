@@ -27,15 +27,8 @@ import {
   SelectAll,
 } from "./sheet-parts";
 import { apiError, ClientCell, longDate, rupees, SheetItem, shortDate } from "./types";
-
-export interface WorkTypeInfo {
-  id: string;
-  name: string;
-  kind: string;
-  frequency: string;
-  reminderMessage: string;
-  active: boolean;
-}
+import { SheetAddWork } from "./clients-panel";
+import type { WorkType } from "./setup";
 
 type View = "gst" | "tds" | "work";
 
@@ -111,7 +104,7 @@ export function ComplianceSheet({
   initialItemId,
 }: {
   view: View;
-  workTypes: WorkTypeInfo[];
+  workTypes: WorkType[];
   isManager: boolean;
   initialWorkTypeId?: string | null;
   // Opened from a link (My work → Open): this period, with this item's popup open
@@ -158,6 +151,18 @@ export function ComplianceSheet({
   const [bulkSaving, setBulkSaving] = useState(false);
 
   const effectiveWorkTypeId = view === "work" ? workTypeId || genericTypes[0]?.id || "" : "";
+
+  // The works of this sheet, ticked when adding work from it
+  const sheetWorkTypeIds = workTypes
+    .filter((w) => w.active)
+    .filter((w) =>
+      view === "gst"
+        ? w.kind === "GSTR1" || w.kind === "GSTR3B"
+        : view === "tds"
+          ? w.kind === "TDS_PAYMENT" || w.kind === "TDS_RETURN"
+          : w.id === effectiveWorkTypeId
+    )
+    .map((w) => w.id);
 
   const load = useCallback(async () => {
     if (view === "work" && !effectiveWorkTypeId) {
@@ -399,6 +404,13 @@ export function ComplianceSheet({
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </Button>
         <div className="ml-auto flex flex-wrap gap-2">
+          {isManager && (
+            <SheetAddWork
+              workTypes={workTypes}
+              sheetWorkTypeIds={sheetWorkTypeIds}
+              onDone={load}
+            />
+          )}
           {selected.length > 0 && view !== "tds" && (
             <Button variant="outline" size="sm" disabled={bulkSaving} onClick={markSelectedReceived}>
               {bulkSaving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <CheckSquare className="mr-1 h-4 w-4" />} Data received ({selected.length})
@@ -482,7 +494,7 @@ export function ComplianceSheet({
                 <tr>
                   <td colSpan={headers.length + 1} className="p-8 text-center text-sm text-muted-foreground">
                     {rows.length === 0
-                      ? "No clients have this work for this period. Admins and Partners add clients in Compliance → Clients."
+                      ? "No clients have this work for this period. Admins and Partners add clients with Add work above, or in Compliance → Clients."
                       : "No client matches the search or filter."}
                   </td>
                 </tr>
