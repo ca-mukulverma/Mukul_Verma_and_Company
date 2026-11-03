@@ -30,6 +30,16 @@ const SECTIONS: Section[] = [
     link: { href: "/dashboard/my-work", label: "Open Today" },
   },
   {
+    id: "attendance",
+    title: "Attendance",
+    steps: [
+      "When you come to the office, open Today and tap Mark attendance. It can be marked once a day; the time is saved automatically and shown on the card.",
+      "There is no attendance on Sundays, and the button doesn't show for people who don't mark attendance.",
+      "Only the admin sees the report: Admin → Attendance shows who has marked today and the time each person marked on every day of the month, and downloads it for Excel.",
+      "On the same page the admin turns attendance off for the partners (or anyone) who don't need to mark it.",
+    ],
+  },
+  {
     id: "search",
     title: "Finding anything",
     steps: [

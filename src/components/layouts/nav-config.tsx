@@ -2,6 +2,7 @@ import {
   Briefcase,
   CalendarCheck,
   ClipboardList,
+  Fingerprint,
   HelpCircle,
   LayoutDashboard,
   ListTodo,
@@ -72,6 +73,7 @@ export function navGroups(role: string): NavGroup[] {
           roles: MANAGERS,
           shortcut: "u",
         },
+        { title: "Attendance", href: "/dashboard/attendance", icon: Fingerprint, roles: ["ADMIN"], shortcut: "a" },
       ],
     },
     {
