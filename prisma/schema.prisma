@@ -1029,3 +1029,11 @@ model Attendance {
   @@unique([userId, date])
   @@index([date])
 }
+
+// A "What's new" announcement (lib/whats-new.ts) whose push has gone out,
+// so it is never sent twice
+model AnnouncementPush {
+  id         String   @id @db.VarChar(50)
+  recipients Int      @default(0)
+  sentAt     DateTime @default(now())
+}

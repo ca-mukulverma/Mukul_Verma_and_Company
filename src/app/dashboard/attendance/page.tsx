@@ -228,7 +228,7 @@ export default function AttendancePage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card data-showme="attendance-switches">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Who marks attendance</CardTitle>
                 <CardDescription>

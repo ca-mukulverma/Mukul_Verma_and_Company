@@ -17,6 +17,8 @@ import { PushSync } from "@/components/notifications/push-sync";
 import { GlobalSearch } from "@/components/search/global-search";
 import { ShortcutsDialog } from "@/components/layouts/shortcuts-dialog";
 import { Tour } from "@/components/onboarding/tour";
+import { WhatsNewPopup } from "@/components/whats-new/whats-new-popup";
+import { Spotlight } from "@/components/whats-new/spotlight";
 import { LanguageProvider, useLanguage } from "@/components/language-provider";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { activeHref, BOTTOM_BAR_HREFS, navGroups, navItems, NavItem } from "@/components/layouts/nav-config";
@@ -373,6 +375,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} role={role} />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} role={role} />
         <Tour role={role} />
+        <WhatsNewPopup role={role} />
+        <Spotlight />
       </div>
     </TooltipProvider>
   );

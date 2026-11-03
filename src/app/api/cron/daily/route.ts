@@ -7,6 +7,7 @@ import {
   runDailyDigest,
   runStep,
 } from "@/lib/cron-jobs";
+import { runAnnouncementPushes } from "@/lib/whats-new-server";
 
 export const maxDuration = 60;
 
@@ -34,6 +35,8 @@ export async function GET(request: Request) {
     // New periods first, so the digest counts them
     await runStep("compliance", runCompliance),
     await runStep("daily-digest", runDailyDigest),
+    // A new feature's What's new push, once (lib/whats-new.ts)
+    await runStep("whats-new", runAnnouncementPushes),
     await runStep("cleanup-notifications", runCleanupNotifications),
     await runStep("billing-email-delivery", runBillingEmailDelivery),
   ];

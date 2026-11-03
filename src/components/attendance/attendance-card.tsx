@@ -39,7 +39,7 @@ export function AttendanceCard({ attendance }: { attendance: AttendanceToday | u
 
   if (markedAt) {
     return (
-      <Card className="border-l-4 border-l-green-500">
+      <Card className="border-l-4 border-l-green-500" data-showme="mark-attendance">
         <CardContent className="flex items-center gap-3 p-4 text-sm">
           <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600" />
           <span>
@@ -51,7 +51,7 @@ export function AttendanceCard({ attendance }: { attendance: AttendanceToday | u
   }
 
   return (
-    <Card className="border-l-4 border-l-primary">
+    <Card className="border-l-4 border-l-primary" data-showme="mark-attendance">
       <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Fingerprint className="h-6 w-6 shrink-0 text-primary" />
