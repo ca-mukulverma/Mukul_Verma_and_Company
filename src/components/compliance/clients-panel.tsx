@@ -266,8 +266,8 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
 
 const num = (v: string) => (v.trim() === "" ? null : Number(v));
 
-// Adds one or more works to one or many clients. Works a single client
-// already has are shown ticked and can't be changed here.
+// Adds one or more works to one or many clients. Ticking a work a client
+// already has, with an earlier first period, adds the missed periods.
 function AddWorkDialog({
   clientIds,
   workTypes,
@@ -310,6 +310,7 @@ function AddWorkDialog({
           feeNil: num(fee(w.id).nil),
         });
         if (data.added) done.push(clientIds.length > 1 ? `${w.name} (${data.added})` : w.name);
+        if (data.extended) done.push(`${w.name}: earlier periods${clientIds.length > 1 ? ` (${data.extended})` : ""}`);
         if (data.skipped.length) notes.push(`${w.name}: ${data.skipped.length} skipped (${data.skipped[0].reason})`);
       }
       if (done.length) toast.success(`Added ${done.join(", ")}${notes.length ? `. ${notes.join("; ")}` : ""}`);
@@ -328,7 +329,7 @@ function AddWorkDialog({
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add work to {clientIds.length} client(s)</DialogTitle>
-          <DialogDescription>Tick every work to add. Periods appear in the sheets from the first period you choose. Older periods can be entered later as past periods.</DialogDescription>
+          <DialogDescription>Tick every work to add. Periods appear in the sheets from the first period you choose. For a work already added, an earlier first period adds the missed periods (e.g. October when it was set up from November).</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
@@ -337,11 +338,11 @@ function AddWorkDialog({
               {active.map((w) => {
                 const has = existing.includes(w.id);
                 return (
-                  <label key={w.id} className={cn("flex items-center gap-2 rounded p-1 text-sm", has ? "opacity-60" : "cursor-pointer hover:bg-muted/50")}>
-                    <Checkbox checked={has || ticked.includes(w.id)} disabled={has} onCheckedChange={(c) => toggle(w.id, c === true)} />
+                  <label key={w.id} className="flex cursor-pointer items-center gap-2 rounded p-1 text-sm hover:bg-muted/50">
+                    <Checkbox checked={ticked.includes(w.id)} onCheckedChange={(c) => toggle(w.id, c === true)} />
                     <span>
                       {w.name}
-                      {has && <span className="text-xs text-muted-foreground"> (already added)</span>}
+                      {has && <span className="text-xs text-muted-foreground"> (added; tick to track from an earlier month)</span>}
                     </span>
                   </label>
                 );
@@ -365,10 +366,10 @@ function AddWorkDialog({
             <Label>First period to track</Label>
             <Input type="month" value={startPeriod} onChange={(e) => setStartPeriod(e.target.value)} />
           </div>
-          {chosen.some((w) => w.billable) && (
+          {chosen.some((w) => w.billable && !existing.includes(w.id)) && (
             <div className="space-y-2">
               <Label>Fees</Label>
-              {chosen.filter((w) => w.billable).map((w) => (
+              {chosen.filter((w) => w.billable && !existing.includes(w.id)).map((w) => (
                 <div key={w.id} className="grid grid-cols-[1fr_6rem_6rem] items-center gap-2">
                   <span className="truncate text-sm">{w.name}</span>
                   <Input type="number" min={0} aria-label={`${w.name} fee (non-nil)`} placeholder={w.defaultFeeNonNil !== null ? `${w.defaultFeeNonNil}` : "Non-nil"} value={fee(w.id).nonNil} onChange={(e) => setFee(w.id, { nonNil: e.target.value })} />
@@ -732,6 +733,7 @@ function EditSubscription({
   const workType = workTypes.find((w) => w.id === sub.workTypeId);
   const [feeNonNil, setFeeNonNil] = useState(sub.feeNonNil != null ? String(sub.feeNonNil) : "");
   const [feeNil, setFeeNil] = useState(sub.feeNil != null ? String(sub.feeNil) : "");
+  const [startPeriod, setStartPeriod] = useState(sub.startPeriod);
   const [changeFrequency, setChangeFrequency] = useState(false);
   const [from, setFrom] = useState(currentMonthKey());
   const [saving, setSaving] = useState(false);
@@ -742,6 +744,7 @@ function EditSubscription({
       await axios.patch(`/api/compliance/subscriptions/${sub.id}`, {
         feeNonNil: num(feeNonNil),
         feeNil: num(feeNil),
+        ...(startPeriod && startPeriod !== sub.startPeriod && { startPeriod }),
         ...(changeFrequency && { frequencyChange: { frequency: newFrequency, from } }),
       });
       toast.success("Saved");
@@ -760,6 +763,11 @@ function EditSubscription({
           <DialogDescription>Fees apply to periods completed from now on. The billing manager checks every fee before the bill is approved.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Tracked from</Label>
+            <Input type="month" value={startPeriod} onChange={(e) => setStartPeriod(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Move it earlier to add missed periods (e.g. October when it was set up from November); they are added to the sheet.</p>
+          </div>
           {workType?.billable ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">

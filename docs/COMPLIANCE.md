@@ -54,8 +54,10 @@ The checks are made on the server, not only hidden on screen.
 3. **Compliance → Clients**: tick clients (use *Select all shown* and the
    filter) and click **Add work**. Tick every work to add (e.g. GSTR-1,
    GSTR-3B and TDS together), the frequency (GST: monthly or quarterly), the
-   **first period to track** and each work's fee. For one client, works it
-   already has show ticked and greyed out.
+   **first period to track** and each work's fee. Ticking a work a client
+   already has, with an earlier first period, adds the missed periods (e.g.
+   TDS payment set up from November, then October added); otherwise that
+   client is skipped.
 4. For clients who pay **rent, transport, legal fees** etc. under RCM, or
    deduct **TDS on fixed payments**, open the client and add them under
    **Monthly RCM and TDS payments** (see [RCM and fixed TDS](#rcm-and-fixed-tds-never-missed)).
@@ -465,6 +467,10 @@ portal tab and use **Upload documents**.
   first period of the new frequency. GSTR-1 and GSTR-3B change together;
   earlier periods keep the old frequency. A period already in the sheet can't
   be changed this way.
+- **Tracked from** (client → Edit on a work): move it earlier to add missed
+  periods to the sheet (they appear as normal periods, with reminders and
+  bills). It can be moved later only while no period before the new month is
+  in the sheet.
 - **Stop** a work for a client: no new periods; existing ones stay.
 
 ## Claude: what it does, at zero extra cost
