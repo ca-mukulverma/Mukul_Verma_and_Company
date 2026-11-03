@@ -78,7 +78,7 @@ export function StartComplianceDialog({
         const frequency = w.allowQuarterly && quarterly ? "QUARTERLY" : w.frequency;
         try {
           const { data } = await axios.post("/api/compliance/subscriptions", { clientIds: [client.id], workTypeId: w.id, frequency, startPeriod });
-          added += data.added;
+          added += data.added + (data.extended ?? 0);
           if (data.skipped.length) problems.push(`${w.name}: ${data.skipped[0].reason}`);
         } catch (error) {
           problems.push(`${w.name}: ${apiError(error)}`);

@@ -15,6 +15,7 @@ import {
   dueDateFor,
   formatDay,
   monthsIn,
+  nextPeriodStart,
   periodContaining,
   periodEndOf,
   periodLabel,
@@ -273,6 +274,45 @@ export async function ensureItemsAround(workTypeIds: string[] | null, date: Date
     }
   }
   await ensureItems(pairs);
+}
+
+// Moves where a client's work is tracked from to an earlier period (e.g. TDS
+// payment set up from November, then October added) and creates the items of
+// the periods now tracked, up to the ones that should show today. `month` is
+// any month of the new first period. Returns the new first period, or an error.
+export async function moveStartEarlier(
+  subId: string,
+  month: Date,
+  frequency?: ComplianceFrequency
+): Promise<{ start: Date } | { error: string }> {
+  const sub: SubscriptionWithRefs | null = await prisma.clientCompliance.findUnique({
+    where: { id: subId },
+    include: subscriptionInclude,
+  });
+  if (!sub) return { error: "Not found" };
+  const freq = frequencyAt(sub, month);
+  if (frequency && frequency !== freq) {
+    return { error: `Already set up as ${sub.frequency.toLowerCase()}; change its frequency instead` };
+  }
+  const start = periodContaining(freq, month).start;
+  if (start >= sub.startPeriod) return { start: sub.startPeriod };
+  if (sub.endPeriod && start > sub.endPeriod) return { error: "That is after the work was stopped" };
+
+  const moved = { ...sub, startPeriod: start };
+  await prisma.clientCompliance.update({ where: { id: sub.id }, data: { startPeriod: start } });
+
+  // Every period from the new start up to the old one (the old start onwards
+  // already has its items)
+  const today = todayIST();
+  const pairs: { sub: SubscriptionWithRefs; periodStart: Date }[] = [];
+  let periodStart = start;
+  for (let i = 0; i < 120 && periodStart < sub.startPeriod; i++) {
+    if (appearsOn(moved, periodStart) > today) break;
+    pairs.push({ sub: moved, periodStart });
+    periodStart = nextPeriodStart(frequencyAt(moved, periodStart), periodStart);
+  }
+  if (pairs.length) await ensureItems(pairs);
+  return { start };
 }
 
 // ─── Locks ───────────────────────────────────────────────────────────────────

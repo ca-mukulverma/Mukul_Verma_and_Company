@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { frequencyAt } from "@/lib/compliance";
+import { frequencyAt, moveStartEarlier } from "@/lib/compliance";
 import { parseMonthKey, periodContaining, periodLabel } from "@/lib/compliance-periods";
 import { badRequest, money, monthString, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 
@@ -9,25 +9,50 @@ const schema = z.object({
   feeNil: money.nullable().optional(),
   feeNonNil: money.nullable().optional(),
   endPeriod: monthString.nullable().optional(),
+  // First period tracked; can be moved earlier, or later while no period
+  // before the new start is in the sheet
+  startPeriod: monthString.optional(),
   active: z.boolean().optional(),
   // Monthly ↔ quarterly, from a given period on
   frequencyChange: z.object({ frequency: z.enum(["MONTHLY", "QUARTERLY"]), from: monthString }).optional(),
 });
 
-// PATCH /api/compliance/subscriptions/[id] – fees, stop, frequency change (Admins and Partners)
+// PATCH /api/compliance/subscriptions/[id] – fees, first period, stop, frequency change (Admins and Partners)
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error } = await requireComplianceAccess({ manager: true });
   if (error) return error;
   const { id } = await params;
   const body = parseBody(schema, await request.json());
   if (body.error) return body.error;
-  const { frequencyChange, endPeriod, ...data } = body.data;
+  const { frequencyChange, endPeriod, startPeriod, ...data } = body.data;
 
   const sub = await prisma.clientCompliance.findUnique({ where: { id }, include: { workType: true } });
   if (!sub) return notFound("Not found");
 
   const update: Record<string, unknown> = { ...data };
   if (endPeriod !== undefined) update.endPeriod = endPeriod ? parseMonthKey(endPeriod) : null;
+
+  if (startPeriod) {
+    const month = parseMonthKey(startPeriod);
+    if (!month) return badRequest("Choose the first period to track");
+    const start = periodContaining(frequencyAt(sub, month), month).start;
+    if (start < sub.startPeriod) {
+      const moved = await moveStartEarlier(sub.id, month);
+      if ("error" in moved) return badRequest(moved.error);
+    } else if (start > sub.startPeriod) {
+      if (sub.endPeriod && start > sub.endPeriod) return badRequest("That is after the work was stopped");
+      const earlier = await prisma.complianceItem.findFirst({
+        where: { clientId: sub.clientId, workTypeId: sub.workTypeId, historical: false, periodStart: { lt: start } },
+        orderBy: { periodStart: "desc" },
+      });
+      if (earlier) {
+        return badRequest(
+          `${periodLabel(earlier.frequency, earlier.periodStart)} is already in the sheet. Choose a period up to it`
+        );
+      }
+      update.startPeriod = start;
+    }
+  }
 
   if (frequencyChange) {
     if (!sub.workType.allowQuarterly) return badRequest(`${sub.workType.name} has only one frequency`);

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { ensureItemsAround, frequencyAt } from "@/lib/compliance";
-import { parseMonthKey, periodContaining } from "@/lib/compliance-periods";
+import { ensureItemsAround, frequencyAt, moveStartEarlier } from "@/lib/compliance";
+import { parseMonthKey, periodContaining, periodLabel } from "@/lib/compliance-periods";
 import { badRequest, money, monthString, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 
 const schema = z.object({
@@ -15,7 +15,9 @@ const schema = z.object({
 });
 
 // POST /api/compliance/subscriptions – adds a work to one or many clients
-// (Admins and Partners). Clients that already have it are skipped.
+// (Admins and Partners). For clients that already have it, an earlier first
+// period moves its start back (and creates the missing periods); otherwise
+// they are skipped.
 export async function POST(request: NextRequest) {
   const { error } = await requireComplianceAccess({ manager: true });
   if (error) return error;
@@ -49,6 +51,7 @@ export async function POST(request: NextRequest) {
   });
   const skipped: { clientId: string; reason: string }[] = [];
   let added = 0;
+  let extended = 0;
   for (const clientId of data.clientIds) {
     const partner = gstPartners.find((p) => p.clientId === clientId);
     if (partner && frequencyAt(partner, startPeriod) !== data.frequency) {
@@ -57,7 +60,16 @@ export async function POST(request: NextRequest) {
     }
     const current = existing.find((e) => e.clientId === clientId);
     if (current?.active) {
-      skipped.push({ clientId, reason: "Already set up" });
+      if (startPeriod < current.startPeriod) {
+        const moved = await moveStartEarlier(current.id, month, data.frequency);
+        if ("error" in moved) skipped.push({ clientId, reason: moved.error });
+        else extended++;
+      } else {
+        skipped.push({
+          clientId,
+          reason: `Already set up from ${periodLabel(frequencyAt(current, current.startPeriod), current.startPeriod)}`,
+        });
+      }
       continue;
     }
     const fields = {
@@ -76,5 +88,5 @@ export async function POST(request: NextRequest) {
   }
 
   if (added) await ensureItemsAround([workType.id], undefined, data.clientIds);
-  return NextResponse.json({ added, skipped });
+  return NextResponse.json({ added, extended, skipped });
 }
