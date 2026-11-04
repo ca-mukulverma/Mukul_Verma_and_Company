@@ -85,6 +85,7 @@ export async function startPortal() {
     }
     const returns = returnsPage(path, url, state);
     if (returns) return send(...returns);
+    if (path === "/services/error/system") return send(html("Error", "<h1>System error</h1><p>Something went wrong</p>"));
     if (path === "/services/logout") {
       state.events.push("logout");
       return send(html("Logged out", "<p>You have logged out</p>"));
@@ -157,6 +158,10 @@ const TILES = {
     tile("Auto - drafted ITC Statement for the month", "GSTR-2B", `<div class="row"><div><button>View</button></div><div><button onclick="go2b()">Download</button></div></div>`),
     tile("Monthly Return", "GSTR-3B", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button>VIEW GSTR3B</button></div><div><button onclick="saveAs(new Blob(['%PDF-1.4 GSTR-3B 092026'], { type: 'application/pdf' }), 'GSTR3B_23AAFFC2640H1ZX_092026.pdf')">Download</button></div></div>`),
   ],
+  // The portal's own failure: its Download goes to the system error page
+  "082026": [
+    tile("Monthly Return", "GSTR-3B", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button>VIEW GSTR3B</button></div><div><button onclick="location.href='https://services.gst.gov.in/services/error/system'">Download</button></div></div>`),
+  ],
   // Not filed: GSTR-1 submitted (FILE GSTR1 where VIEW is), GSTR-3B not filed (Prepare Online / Prepare offline where VIEW / Download are)
   "102026": [
     tile("Details of outward supplies of goods or services", "GSTR-1", `<p class="f-wt">Status- <span>Submitted</span></p><div class="row"><div><button>FILE GSTR1</button></div><div><button>Download</button></div></div>`),
@@ -195,7 +200,7 @@ function returnsPage(path, url, state) {
         }, 300);
         function search() {
           const text = mon.options[mon.selectedIndex]?.text;
-          const prd = { September: "092026", October: "102026" }[text];
+          const prd = { August: "082026", September: "092026", October: "102026" }[text];
           sessionStorage.setItem("prd", prd);
           document.getElementById("offline").innerHTML = "";
           setTimeout(() => { document.getElementById("tiles").innerHTML = (TILES[prd] ?? []).join(""); }, 400);
@@ -236,6 +241,11 @@ function returnsPage(path, url, state) {
   }
   if (path === "/files.gst.gov.in/dl/r1_092026_2.zip") return ["PK\u0003\u0004 GSTR1 JSON 092026 part 2", "application/zip"];
   if (path === "/return.gst.gov.in/returns/auth/gstr1") {
+    // Once, the page comes up empty (a failed load): the extension tries again
+    if (state.failGstr1Once) {
+      state.failGstr1Once = false;
+      return page("GSTR-1", "<p>Loading…</p>");
+    }
     return page(
       "GSTR-1",
       `<div id="g"></div><script>

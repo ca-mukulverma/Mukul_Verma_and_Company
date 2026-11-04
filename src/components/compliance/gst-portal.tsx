@@ -188,7 +188,7 @@ const KIND_LABELS: Record<PortalFile, string> = {
 };
 
 // One ticked file in a download run
-type FetchState = "waiting" | "fetching" | "saving" | "saved" | "downloaded" | "not-filed" | "not-available" | "requested" | "pending" | "not-taught" | "skipped" | "error";
+type FetchState = "waiting" | "fetching" | "saving" | "saved" | "check" | "downloaded" | "not-filed" | "not-available" | "requested" | "pending" | "not-taught" | "skipped" | "error";
 
 interface FetchRow {
   kind: PortalFile;
@@ -203,6 +203,7 @@ const FETCH_TEXT: Record<FetchState, string> = {
   fetching: "Fetching…",
   saving: "Saving…",
   saved: "Saved",
+  check: "Got it; needs a look",
   downloaded: "In Downloads",
   "not-filed": "Not filed on the portal",
   "not-available": "Not on the portal",
@@ -215,6 +216,7 @@ const FETCH_TEXT: Record<FetchState, string> = {
 
 const FETCH_STYLE: Partial<Record<FetchState, string>> = {
   saved: "text-emerald-700 dark:text-emerald-400",
+  check: "text-amber-800 dark:text-amber-300",
   downloaded: "text-amber-800 dark:text-amber-300",
   "not-filed": "text-amber-800 dark:text-amber-300",
   requested: "text-sky-700 dark:text-sky-400",
@@ -324,15 +326,21 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
             setRow(key, { state: "saving", message: null });
             saves.push(
               sendPortalFiles(fetched).then(
-                (placed) =>
+                (placed) => {
+                  const held = placed?.filter((p) => !p.ok) ?? [];
                   setRow(
                     key,
                     !placed
                       ? { state: "error", message: "Upload documents isn't on this page" }
-                      : answer.result === "downloaded"
-                        ? { state: "downloaded", message }
-                        : { state: "saved", message: fetched.map((x) => x.name).join(", ") }
-                  ),
+                      : !placed.length
+                        ? { state: "error", message: "Upload documents couldn't read the file from the portal" }
+                        : held.length
+                          ? { state: "check", message: held.map((p) => `${p.name}: ${p.message}`).join(" · ") }
+                          : answer.result === "downloaded"
+                            ? { state: "downloaded", message }
+                            : { state: "saved", message: placed.map((p) => [p.name, p.message].filter(Boolean).join(" – ")).join(", ") }
+                  );
+                },
                 (e) => setRow(key, { state: "error", message: apiError(e, "Couldn't save it") })
               )
             );

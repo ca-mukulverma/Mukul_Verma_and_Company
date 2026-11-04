@@ -31,8 +31,9 @@ export interface FetchedFile {
 
 // The extension that can fetch files (older ones only log in; 0.3.0 could
 // not collect GSTR-1 JSON, 0.3.1 missed GSTR-2B JSON handed to Chrome as a
-// normal download)
-export const FETCH_VERSION = "0.3.2";
+// normal download, 0.3.2 could act on the page before it reloaded and had
+// no retry)
+export const FETCH_VERSION = "0.3.3";
 export function canFetch(version: string | null | undefined) {
   if (!version) return false;
   const [a, b] = version.split(".").map(Number);

@@ -252,6 +252,32 @@ async function settle(tabId, urlPattern, ms = 45000) {
   throw new Error(wanted ? "The portal page didn't open in time" : "The portal page didn't finish loading");
 }
 
+// Opens an address in the tab and waits until that page has loaded (not the
+// page that was there before: the load must start first)
+async function navigate(tabId, url, ms = 60000) {
+  let started = false;
+  let finish;
+  const loaded = new Promise((resolve) => (finish = resolve));
+  const listener = (id, info) => {
+    if (id !== tabId) return;
+    if (info.status === "loading") started = true;
+    else if (info.status === "complete" && started) finish(true);
+  };
+  chrome.tabs.onUpdated.addListener(listener);
+  try {
+    await chrome.tabs.update(tabId, { url });
+    const timer = new Promise((resolve) => setTimeout(() => resolve(false), ms));
+    if (!(await Promise.race([loaded, timer]))) throw new Error("The portal page didn't finish loading in time");
+    return await chrome.tabs.get(tabId);
+  } finally {
+    chrome.tabs.onUpdated.removeListener(listener);
+  }
+}
+
+// Errors worth one more try from the dashboard: the page changed or went
+// away under a step, or a slow load
+const RETRY = /frame|removed|didn't answer|no tab|in time|wasn't found|went away|didn't show its drop-downs|no search button|fetch/i;
+
 async function step(tabId, step, ctx) {
   try {
     const [answer] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: mvcPortalStep, args: [step, ctx] });
@@ -376,7 +402,8 @@ async function saveToDownloads(links) {
 async function fetchFile(message, run) {
   if (!run || run.runId !== message.runId || run.status !== "logged-in") return { ok: false, error: "Log in to the GST portal first." };
   if (!(await tabExists(run.portalTabId))) return { ok: false, error: "The GST portal tab is not open." };
-  if (run.doing) return { ok: false, error: `The extension is already fetching ${run.doing}.` };
+  // A file left half-done by a worker restart doesn't block the next one
+  if (run.doing && Date.now() - (run.doingAt ?? 0) < 6 * 60000) return { ok: false, error: `The extension is already fetching ${run.doing}.` };
   const { kind, month, label } = message.file ?? {};
   const s = run.settings;
   const recipe = s.files?.[kind];
@@ -398,50 +425,82 @@ async function fetchFile(message, run) {
     monthName: MONTHS[m - 1],
   };
   await chrome.alarms.clear(IDLE_LOGOUT);
-  run = await setRun({ ...run, doing: String(label ?? kind), at: Date.now() });
+  run = await setRun({ ...run, doing: String(label ?? kind), doingAt: Date.now(), at: Date.now() });
   const tabId = run.portalTabId;
+  // Chrome stops an idle extension worker after about 30 seconds; a call
+  // now and then keeps it alive while the portal is slow
+  const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => undefined), 15000);
   const done = async (answer) => {
+    clearInterval(keepAlive);
     const now = await getRun();
     if (now?.runId === run.runId) {
-      await setRun({ ...now, doing: null, at: Date.now() });
+      await setRun({ ...now, doing: null, doingAt: null, at: Date.now() });
       if (now.autoLogout && now.status === "logged-in") await armIdle(s);
     }
     return { ok: true, ...answer };
   };
-  try {
-    await chrome.tabs.update(tabId, { url: s.urls.dashboard });
-    const tab = await settle(tabId, null);
-    if ((tab.url ?? "").startsWith(s.urls.login)) return done({ result: "session-expired", message: "The portal logged out" });
-    const steps = [{ kind: "period" }, { kind: "tile", filed: recipe.filed }, ...recipe.steps];
-    for (const st of steps) {
-      await pause();
-      const answer = st.kind === "file" ? await fileStep(tabId, st, ctx) : await step(tabId, st, ctx);
-      if (answer.error) return done({ result: "error", message: answer.error });
-      if (answer.result) return done(answer);
-      if (answer.file) return done({ result: "file", files: [answer.file] });
-      if (answer.files) {
-        const files = [];
-        const failed = [];
-        for (const f of answer.files) {
-          if (f.base64) {
-            files.push(f);
-            continue;
-          }
-          const got = f.href ? await fetchHere(f) : { error: f.why ?? "no address" };
-          if (got.base64) files.push(got);
-          else failed.push({ ...f, why: `${f.why ?? "the page couldn't read it"}; ${got.error}` });
-        }
-        if (!failed.length) return done({ result: "file", files });
-        const saved = await saveToDownloads(failed);
-        const why = failed.map((f) => f.why).join(" · ");
-        if (saved) return done({ result: "downloaded", files, message: `${saved} part${saved === 1 ? "" : "s"} saved to this computer's Downloads folder instead (${why}): upload ${saved === 1 ? "it" : "them"} with Upload documents.` });
-        return done({ result: "error", message: `The GSTR-1 JSON link didn't give the file: ${why}` });
-      }
-      // A click that opens another page
-      await settle(tabId, st.url ?? null);
+  let reachedGenerate = false;
+  let first = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let answer;
+    try {
+      answer = await attemptFile(tabId, s, recipe, ctx, () => (reachedGenerate = true));
+    } catch (error) {
+      answer = { result: "error", message: String(error?.message ?? error) };
     }
-    return done({ result: "error", message: "The steps ended without a file" });
-  } catch (error) {
-    return done({ result: "error", message: String(error?.message ?? error) });
+    // Asking for GSTR-1 JSON again would make a new file: never retried
+    if (answer.result !== "error" || reachedGenerate || !RETRY.test(answer.message ?? "")) {
+      return done(first && answer.result === "error" ? { ...answer, message: `${answer.message} (also on a second try; first: ${first})` } : answer);
+    }
+    first = answer.message;
+    await pause();
   }
+  return done({ result: "error", message: first ?? "The portal didn't give the file" });
+}
+
+// One try at a file: dashboard, period, the return's box, then its steps
+async function attemptFile(tabId, s, recipe, ctx, onGenerate) {
+  const tab = await navigate(tabId, s.urls.dashboard);
+  const where = (u) => {
+    if ((u ?? "").startsWith(s.urls.login)) return { result: "session-expired", message: "The portal logged out" };
+    if (/\/services\/error\//i.test(u ?? "")) return { result: "error", message: `The portal showed its own error page (${new URL(u).pathname}): try again in a while` };
+    return null;
+  };
+  if (where(tab.url)) return where(tab.url);
+  const steps = [{ kind: "period" }, { kind: "tile", filed: recipe.filed }, ...recipe.steps];
+  for (const st of steps) {
+    await pause();
+    if (st.kind === "generate") onGenerate();
+    const answer = st.kind === "file" ? await fileStep(tabId, st, ctx) : await step(tabId, st, ctx);
+    if (answer.error) {
+      // The page left for the portal's error or login page during the step:
+      // let the new page arrive, then look where the tab is
+      const now = await settle(tabId, null, 15000).catch(() => chrome.tabs.get(tabId).catch(() => null));
+      return where(now?.url) ?? { result: "error", message: answer.error };
+    }
+    if (answer.result) return answer;
+    if (answer.file) return { result: "file", files: [answer.file] };
+    if (answer.files) {
+      const files = [];
+      const failed = [];
+      for (const f of answer.files) {
+        if (f.base64) {
+          files.push(f);
+          continue;
+        }
+        const got = f.href ? await fetchHere(f) : { error: f.why ?? "no address" };
+        if (got.base64) files.push(got);
+        else failed.push({ ...f, why: `${f.why ?? "the page couldn't read it"}; ${got.error}` });
+      }
+      if (!failed.length) return { result: "file", files };
+      const saved = await saveToDownloads(failed);
+      const why = failed.map((f) => f.why).join(" · ");
+      if (saved) return { result: "downloaded", files, message: `${saved} part${saved === 1 ? "" : "s"} saved to this computer's Downloads folder instead (${why}): upload ${saved === 1 ? "it" : "them"} with Upload documents.` };
+      return { result: "error", message: `The GSTR-1 JSON link didn't give the file: ${why}` };
+    }
+    // A click that opens another page
+    const next = await settle(tabId, st.url ?? null);
+    if (where(next.url)) return where(next.url);
+  }
+  return { result: "error", message: "The steps ended without a file" };
 }

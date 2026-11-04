@@ -67,7 +67,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.2");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.3");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -130,7 +130,7 @@ async function logIn(runId) {
 const text = (f) => Buffer.from(f.base64, "base64").toString("utf8");
 const fetchFile = (runId, kind, month, extra = {}) => ask({ type: "gst-fetch", runId, file: { kind, month, label: `${kind} ${month}`, ...extra } });
 
-test("filed returns are fetched by the taught steps; unfiled ones are reported, never filed", { timeout: 180000 }, async () => {
+test("filed returns are fetched by the taught steps; unfiled ones are reported, never filed", { timeout: 300000 }, async () => {
   const tab = await logIn("run-f");
   const runId = "run-f";
 
@@ -140,9 +140,17 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   assert.match(text(r3b.files[0]), /^%PDF-1\.4 GSTR-3B 092026/);
   assert.ok(portal.state.clicks.includes("REMIND ME LATER"), "the Aadhaar pop-up is closed when it shows");
 
+  // The summary page fails to load the first time: tried again from the dashboard
+  portal.state.failGstr1Once = true;
   const r1 = await fetchFile(runId, "GSTR1_PDF", "2026-09");
   assert.equal(r1.result, "file", r1.message);
   assert.match(text(r1.files[0]), /GSTR-1 092026/);
+  assert.equal(portal.state.failGstr1Once, false);
+
+  // The portal's own error page is named, not a blind timeout
+  const err = await fetchFile(runId, "GSTR3B_PDF", "2026-08");
+  assert.equal(err.result, "error");
+  assert.match(err.message, /own error page/);
 
   const r2b = await fetchFile(runId, "GSTR2B_JSON", "2026-09");
   assert.equal(r2b.result, "file", r2b.message);
