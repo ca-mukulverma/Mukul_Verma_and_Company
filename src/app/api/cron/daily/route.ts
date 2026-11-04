@@ -8,6 +8,7 @@ import {
   runStep,
 } from "@/lib/cron-jobs";
 import { runAnnouncementPushes } from "@/lib/whats-new-server";
+import { sendAttendanceReminders } from "@/lib/attendance";
 
 export const maxDuration = 60;
 
@@ -35,6 +36,8 @@ export async function GET(request: Request) {
     // New periods first, so the digest counts them
     await runStep("compliance", runCompliance),
     await runStep("daily-digest", runDailyDigest),
+    // After 11:30 AM office time: who hasn't marked attendance yet
+    await runStep("attendance-reminders", sendAttendanceReminders),
     // A new feature's What's new push, once (lib/whats-new.ts)
     await runStep("whats-new", runAnnouncementPushes),
     await runStep("cleanup-notifications", runCleanupNotifications),

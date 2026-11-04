@@ -35,6 +35,36 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "office-time",
+    date: "2026-11-04",
+    audience: "attendance",
+    title: { en: "Office time: 11:30 AM", hi: "ऑफिस का समय: सुबह 11:30" },
+    steps: {
+      en: [
+        "Office time is 11:30 AM. Marking attendance up to 11:35 AM is on time.",
+        "After that, the app tells you how late you are, and the admin sees it too.",
+        "If you haven't marked attendance by about 12 noon, you get a reminder.",
+      ],
+      hi: [
+        "ऑफिस का समय सुबह 11:30 है। 11:35 तक हाज़िरी लगाना समय पर माना जाएगा।",
+        "उसके बाद ऐप बताएगा कि आप कितनी देर से आए हैं, और एडमिन को भी दिखेगा।",
+        "अगर लगभग 12 बजे तक हाज़िरी नहीं लगी, तो आपको याद दिलाया जाएगा।",
+      ],
+    },
+    showMe: {
+      href: "/dashboard/my-work",
+      target: "mark-attendance",
+      hint: {
+        en: "Mark your attendance here by 11:30 AM.",
+        hi: "सुबह 11:30 तक यहाँ हाज़िरी लगाएँ।",
+      },
+    },
+    push: {
+      title: "New in the app: Office time 11:30 AM",
+      body: "Please mark attendance by 11:30 AM. Late marks are shown to you and the admin.",
+    },
+  },
+  {
     id: "attendance-alerts",
     date: "2026-11-03",
     audience: "admin",
