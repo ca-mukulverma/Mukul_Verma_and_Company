@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { AlertTriangle, Check, FileUp, FolderUp, Loader2, Plus, X } from "lucide-react";
@@ -16,6 +16,7 @@ import type { WorkType } from "./setup";
 import { apiError, DOC_KIND_LABELS, rupees, STATUS_LABELS } from "./types";
 import { canStore, uploadComplianceFile } from "./upload";
 import { detectReturn, expandFiles, monthFromFolder, type Detected, type InputFile, type ReturnFound } from "./return-detect";
+import { onPortalFiles } from "./portal-files";
 
 // Upload documents (Compliance → Clients → a client): drop all of a party's
 // PDFs, JSONs, ZIPs, RARs or whole folders at once. Each file is read for its
@@ -298,6 +299,11 @@ export function ReturnUpload({ party, workTypes, onChanged, onAddGstin }: Props)
     const waiting = fresh.length - now.length;
     if (waiting) toast.info(`${waiting} file(s) need a look before they are uploaded: see the highlighted rows`);
   };
+
+  // Files fetched from the GST portal (the GST portal box below) come in here
+  const readRef = useRef(read);
+  readRef.current = read;
+  useEffect(() => onPortalFiles((files) => readRef.current(files.map((file) => ({ file, folder: "" })))), []);
 
   const fromInput = (files: FileList | null) =>
     read(

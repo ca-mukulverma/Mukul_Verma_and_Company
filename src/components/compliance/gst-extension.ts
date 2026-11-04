@@ -14,7 +14,28 @@ export interface PortalRun {
   clientName: string;
   status: PortalRunStatus;
   note: string | null;
+  // The file being fetched now ("GSTR-3B PDF Sep 2026")
+  doing?: string | null;
+  autoLogout?: boolean;
   at: number;
+}
+
+// What the portal gave for one file
+export type FetchResult = "file" | "not-filed" | "not-available" | "requested" | "pending" | "session-expired" | "not-taught" | "error";
+
+export interface FetchedFile {
+  name: string;
+  type: string;
+  base64: string;
+}
+
+// The extension that can fetch files (older ones only log in)
+export const FETCH_VERSION = "0.3.0";
+export function canFetch(version: string | null | undefined) {
+  if (!version) return false;
+  const [a, b] = version.split(".").map(Number);
+  const [x, y] = FETCH_VERSION.split(".").map(Number);
+  return a > x || (a === x && b >= y);
 }
 
 export const ENDED: PortalRunStatus[] = ["logged-out", "closed", "timed-out", "failed"];
@@ -25,6 +46,9 @@ interface Answer {
   error?: string;
   run?: PortalRun | null;
   version?: string;
+  result?: FetchResult;
+  files?: FetchedFile[];
+  message?: string | null;
 }
 
 // The installed version, or null
@@ -59,7 +83,13 @@ export const portalLogin = (args: {
   clientName: string;
   settings: PortalSettings;
   login: { username: string; password: string } | null;
+  // Files will be fetched: the extension logs out by itself if the run goes quiet
+  autoLogout: boolean;
 }) => ask({ type: "gst-login", ...args });
+
+// One file from the portal (a few seconds to two minutes)
+// noGenerate: GSTR-1 JSON asked for already; only collect it
+export const portalFetch = (runId: string, file: { kind: string; month: string; label: string; noGenerate?: boolean }) => ask({ type: "gst-fetch", runId, file }, 4 * 60_000);
 
 export const portalLogout = (runId: string) => ask({ type: "gst-logout", runId });
 export const showPortal = (runId: string) => ask({ type: "gst-show", runId });
@@ -77,7 +107,7 @@ export function onPortalStatus(handler: (run: PortalRun) => void) {
 // The extension as a ZIP to load unpacked, set up for this app's address
 export async function downloadGstExtension() {
   const { origin, protocol, hostname } = window.location;
-  await downloadExtensionZip("gst-extension", ["manifest.json", "background.js", "bridge.js"], { root: "mvc-gst", fileName: "mvc-gst-extension.zip" }, (name, text) => {
+  await downloadExtensionZip("gst-extension", ["manifest.json", "background.js", "bridge.js", "portal.js"], { root: "mvc-gst", fileName: "mvc-gst-extension.zip" }, (name, text) => {
     // Match patterns can't hold a port; the worker checks the full origin
     if (name === "manifest.json") return text.replace("__APP_MATCH__", `${protocol}//${hostname}/*`);
     if (name === "background.js") return text.replace("__APP_ORIGIN__", origin);
