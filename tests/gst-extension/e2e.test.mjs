@@ -67,7 +67,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.1");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.2");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -146,7 +146,9 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
 
   const r2b = await fetchFile(runId, "GSTR2B_JSON", "2026-09");
   assert.equal(r2b.result, "file", r2b.message);
-  assert.equal(JSON.parse(text(r2b.files[0])).data.rtnprd, "092026");
+  assert.equal(JSON.parse(text(r2b.files[0])).data.rtnprd, "092026", "a file handed to Chrome as a normal download is caught too");
+  // The test browser renames downloads; Chrome keeps the page's name (else the app names it)
+  assert.match(r2b.files[0].name, /^(092026_23AAFFC2640H1ZX_GSTR2B\.json)?$/);
 
   // GSTR-1 JSON: each visit clicks Generate once; the first starts it, a
   // later one gets the links, every part fetched

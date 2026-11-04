@@ -519,8 +519,17 @@ portal's own page templates and scripts in the HAR:
   it is clicked once per visit. (Extension 0.3.0 looked for the links before
   clicking and never collected the JSON; fixed in 0.3.1.)
 - GSTR-2B JSON: box → Download (form POST to
-  `gstr2b.gst.gov.in/gstr2b/auth/gstr2bdwld`) → GENERATE JSON FILE TO
-  DOWNLOAD (made in the page).
+  `gstr2b.gst.gov.in/gstr2b/auth/gstr2bdwld`, fields `finyr`, `rtnprd`,
+  `form=GSTR2B`) → GENERATE JSON FILE TO DOWNLOAD. The 2B page is its own
+  Angular app (`static.gst.gov.in/uiassets/js/static/gstr2b/main-es2015.js`);
+  the HAR ends a second before the Generate click, so how it hands over the
+  file wasn't seen. Extension 0.3.1 only caught files made in the page and
+  failed when the page gave the file to Chrome as a normal download; 0.3.2
+  also catches any download the portal tab starts during a file step (reads
+  its bytes, from the page for a blob address or with the portal login for a
+  server one, then removes it from Downloads), waits for a disabled button
+  to be enabled, closes tabs the portal opens, and if no file comes says what
+  the page showed and which requests it made.
 - The Aadhaar pop-up's REMIND ME LATER comes once a session: closed
   whenever it shows, never a step.
 - The HAR did not include the answers of the background requests, so the

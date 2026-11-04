@@ -257,10 +257,21 @@ function returnsPage(path, url, state) {
       "GSTR2B",
       `<app-root></app-root><script>
         setTimeout(() => {
-          document.querySelector("app-root").innerHTML = '<div><button onclick="dl()">GENERATE JSON FILE TO DOWNLOAD</button><button>GENERATE EXCEL FILE TO DOWNLOAD</button></div>';
+          document.querySelector("app-root").innerHTML = '<div><button id="json" disabled onclick="dl()">GENERATE JSON FILE TO DOWNLOAD</button><button>GENERATE EXCEL FILE TO DOWNLOAD</button></div>';
+          setTimeout(() => document.getElementById("json").removeAttribute("disabled"), 1500);
         }, 300);
+        // Like a bundle that took its own references when it loaded: the
+        // file goes to Chrome as a normal download, unseen by the page hooks
+        const create = URL.createObjectURL.bind(URL);
+        const click = HTMLAnchorElement.prototype.click;
         function dl() {
-          saveAs(new Blob([JSON.stringify({ data: { gstin: "23AAFFC2640H1ZX", rtnprd: "092026" } })], { type: "application/json" }), "092026_23AAFFC2640H1ZX_GSTR2B.json");
+          // Its data comes from the portal first, the button waits meanwhile
+          setTimeout(() => {
+            const a = document.createElement("a");
+            a.download = "092026_23AAFFC2640H1ZX_GSTR2B.json";
+            a.href = create(new Blob([JSON.stringify({ data: { gstin: "23AAFFC2640H1ZX", rtnprd: "092026" } })], { type: "application/json" }));
+            click.call(a);
+          }, 300);
         }
       </script>`
     );
