@@ -16,5 +16,10 @@ export async function POST() {
     const markedAt = result.markedAt;
     after(() => sendArrivalAlerts(user.id, markedAt).catch((error) => console.error("Arrival alerts failed:", error)));
   }
-  return NextResponse.json({ markedAt: result.markedAt, alreadyMarked: result.alreadyMarked });
+  return NextResponse.json({
+    markedAt: result.markedAt,
+    alreadyMarked: result.alreadyMarked,
+    lateMinutes: result.lateMinutes,
+    lateDaysThisMonth: result.lateDaysThisMonth,
+  });
 }

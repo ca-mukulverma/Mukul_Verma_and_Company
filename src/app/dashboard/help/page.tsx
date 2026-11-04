@@ -48,9 +48,11 @@ const SECTIONS: Section[] = [
     steps: [
       "When you come to the office, open Today and tap Mark attendance. It can be marked once a day; the time is saved automatically and shown on the card.",
       "There is no attendance on Sundays, and the button doesn't show for people who don't mark attendance.",
+      "Office time is 11:30 AM. Marking up to 11:35 AM is on time (5 minutes' grace); after that the app tells you how late you are, counted from 11:30, and the admin's report shows the day in amber.",
+      "If you haven't marked attendance by about 12 noon, you get a reminder notification (not on Sundays).",
       "Only the admin sees the report: Admin → Attendance shows who has marked today and the time each person marked on every day of the month, and downloads it for Excel.",
       "On the same page the admin turns attendance off for the partners (or anyone) who don't need to mark it.",
-      "Each time someone marks attendance, the admin gets a notification (“… came to office”). The admin chooses which partners get it too, on the same page.",
+      "Each time someone marks attendance, the admin gets a notification (“… came to office”), which also says how late the person is. The admin chooses which partners get it too, on the same page.",
     ],
   },
   {

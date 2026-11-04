@@ -14,9 +14,11 @@ import { HelpLink } from "@/components/help/help-link";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import type { AttendanceReport } from "@/lib/attendance";
+import { lateShort, minutesLate, OFFICE_START_LABEL } from "@/lib/attendance-time";
 
 // Attendance report, admin only: who marked attendance on Today and when.
-// Sundays are left out. Built only when this page is opened.
+// Sundays are left out. Built only when this page is opened. Marks after
+// 11:35 AM (11:30 office time + 5 minutes' grace) show in amber as late.
 
 const timeFormat = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
@@ -25,6 +27,7 @@ const timeFormat = new Intl.DateTimeFormat("en-IN", {
   hour12: true,
 });
 const fmtTime = (iso: string) => timeFormat.format(new Date(iso));
+const lateDays = (marks: Record<string, string>) => Object.values(marks).filter((iso) => minutesLate(iso) > 0).length;
 
 const dayHeader = (day: string) => {
   const d = new Date(`${day}T00:00:00Z`);
@@ -46,11 +49,15 @@ function shiftMonth(month: string, n: number) {
 function downloadCsv(report: AttendanceReport, people: AttendanceReport["people"]) {
   const cell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
   const lines = [
-    ["Name", ...report.days, "Days present"].map(cell).join(","),
+    ["Name", ...report.days, "Days present", "Late days"].map(cell).join(","),
     ...people.map((p) => {
       const marks = report.marks[p.id] ?? {};
-      const times = report.days.map((day) => (marks[day] ? fmtTime(marks[day]) : day <= report.today ? "Absent" : ""));
-      return [p.name, ...times, Object.keys(marks).length].map(cell).join(",");
+      const times = report.days.map((day) => {
+        if (!marks[day]) return day <= report.today ? "Absent" : "";
+        const late = minutesLate(marks[day]);
+        return late ? `${fmtTime(marks[day])} (late ${lateShort(late)})` : fmtTime(marks[day]);
+      });
+      return [p.name, ...times, Object.keys(marks).length, lateDays(marks)].map(cell).join(",");
     }),
   ];
   // BOM so Excel reads it as UTF-8
@@ -120,7 +127,8 @@ export default function AttendancePage() {
             <HelpLink section="attendance" />
           </div>
           <p className="text-muted-foreground">
-            The time each person marked attendance on Today. Sundays are left out.
+            The time each person marked attendance on Today. Sundays are left out. Office time is{" "}
+            {OFFICE_START_LABEL}; marks after 11:35 AM (5 minutes&apos; grace) are late.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -170,7 +178,10 @@ export default function AttendancePage() {
                   {monthLabel(report.month)}
                   {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                 </CardTitle>
-                <CardDescription>Time marked (India time). “—” means not marked.</CardDescription>
+                <CardDescription>
+                  Time marked (India time). “—” means not marked. <span className="text-amber-700 dark:text-amber-400">Amber</span>{" "}
+                  means late.
+                </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
                 {marking.length === 0 ? (
@@ -182,6 +193,7 @@ export default function AttendancePage() {
                         <tr className="border-b bg-muted/40">
                           <th className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">Name</th>
                           <th className="px-2 py-2 text-center font-medium">Present</th>
+                          <th className="px-2 py-2 text-center font-medium">Late</th>
                           {report.days.map((day) => {
                             const h = dayHeader(day);
                             return (
@@ -206,18 +218,34 @@ export default function AttendancePage() {
                               <td className="px-2 py-2 text-center">
                                 {Object.keys(marks).length}/{past}
                               </td>
-                              {report.days.map((day) => (
-                                <td
-                                  key={day}
-                                  className={cn(
-                                    "whitespace-nowrap px-1.5 py-2 text-center",
-                                    day === report.today && "bg-primary/10",
-                                    marks[day] ? "text-green-700 dark:text-green-400" : "text-muted-foreground"
-                                  )}
-                                >
-                                  {marks[day] ? fmtTime(marks[day]) : day <= report.today ? "—" : ""}
-                                </td>
-                              ))}
+                              <td
+                                className={cn(
+                                  "px-2 py-2 text-center",
+                                  lateDays(marks) > 0 ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"
+                                )}
+                              >
+                                {lateDays(marks)}
+                              </td>
+                              {report.days.map((day) => {
+                                const late = marks[day] ? minutesLate(marks[day]) : 0;
+                                return (
+                                  <td
+                                    key={day}
+                                    title={late ? `${lateShort(late)} late` : undefined}
+                                    className={cn(
+                                      "whitespace-nowrap px-1.5 py-2 text-center",
+                                      day === report.today && "bg-primary/10",
+                                      !marks[day]
+                                        ? "text-muted-foreground"
+                                        : late
+                                          ? "bg-amber-50 font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+                                          : "text-green-700 dark:text-green-400"
+                                    )}
+                                  >
+                                    {marks[day] ? fmtTime(marks[day]) : day <= report.today ? "—" : ""}
+                                  </td>
+                                );
+                              })}
                             </tr>
                           );
                         })}
@@ -330,12 +358,19 @@ function TodayCard({
             <p className="text-sm text-muted-foreground">Nobody yet.</p>
           ) : (
             <ul className="space-y-1 text-sm">
-              {present.map((p) => (
-                <li key={p.id} className="flex justify-between gap-2">
-                  <span>{p.name}</span>
-                  <span className="text-green-700 dark:text-green-400">{fmtTime(report.marks[p.id][report.today])}</span>
-                </li>
-              ))}
+              {present.map((p) => {
+                const at = report.marks[p.id][report.today];
+                const late = minutesLate(at);
+                return (
+                  <li key={p.id} className="flex justify-between gap-2">
+                    <span>{p.name}</span>
+                    <span className={late ? "text-amber-700 dark:text-amber-400" : "text-green-700 dark:text-green-400"}>
+                      {fmtTime(at)}
+                      {late > 0 && ` · ${lateShort(late)} late`}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
