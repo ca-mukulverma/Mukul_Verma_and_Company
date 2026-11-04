@@ -417,7 +417,7 @@ client's page ([GST_WORKING.md](GST_WORKING.md)). TDS figures are entered
 when marking returns filed. It is plain arithmetic done by the app, always
 live and free.
 
-## GST portal: missing files and login (first stages)
+## GST portal: missing files and downloads
 
 Downloading returns from the GST portal through a browser extension is being
 built in stages: see [GST_PORTAL_EXTENSION_PLAN.md](GST_PORTAL_EXTENSION_PLAN.md).
@@ -430,16 +430,23 @@ What works now:
   GSTR-1A).
 - **Compliance → GST downloads**: for a month, every client whose GST files
   aren't all saved, with filters (My clients, GSTR-1 / 3B / 2B, Quarterly).
-- **Log in to the GST portal** in the same box, with the **GST extension**
-  installed (Chrome or Edge; the box shows the install steps): a portal tab
-  opens next to the app with the client's saved GST login filled in (the
-  first credential with "GST" in its title, not the e-way bill / e-invoice
-  one) and the cursor in the captcha. Staff type the captcha and OTP; the box
-  shows when the login is done, and **Log out and close** logs out and closes
-  the tab. One client at a time per browser.
-
-Fetching the ticked files comes next; until then, download them in the
-portal tab and use **Upload documents**.
+- **Download N files from the GST portal** in the same box, with the **GST
+  extension** (0.3.0 or later) installed (Chrome or Edge; the box shows the
+  install steps): a portal tab opens next to the app with the client's saved
+  GST login filled in (the first credential with "GST" in its title, not the
+  e-way bill / e-invoice one) and the cursor in the captcha. Staff type the
+  captcha and OTP. The extension then fetches each ticked file (GSTR-1 JSON
+  first, then oldest first), hands it to **Upload documents** (read, placed
+  and saved exactly as a dropped file) and, when the list is done, **logs out
+  and closes the tab by itself**. If the app tab is closed mid-run, the
+  extension logs out on its own after 5 quiet minutes. One client at a time
+  per browser. With nothing ticked the button only logs in, for work by hand.
+- Each file shows: **Saved**, **Not filed on the portal** (the return's box
+  offers Prepare Online / Prepare Offline, or FILE once submitted, instead of
+  View / Download: nothing is clicked and the reason is shown), **Not on the
+  portal**, **JSON asked for** (GSTR-1 JSON: the portal prepares it in about
+  20 minutes; the next Download collects it without asking again), **Download
+  by hand** (GSTR-1A, not taught yet) or an error.
 
 ## Overview and notifications
 

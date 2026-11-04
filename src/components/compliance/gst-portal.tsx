@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Check, ChevronLeft, ChevronRight, CircleDashed, Clock, Download, ExternalLink, KeyRound, LogIn, LogOut, Loader2, PanelTop, Puzzle, UserCheck } from "lucide-react";
@@ -9,18 +9,22 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { fileKey, PORTAL_RETURNS, PortalFileRow, PortalFileState, PortalReturn, RETURN_LABELS, RETURN_OF, STATE_LABELS } from "@/lib/gst-portal";
+import { fileKey, PORTAL_RETURNS, PortalFile, PortalFileRow, PortalFileState, PortalReturn, RETURN_LABELS, RETURN_OF, STATE_LABELS } from "@/lib/gst-portal";
 import type { ClientPortalFiles, RoundPortalFiles } from "@/lib/gst-portal-files";
 import type { PortalSettings } from "@/lib/gst-portal-settings";
-import { downloadGstExtension, gstExtensionVersion, isOpen, onPortalStatus, PortalRun, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
+import { canFetch, downloadGstExtension, ENDED, FetchedFile, gstExtensionVersion, isOpen, onPortalStatus, PortalRun, portalFetch, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
+import { sendPortalFiles } from "./portal-files";
 import { FyStepper, fyOf, previousMonth } from "./gst-working";
 import { apiError, currentMonthKey } from "./types";
 
-// GST portal downloads (docs/GST_PORTAL_EXTENSION_PLAN.md). Stage 1: which
-// GST return files are saved in the app and which are missing, on the
-// client's page (below the GST working) and for all clients in a month (the
-// download round). Stage 2: open the GST portal with the client's login
-// filled in through the browser extension; staff type the captcha and OTP.
+// GST portal downloads (docs/GST_PORTAL_EXTENSION_PLAN.md). Which GST
+// return files are saved in the app and which are missing, on the client's
+// page (below the GST working) and for all clients in a month (the download
+// round). One click opens the GST portal through the browser extension with
+// the client's login filled in; staff type the captcha and OTP; the
+// extension then fetches each ticked file, which goes to Upload documents
+// to be saved as if dropped there, and the portal logs out by itself. A
+// return not filed on the portal is reported as such, never filed.
 // Nothing here polls: it loads when opened and after uploads, and the
 // extension reports what happens in the portal tab.
 
@@ -73,7 +77,7 @@ function Legend() {
 
 // ─── One client (Compliance → Clients → the client) ─────────────────────────
 
-export function ClientGstPortal({ clientId, refresh }: { clientId: string; refresh: number }) {
+export function ClientGstPortal({ clientId, refresh, onSaved }: { clientId: string; refresh: number; onSaved?: () => void }) {
   const [fy, setFy] = useState(fyOf(previousMonth()));
   const [data, setData] = useState<ClientPortalFiles | null>(null);
   const [loading, setLoading] = useState(false);
@@ -155,7 +159,13 @@ export function ClientGstPortal({ clientId, refresh }: { clientId: string; refre
           <KeyRound className="h-3.5 w-3.5" /> No GST login saved (Clients → Credentials, with “GST” in the title): staff type the username and password on the portal.
         </p>
       )}
-      <PortalLogin clientId={data.client.id} clientName={data.client.name} ticked={ticked.size} />
+      <PortalLogin
+        clientId={data.client.id}
+        clientName={data.client.name}
+        gstin={data.client.gstin.trim().toUpperCase()}
+        files={all.filter((f) => f.state !== "saved" && ticked.has(fileKey(f)))}
+        onSaved={onSaved ?? load}
+      />
     </div>
   );
 }
@@ -169,12 +179,103 @@ const ENDED_TEXT: Partial<Record<PortalRun["status"], string>> = {
   failed: "The GST portal couldn't be opened.",
 };
 
-function PortalLogin({ clientId, clientName, ticked }: { clientId: string; clientName: string; ticked: number }) {
+const KIND_LABELS: Record<PortalFile, string> = {
+  GSTR1_JSON: "GSTR-1 JSON",
+  GSTR1_PDF: "GSTR-1 PDF",
+  GSTR1A_PDF: "GSTR-1A PDF",
+  GSTR3B_PDF: "GSTR-3B PDF",
+  GSTR2B_JSON: "GSTR-2B JSON",
+};
+
+// One ticked file in a download run
+type FetchState = "waiting" | "fetching" | "saving" | "saved" | "not-filed" | "not-available" | "requested" | "pending" | "not-taught" | "skipped" | "error";
+
+interface FetchRow {
+  kind: PortalFile;
+  month: string;
+  label: string;
+  state: FetchState;
+  message: string | null;
+}
+
+const FETCH_TEXT: Record<FetchState, string> = {
+  waiting: "Waiting",
+  fetching: "Fetching…",
+  saving: "Saving…",
+  saved: "Saved",
+  "not-filed": "Not filed on the portal",
+  "not-available": "Not on the portal",
+  requested: "JSON asked for",
+  pending: "JSON not ready yet",
+  "not-taught": "Download by hand",
+  skipped: "Not fetched",
+  error: "Error",
+};
+
+const FETCH_STYLE: Partial<Record<FetchState, string>> = {
+  saved: "text-emerald-700 dark:text-emerald-400",
+  "not-filed": "text-amber-800 dark:text-amber-300",
+  requested: "text-sky-700 dark:text-sky-400",
+  pending: "text-sky-700 dark:text-sky-400",
+  error: "text-red-700 dark:text-red-400",
+};
+
+// GSTR-1 JSON asked for on the portal, per client and month, in this
+// browser: the next run collects it instead of asking again
+const ASKED_KEY = "gst-json-asked";
+const ASKED_FOR_MS = 3 * 60 * 60_000;
+
+function askedAt(clientId: string, month: string): number | null {
+  try {
+    const all = JSON.parse(localStorage.getItem(ASKED_KEY) ?? "{}") as Record<string, number>;
+    const at = all[`${clientId}:${month}`];
+    return at && Date.now() - at < ASKED_FOR_MS ? at : null;
+  } catch {
+    return null;
+  }
+}
+
+function setAsked(clientId: string, month: string, at: number | null) {
+  try {
+    const all = JSON.parse(localStorage.getItem(ASKED_KEY) ?? "{}") as Record<string, number>;
+    for (const [k, v] of Object.entries(all)) if (Date.now() - v > ASKED_FOR_MS) delete all[k];
+    if (at) all[`${clientId}:${month}`] = at;
+    else delete all[`${clientId}:${month}`];
+    localStorage.setItem(ASKED_KEY, JSON.stringify(all));
+  } catch {
+    // Not remembered: the portal is asked again next time
+  }
+}
+
+const EXTENSIONS: Record<string, string> = { "application/pdf": "pdf", "application/json": "json", "application/zip": "zip", "application/x-zip-compressed": "zip" };
+
+// The bytes from the extension as a file the upload can keep
+function toFile(f: FetchedFile, fallback: string) {
+  const raw = atob(f.base64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  const type = f.type.split(";")[0].trim();
+  let name = (f.name || fallback).replace(/[\\/:*?"<>|]+/g, "_");
+  if (!/\.(pdf|json|zip)$/i.test(name)) {
+    const ext = EXTENSIONS[type] ?? (bytes[0] === 0x25 && bytes[1] === 0x50 ? "pdf" : bytes[0] === 0x50 && bytes[1] === 0x4b ? "zip" : bytes[0] === 0x7b ? "json" : null);
+    if (ext) name = `${name.replace(/\.[a-z0-9]{1,4}$/i, "")}.${ext}`;
+  }
+  return new File([bytes], name, { type: type || undefined });
+}
+
+// GSTR-1 JSON first (it is asked for and collected later), then oldest first
+const fetchOrder = (f: Pick<FetchRow, "kind" | "month">) => `${f.kind === "GSTR1_JSON" ? 0 : 1}|${f.month}|${PORTAL_FILE_ORDER.indexOf(f.kind)}`;
+const PORTAL_FILE_ORDER: PortalFile[] = ["GSTR1_JSON", "GSTR1_PDF", "GSTR1A_PDF", "GSTR3B_PDF", "GSTR2B_JSON"];
+
+function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId: string; clientName: string; gstin: string; files: PortalFileRow[]; onSaved: () => void }) {
   // undefined: not checked yet (the page has just loaded)
   const [version, setVersion] = useState<string | null | undefined>(undefined);
   const [run, setRun] = useState<PortalRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [rows, setRows] = useState<FetchRow[] | null>(null);
+  // The run that should fetch the ticked files once logged in
+  const job = useRef<{ runId: string; rows: FetchRow[]; started: boolean } | null>(null);
 
   useEffect(() => {
     const installed = gstExtensionVersion();
@@ -184,11 +285,96 @@ function PortalLogin({ clientId, clientName, ticked }: { clientId: string; clien
     return onPortalStatus(setRun);
   }, []);
 
+  const setRow = (key: string, patch: Partial<FetchRow>) => setRows((rs) => rs?.map((r) => (fileKey(r) === key ? { ...r, ...patch } : r)) ?? rs);
+
+  // Logged in: fetch the files one by one, hand each to Upload documents,
+  // then log out by itself
+  const fetchAll = useCallback(
+    async (runId: string, list: FetchRow[]) => {
+      const saves: Promise<void>[] = [];
+      let stop: string | null = null;
+      for (const f of list) {
+        const key = fileKey(f);
+        if (stop) {
+          setRow(key, { state: "skipped", message: stop });
+          continue;
+        }
+        setRow(key, { state: "fetching", message: null });
+        const asked = f.kind === "GSTR1_JSON" ? askedAt(clientId, f.month) : null;
+        const answer = await portalFetch(runId, { kind: f.kind, month: f.month, label: f.label, ...(asked && { noGenerate: true }) });
+        if (!answer.ok) {
+          setRow(key, { state: "error", message: answer.error ?? "The GST extension couldn't fetch it" });
+          if (/log in|not open|didn't answer/i.test(answer.error ?? "")) stop = "The portal login ended";
+          continue;
+        }
+        const message = answer.message ?? null;
+        switch (answer.result) {
+          case "file": {
+            if (f.kind === "GSTR1_JSON") setAsked(clientId, f.month, null);
+            const period = `${f.month.slice(5, 7)}${f.month.slice(0, 4)}`;
+            const fetched = (answer.files ?? []).map((x, i) => toFile(x, `${f.kind}_${gstin}_${period}${(answer.files?.length ?? 0) > 1 ? `_${i + 1}` : ""}`));
+            setRow(key, { state: "saving", message: null });
+            saves.push(
+              sendPortalFiles(fetched).then(
+                (placed) =>
+                  setRow(key, placed ? { state: "saved", message: fetched.map((x) => x.name).join(", ") } : { state: "error", message: "Upload documents isn't on this page" }),
+                (e) => setRow(key, { state: "error", message: apiError(e, "Couldn't save it") })
+              )
+            );
+            break;
+          }
+          case "requested":
+            setAsked(clientId, f.month, Date.now());
+            setRow(key, { state: "requested", message: "The portal prepares it in about 20 minutes: download again after that to collect it." });
+            break;
+          case "pending":
+            setRow(key, {
+              state: "pending",
+              message: asked ? `Asked for at ${new Date(asked).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}; try again in a few minutes.` : message,
+            });
+            break;
+          case "session-expired":
+            setRow(key, { state: "error", message: "The portal session ended" });
+            stop = "The portal session ended: log in again";
+            break;
+          case "not-filed":
+          case "not-available":
+          case "not-taught":
+            setRow(key, { state: answer.result, message });
+            break;
+          default:
+            setRow(key, { state: "error", message: message ?? "The portal didn't give the file" });
+        }
+      }
+      // Done with the portal: log out without anybody clicking
+      const now = await portalStatus();
+      if (now.ok && now.run?.runId === runId && isOpen(now.run)) {
+        const out = await portalLogout(runId);
+        if (out.run !== undefined) setRun(out.run ?? null);
+      }
+      await Promise.all(saves);
+      if (saves.length) onSaved();
+    },
+    [clientId, gstin, onSaved]
+  );
+
+  useEffect(() => {
+    const j = job.current;
+    if (!j || j.started || !run || run.runId !== j.runId) return;
+    if (run.status === "logged-in") {
+      j.started = true;
+      fetchAll(j.runId, j.rows);
+    } else if (ENDED.includes(run.status)) {
+      job.current = null;
+      setRows((rs) => rs?.map((r) => (r.state === "waiting" ? { ...r, state: "skipped", message: "Not logged in" } : r)) ?? rs);
+    }
+  }, [run, fetchAll]);
+
   if (version === undefined) return null;
   if (!version) {
     return (
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed p-2 text-sm">
-        <span className="text-muted-foreground">Install the GST extension (Chrome or Edge) to log in to the GST portal from here.</span>
+        <span className="text-muted-foreground">Install the GST extension (Chrome or Edge) to download from the GST portal from here.</span>
         <Button size="sm" variant="outline" onClick={() => setInstalling(true)}>
           <Puzzle className="mr-1 h-4 w-4" /> Install the GST extension
         </Button>
@@ -196,6 +382,7 @@ function PortalLogin({ clientId, clientName, ticked }: { clientId: string; clien
       </div>
     );
   }
+  const fetching = canFetch(version);
 
   const act = async (work: () => Promise<{ ok: boolean; error?: string; run?: PortalRun | null }>) => {
     setBusy(true);
@@ -203,11 +390,13 @@ function PortalLogin({ clientId, clientName, ticked }: { clientId: string; clien
       const answer = await work();
       if (answer.run !== undefined) setRun(answer.run ?? null);
       if (!answer.ok) toast.error(answer.error ?? "The GST extension couldn't do that");
+      return answer;
     } finally {
       setBusy(false);
     }
   };
 
+  const toFetch = fetching ? [...files].sort((a, b) => fetchOrder(a).localeCompare(fetchOrder(b))) : [];
   const start = () =>
     act(async () => {
       let answer: { settings: PortalSettings; login: { username: string; password: string } | null };
@@ -216,12 +405,22 @@ function PortalLogin({ clientId, clientName, ticked }: { clientId: string; clien
       } catch (e) {
         return { ok: false, error: apiError(e, "Could not get the GST login") };
       }
-      return portalLogin({ runId: crypto.randomUUID(), clientId, clientName, settings: answer.settings, login: answer.login });
+      const runId = crypto.randomUUID();
+      const list: FetchRow[] = toFetch.map((f) => ({ kind: f.kind, month: f.month, label: `${KIND_LABELS[f.kind]} ${monthText(f.month)}`, state: "waiting", message: null }));
+      job.current = list.length ? { runId, rows: list, started: false } : null;
+      setRows(list.length ? list : null);
+      const opened = await portalLogin({ runId, clientId, clientName, settings: answer.settings, login: answer.login, autoLogout: list.length > 0 });
+      if (!opened.ok) {
+        job.current = null;
+        setRows(null);
+      }
+      return opened;
     });
 
   // The portal tab open now (for this client or another)
   const live = isOpen(run) ? run : null;
   const mine = live?.clientId === clientId ? live : null;
+  const working = !!rows?.some((r) => r.state === "waiting" || r.state === "fetching" || r.state === "saving");
 
   return (
     <div className="space-y-2 rounded-md border p-2 text-sm">
@@ -245,12 +444,13 @@ function PortalLogin({ clientId, clientName, ticked }: { clientId: string; clien
               <span className="text-amber-800 dark:text-amber-300">
                 <KeyRound className="mr-1 inline h-4 w-4" />
                 Type the captcha (and the OTP, if asked) in the GST portal tab.
+                {rows?.length ? " The ticked files are fetched after that and the portal logs out by itself." : ""}
               </span>
             )}
             {mine.status === "logged-in" && (
               <span className="text-emerald-700 dark:text-emerald-400">
-                <Check className="mr-1 inline h-4 w-4" />
-                Logged in to the GST portal.
+                {mine.doing ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : <Check className="mr-1 inline h-4 w-4" />}
+                {mine.doing ? `Fetching ${mine.doing} from the GST portal…` : "Logged in to the GST portal."}
               </span>
             )}
             {mine.status === "logging-out" && (
@@ -261,33 +461,50 @@ function PortalLogin({ clientId, clientName, ticked }: { clientId: string; clien
             )}
           </p>
           {mine.note && <p className="text-xs text-amber-700 dark:text-amber-400">{mine.note}</p>}
-          {mine.status === "logged-in" && (
-            <p className="text-xs text-muted-foreground">
-              Fetching the ticked files from here comes in the next update. For now, download them in the portal tab, upload them with Upload
-              documents above, then log out.
-            </p>
+          {mine.status === "logged-in" && !rows?.length && (
+            <p className="text-xs text-muted-foreground">Nothing was ticked: work in the portal tab, upload the files with Upload documents above, then log out.</p>
           )}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={busy} onClick={() => act(() => showPortal(mine.runId))}>
               <PanelTop className="mr-1 h-4 w-4" /> Show the portal tab
             </Button>
             <Button size="sm" variant="outline" disabled={busy || mine.status === "logging-out"} onClick={() => act(() => portalLogout(mine.runId))}>
-              <LogOut className="mr-1 h-4 w-4" /> {mine.status === "logged-in" ? "Log out and close" : "Cancel"}
+              <LogOut className="mr-1 h-4 w-4" /> {mine.status === "logged-in" ? (working ? "Stop and log out" : "Log out and close") : "Cancel"}
             </Button>
           </div>
         </div>
       )}
+      {rows && rows.length > 0 && (
+        <ul className="space-y-1 text-xs">
+          {rows.map((r) => (
+            <li key={fileKey(r)} className="flex flex-wrap items-baseline gap-x-2">
+              <span className="w-36 shrink-0 font-medium">{r.label}</span>
+              <span className={cn("shrink-0", FETCH_STYLE[r.state])}>
+                {(r.state === "fetching" || r.state === "saving") && <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />}
+                {r.state === "saved" && <Check className="mr-1 inline h-3 w-3" />}
+                {FETCH_TEXT[r.state]}
+              </span>
+              {r.message && <span className="text-muted-foreground">{r.message}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
       {!live && (
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" disabled={busy} onClick={start}>
-            {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <LogIn className="mr-1 h-4 w-4" />}
-            Log in to the GST portal
+          <Button size="sm" disabled={busy || working} onClick={start}>
+            {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : toFetch.length ? <Download className="mr-1 h-4 w-4" /> : <LogIn className="mr-1 h-4 w-4" />}
+            {toFetch.length ? `Download ${toFetch.length} file${toFetch.length === 1 ? "" : "s"} from the GST portal` : "Log in to the GST portal"}
           </Button>
           <span className="text-xs text-muted-foreground">
-            {run && run.clientId === clientId && ENDED_TEXT[run.status]
+            {run && run.clientId === clientId && ENDED_TEXT[run.status] && !rows
               ? ENDED_TEXT[run.status]
-              : `Opens the portal in a new tab with the login filled in; you type the captcha and OTP.${ticked ? ` ${ticked} file${ticked === 1 ? "" : "s"} ticked.` : ""}`}
+              : toFetch.length
+                ? "Opens the portal with the login filled in; you type the captcha and OTP. The ticked files are then fetched and saved, and the portal logs out by itself."
+                : "Opens the portal in a new tab with the login filled in; you type the captcha and OTP."}
           </span>
+          {!fetching && files.length > 0 && (
+            <span className="text-xs text-amber-700 dark:text-amber-400">Update the GST extension (Install the GST extension → download again) to fetch the ticked files from here.</span>
+          )}
         </div>
       )}
     </div>

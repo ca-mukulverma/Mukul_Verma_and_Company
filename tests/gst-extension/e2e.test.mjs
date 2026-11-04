@@ -67,7 +67,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.2.0");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.0");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -110,6 +110,72 @@ test("login filled, captcha and OTP typed by staff, logged in, logged out", asyn
   await closed;
   await until(async () => (await statuses()).at(-1) === "logged-out", "logged-out");
   assert.equal(portal.state.events.at(-1), "logout");
+});
+
+// Logs in as staff would and returns the portal tab
+async function logIn(runId) {
+  const opened = context.waitForEvent("page");
+  const answer = await ask({ type: "gst-login", runId, clientId: "c1", clientName: "CITY MOTORS", settings, login: LOGIN, autoLogout: true });
+  assert.equal(answer.ok, true, answer.error);
+  const tab = await opened;
+  await until(() => tab.evaluate(() => document.activeElement?.id === "captcha"), "the cursor in the captcha");
+  await tab.keyboard.type(CAPTCHA);
+  await tab.click("#login");
+  await tab.fill("#otp", OTP);
+  await tab.click("#verify");
+  await until(async () => (await ask({ type: "gst-status" })).run?.status === "logged-in", "logged-in");
+  return tab;
+}
+
+const text = (f) => Buffer.from(f.base64, "base64").toString("utf8");
+const fetchFile = (runId, kind, month, extra = {}) => ask({ type: "gst-fetch", runId, file: { kind, month, label: `${kind} ${month}`, ...extra } });
+
+test("filed returns are fetched by the taught steps; unfiled ones are reported, never filed", { timeout: 180000 }, async () => {
+  const tab = await logIn("run-f");
+  const runId = "run-f";
+
+  const r3b = await fetchFile(runId, "GSTR3B_PDF", "2026-09");
+  assert.equal(r3b.result, "file", r3b.message);
+  assert.equal(r3b.files[0].name, "GSTR3B_23AAFFC2640H1ZX_092026.pdf");
+  assert.match(text(r3b.files[0]), /^%PDF-1\.4 GSTR-3B 092026/);
+  assert.ok(portal.state.clicks.includes("REMIND ME LATER"), "the Aadhaar pop-up is closed when it shows");
+
+  const r1 = await fetchFile(runId, "GSTR1_PDF", "2026-09");
+  assert.equal(r1.result, "file", r1.message);
+  assert.match(text(r1.files[0]), /GSTR-1 092026/);
+
+  const r2b = await fetchFile(runId, "GSTR2B_JSON", "2026-09");
+  assert.equal(r2b.result, "file", r2b.message);
+  assert.equal(JSON.parse(text(r2b.files[0])).data.rtnprd, "092026");
+
+  // GSTR-1 JSON: asked for on the first visit, collected on the next
+  const ask1 = await fetchFile(runId, "GSTR1_JSON", "2026-09");
+  assert.equal(ask1.result, "requested", ask1.message);
+  assert.equal(portal.state.jsonAsked, 1);
+  const pending = await fetchFile(runId, "GSTR1_JSON", "2026-09", { noGenerate: true });
+  assert.equal(pending.result, "file", "the ready parts are collected without asking again");
+  assert.match(text(pending.files[0]), /GSTR1 JSON 092026/);
+  assert.equal(portal.state.jsonAsked, 1, "never asked twice");
+
+  // October is not filed: the boxes offer Prepare / File instead of Download
+  const n3b = await fetchFile(runId, "GSTR3B_PDF", "2026-10");
+  assert.equal(n3b.result, "not-filed");
+  assert.match(n3b.message, /GSTR-3B Oct 2026 is not filed on the portal yet \(status: not filed\): it offers Prepare Online \/ Prepare offline/);
+  const n1 = await fetchFile(runId, "GSTR1_PDF", "2026-10");
+  assert.equal(n1.result, "not-filed");
+  assert.match(n1.message, /status: submitted.*FILE GSTR1/);
+  const nj = await fetchFile(runId, "GSTR1_JSON", "2026-10");
+  assert.equal(nj.result, "not-filed");
+  const taught = await fetchFile(runId, "GSTR1A_PDF", "2026-09");
+  assert.equal(taught.result, "not-taught");
+
+  const pressed = portal.state.clicks;
+  for (const never of [/prepare/i, /^file/i, /file statement/i]) assert.ok(!pressed.some((c) => never.test(c)), `never pressed ${never}: ${pressed.join(", ")}`);
+  assert.ok(!pressed.includes("VIEW GSTR3B"));
+
+  const closed = tab.waitForEvent("close");
+  assert.equal((await ask({ type: "gst-logout", runId })).ok, true);
+  await closed;
 });
 
 test("no saved login: the username is focused and the app is told", async () => {

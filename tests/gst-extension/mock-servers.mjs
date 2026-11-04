@@ -1,8 +1,12 @@
 import { createServer } from "node:http";
 
 // Two local servers for the extension test (e2e.test.mjs):
-//   portal  a mock GST portal: login with captcha, OTP, a logged-in page and
-//           logout. The test routes every https://*.gst.gov.in request here as
+//   portal  a mock GST portal: login with captcha, OTP, a logged-in page,
+//           the Returns Dashboard (built like the real one: drop-downs, Search,
+//           a box per return whose buttons depend on whether it is filed),
+//           the GSTR-1 summary, GSTR-1 JSON and GSTR-2B pages, and logout.
+//           Sep 2026 is filed; Oct 2026 is not (GSTR-1 submitted, GSTR-3B
+//           not filed). Every button pressed is logged in state.clicks. The test routes every https://*.gst.gov.in request here as
 //           /<host><path>, and pages move on with location.replace, which
 //           Playwright follows for routed responses.
 //   app     a stand-in for the app's page: it talks to the extension's bridge
@@ -25,10 +29,12 @@ function listen(server) {
 }
 
 export async function startPortal() {
-  const state = { events: [], typed: {} };
+  const state = { events: [], typed: {}, clicks: [], jsonAsked: 0, reminded: false };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
-    const path = url.pathname.replace(/^\/services\.gst\.gov\.in/, "");
+    const host = url.pathname.split("/")[1];
+    const rest = url.pathname.slice(host.length + 1);
+    const path = host === "services.gst.gov.in" ? rest : `/${host}${rest}`;
     const send = (text, type = "text/html") => {
       res.writeHead(200, { "content-type": type });
       res.end(text);
@@ -73,6 +79,12 @@ export async function startPortal() {
       );
     }
     if (path === "/services/auth/fowelcome") return send(html("Welcome", "<h1>Welcome to the GST portal</h1>"));
+    if (rest === "/log" && req.method === "POST") {
+      state.clicks.push(await body(req));
+      return send("{}", "application/json");
+    }
+    const returns = returnsPage(path, url, state);
+    if (returns) return send(...returns);
     if (path === "/services/logout") {
       state.events.push("logout");
       return send(html("Logged out", "<p>You have logged out</p>"));
@@ -104,7 +116,7 @@ export async function startApp() {
               }
             };
             window.addEventListener("message", listener);
-            setTimeout(() => resolve({ ok: false, error: "no answer" }), 10000);
+            setTimeout(() => resolve({ ok: false, error: "no answer" }), 120000);
             window.postMessage({ source: "mvc-app-gst", id, message }, location.origin);
           });
           window.addEventListener("message", (e) => {
@@ -116,4 +128,132 @@ export async function startApp() {
   });
   const port = await listen(server);
   return { port, close: () => server.close() };
+}
+
+// ─── Returns pages ──────────────────────────────────────────────────────────
+
+// Logs every button and link pressed; saveAs() is how the portal's pdfMake
+// and FileSaver hand over a file: a blob link clicked in code
+const COMMON = `<script>
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("button, a");
+    if (b) fetch("/log", { method: "POST", body: b.innerText.trim() });
+  }, true);
+  function saveAs(blob, name) {
+    const a = document.createElementNS("http://www.w3.org/1999/xhtml", "a");
+    a.download = name;
+    a.href = URL.createObjectURL(blob);
+    setTimeout(() => a.dispatchEvent(new MouseEvent("click")), 0);
+  }
+</script>`;
+
+const page = (title, body) => [html(title, COMMON + body)];
+
+// Return boxes as the real dashboard template draws them
+const tile = (title, name, inner) => `<div class="col-sm-4"><div><a><div class="hd"><p class="inv">${title}</p><p>${name}</p></div></a><div class="ct">${inner}</div></div></div>`;
+const TILES = {
+  "092026": [
+    tile("Details of outward supplies of goods or services", "GSTR-1", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button onclick="go('/returns/auth/gstr1')">VIEW</button></div><div><button onclick="show1json()">Download</button></div></div>`),
+    tile("Auto - drafted ITC Statement for the month", "GSTR-2B", `<div class="row"><div><button>View</button></div><div><button onclick="go2b()">Download</button></div></div>`),
+    tile("Monthly Return", "GSTR-3B", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button>VIEW GSTR3B</button></div><div><button onclick="saveAs(new Blob(['%PDF-1.4 GSTR-3B 092026'], { type: 'application/pdf' }), 'GSTR3B_23AAFFC2640H1ZX_092026.pdf')">Download</button></div></div>`),
+  ],
+  // Not filed: GSTR-1 submitted (FILE GSTR1 where VIEW is), GSTR-3B not filed (Prepare Online / Prepare offline where VIEW / Download are)
+  "102026": [
+    tile("Details of outward supplies of goods or services", "GSTR-1", `<p class="f-wt">Status- <span>Submitted</span></p><div class="row"><div><button>FILE GSTR1</button></div><div><button>Download</button></div></div>`),
+    tile("Monthly Return", "GSTR-3B", `<p>Due Date - <span>20/11/2026</span></p><div class="row"><div><button>Prepare Online</button></div><div><button>Prepare offline</button></div></div>`),
+  ],
+};
+
+function returnsPage(path, url, state) {
+  if (path === "/return.gst.gov.in/returns/auth/dashboard") {
+    // The Aadhaar pop-up comes once a session
+    const remind = !state.reminded;
+    state.reminded = true;
+    return page(
+      "Dashboard",
+      `${remind ? '<div id="adhr"><a onclick="this.parentElement.remove()">REMIND ME LATER</a></div>' : ""}
+      <form onsubmit="event.preventDefault(); search()">
+        <div><label>Financial Year</label><select name="fin"></select></div>
+        <div id="q"></div>
+        <div><label>Period</label><select name="mon"></select></div>
+        <div><button class="srchbtn" type="submit">Search</button></div>
+      </form>
+      <div id="tiles"></div><div id="offline"></div>
+      <script>
+        const TILES = ${JSON.stringify(TILES)};
+        const go = (p) => { location.href = p; };
+        const fill = (sel, list) => { sel.innerHTML = list.map((t, i) => '<option value="object:' + (200 + i) + '">' + t + '</option>').join(""); };
+        const fin = document.querySelector('select[name="fin"]');
+        const mon = document.querySelector('select[name="mon"]');
+        // Like Angular, the lists fill a moment later, the months once the quarter is chosen
+        setTimeout(() => {
+          fill(fin, ["2025-26", "2026-27"]);
+          document.getElementById("q").innerHTML = '<label>Quarter</label><select name="quarter"></select>';
+          const q = document.querySelector('select[name="quarter"]');
+          fill(q, ["Quarter 1 (Apr - Jun)", "Quarter 2 (Jul - Sep)", "Quarter 3 (Oct - Dec)"]);
+          q.addEventListener("change", () => setTimeout(() => fill(mon, q.selectedIndex === 1 ? ["July", "August", "September"] : q.selectedIndex === 2 ? ["October", "November"] : ["April"]), 300));
+        }, 300);
+        function search() {
+          const text = mon.options[mon.selectedIndex]?.text;
+          const prd = { September: "092026", October: "102026" }[text];
+          sessionStorage.setItem("prd", prd);
+          document.getElementById("offline").innerHTML = "";
+          setTimeout(() => { document.getElementById("tiles").innerHTML = (TILES[prd] ?? []).join(""); }, 400);
+        }
+        function go2b() {
+          const f = document.createElement("form");
+          f.method = "POST"; f.action = "https://gstr2b.gst.gov.in/gstr2b/auth/gstr2bdwld";
+          document.body.appendChild(f); f.submit();
+        }
+        async function show1json() {
+          document.getElementById("tiles").innerHTML = "";
+          const state = await (await fetch("/json-state")).json();
+          document.getElementById("offline").innerHTML =
+            '<button onclick="gen()">Generate JSON File to Download</button>' +
+            (state.ready ? '<div><a target="_blank" href="/returns/auth/api/offline/download/url?rtn_prd=092026&rtn_typ=GSTR1&file_num=1"><span>Click here to download - File 1</span></a></div>' : "");
+        }
+        async function gen() {
+          await fetch("/json-generate", { method: "POST" });
+          document.getElementById("offline").insertAdjacentHTML("beforeend", "<p>Your request for generation of JSON file has been accepted. Kindly wait for 20 minutes.</p>");
+        }
+      </script>`
+    );
+  }
+  if (path === "/return.gst.gov.in/json-state") return [JSON.stringify({ ready: state.jsonAsked > 0 }), "application/json"];
+  if (path === "/return.gst.gov.in/json-generate") {
+    state.jsonAsked++;
+    return ["{}", "application/json"];
+  }
+  if (path === "/return.gst.gov.in/returns/auth/api/offline/download/url") return [`PK\u0003\u0004 GSTR1 JSON ${url.searchParams.get("rtn_prd")}`, "application/zip"];
+  if (path === "/return.gst.gov.in/returns/auth/gstr1") {
+    return page(
+      "GSTR-1",
+      `<div id="g"></div><script>
+        setTimeout(() => {
+          document.getElementById("g").innerHTML = '<button onclick="sum()"><span style="display:none">GENERATE SUMMARY</span><span>VIEW SUMMARY</span></button>';
+        }, 300);
+        function sum() {
+          document.getElementById("g").innerHTML = '<button onclick="pdf()"><span style="display:none">DOWNLOAD SUMMARY (PDF)</span><span>DOWNLOAD (PDF)</span></button><button>File Statement</button>';
+        }
+        function pdf() {
+          const prd = sessionStorage.getItem("prd");
+          setTimeout(() => saveAs(new Blob(["%PDF-1.4 GSTR-1 " + prd], { type: "application/pdf" }), "GSTR1_23AAFFC2640H1ZX_" + prd + ".pdf"), 500);
+        }
+      </script>`
+    );
+  }
+  if (path === "/gstr2b.gst.gov.in/gstr2b/auth/gstr2bdwld") {
+    return page(
+      "GSTR2B",
+      `<app-root></app-root><script>
+        setTimeout(() => {
+          document.querySelector("app-root").innerHTML = '<div><button onclick="dl()">GENERATE JSON FILE TO DOWNLOAD</button><button>GENERATE EXCEL FILE TO DOWNLOAD</button></div>';
+        }, 300);
+        function dl() {
+          saveAs(new Blob([JSON.stringify({ data: { gstin: "23AAFFC2640H1ZX", rtnprd: "092026" } })], { type: "application/json" }), "092026_23AAFFC2640H1ZX_GSTR2B.json");
+        }
+      </script>`
+    );
+  }
+  return null;
 }

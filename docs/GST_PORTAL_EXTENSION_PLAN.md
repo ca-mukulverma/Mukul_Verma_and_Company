@@ -1,7 +1,7 @@
 # GST portal downloads with a browser extension: plan
 
-Status: **stages 1 and 2 built** (Nov 2026; see [Progress](#progress)), the
-rest planned. This document is the brief for the sessions that build it. It replaces the helper-PC design that
+Status: **stages 1–3 built, 4 and 5 in part** (Nov 2026; see
+[Progress](#progress)), the rest planned. This document is the brief for the sessions that build it. It replaces the helper-PC design that
 was built and then removed (see [Background](#1-background)).
 
 ## Contents
@@ -484,6 +484,64 @@ settings are one built-in version for now (`src/lib/gst-portal-settings.ts`,
 from the helper's selectors); stage 6 moves them to the database. Test:
 `node --test tests/gst-extension/e2e.test.mjs` (Playwright loads the unpacked
 extension against a mock portal and a stand-in app page).
+
+**Stage 0 (discovery, Nov 2026).** The admin recorded each download on the
+real portal with Chrome's Recorder plus the network log (HAR): GSTR-1 PDF,
+GSTR-1 JSON generate and download, GSTR-2B JSON and GSTR-3B PDF for Sep 2026,
+and GSTR-3B of Oct 2026 (not filed). Findings, from the recordings and the
+portal's own page templates and scripts in the HAR:
+
+- Returns Dashboard (`return.gst.gov.in/returns/auth/dashboard`, reachable
+  directly): Financial Year, Quarter (some taxpayers/years) and Period
+  drop-downs (`select[name=fin|quarter|mon]`, Angular, option values like
+  `object:208` change every load, so options are picked by their text),
+  then Search.
+- Each return's box: the name ("GSTR-1", "GSTR-3B", "GSTR-2B") over a
+  status line and buttons. **Filed** (`FIL`): "Status- Filed", VIEW /
+  Download. **Not filed** (`NF`): "Due Date - …", **Prepare Online /
+  Prepare Offline**. **Submitted** (`FRZ`): **FILE GSTR1 / FILE GSTR3B**
+  where VIEW was. The recorder saved clicks by position ("second button of
+  the box"), which on an unfiled month presses Prepare Offline (or FILE),
+  with no error shown. So steps find buttons by text inside the right box,
+  the box must show "Status- Filed" (GSTR-1, GSTR-3B), and a fixed list of
+  buttons (file, submit, prepare, reset, proceed, sign, EVC, DSC, payment…)
+  is never clicked.
+- GSTR-3B PDF: box → Download; built in the page (pdfMake → blob → FileSaver).
+- GSTR-1 PDF: box → VIEW (new page `/returns/auth/gstr1`) → VIEW SUMMARY →
+  DOWNLOAD (PDF), also pdfMake. Unfiled shows "DOWNLOAD SUMMARY (PDF)".
+- GSTR-1 JSON: box → Download → GENERATE JSON FILE TO DOWNLOAD; later the
+  same page lists "Click here to download - File N", links to
+  `/returns/auth/api/offline/download/url?rtn_prd=…&rtn_typ=GSTR1&file_num=N`.
+- GSTR-2B JSON: box → Download (form POST to
+  `gstr2b.gst.gov.in/gstr2b/auth/gstr2bdwld`) → GENERATE JSON FILE TO
+  DOWNLOAD (made in the page).
+- The Aadhaar pop-up's REMIND ME LATER comes once a session: closed
+  whenever it shows, never a step.
+- The HAR did not include the answers of the background requests, so the
+  fast route (stage 8) still needs them; the GSTR-1 JSON link's answer (file,
+  redirect or JSON with an address) is handled all three ways but is to be
+  confirmed on the first real run.
+
+**Stage 3 (built; GSTR-2B JSON and GSTR-1 JSON from stages 4–5 too).**
+Portal settings version 1 (`src/lib/gst-portal-settings.ts`) holds the
+dashboard drop-downs, the box names, the filed status, a recipe per file
+(`click` / `file` / `links` / `generate` steps, matched by text in the box or
+page) and the texts (pop-ups to close, never-click, not available, session
+expired, JSON pending). `public/gst-extension/portal.js` runs one step at a
+time in the portal page (page world, so it catches the blob the page makes
+for a pdfMake / FileSaver download, cancelling the browser download);
+`background.js` (`gst-fetch`) opens the dashboard, chooses the period,
+checks the box, runs the steps across page loads and returns the bytes. The
+app (`gst-portal.tsx`) starts once the login is done, fetches the ticked
+files one by one, hands each to Upload documents (`portal-files.ts`) and logs
+out when done; the extension logs out by itself after `idleLogoutMinutes` if
+a download run goes quiet. GSTR-1 JSON asked for is remembered in the
+browser for 3 hours, and the portal's own "being prepared" text is checked,
+so it is never asked twice. Not yet: GSTR-1A, GSTR-2B PDF / Excel, the
+background wait for GSTR-1 JSON, the round (stage 10). Test:
+`node --test tests/gst-extension/e2e.test.mjs` (mock portal built like the
+real one: a filed and an unfiled month; checks that no Prepare / File button
+is ever pressed).
 
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
