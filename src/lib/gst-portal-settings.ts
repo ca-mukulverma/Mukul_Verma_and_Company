@@ -25,16 +25,19 @@ export interface PortalTarget {
 // One step after the return's box has been found and checked:
 //   click     click the target; with `url`, wait for the tab to reach it
 //   file      click the target and catch the file the page makes
-//   links     fetch every link matching the target (GSTR-1 JSON parts);
-//             none there: go on to the next step
-//   generate  (changes portal state) ask the portal to prepare the file,
-//             unless it already says it is preparing one
+//   generate  click the target once (GSTR-1 JSON's Generate button): the
+//             portal answers with the download links of a JSON it has
+//             prepared already (fetched, every part), or starts preparing
+//             one (collected on a later run). Never clicked twice in a visit:
+//             a second click asks the portal to make a new file.
 export interface PortalStep {
-  kind: "click" | "file" | "links" | "generate";
+  kind: "click" | "file" | "generate";
   target: PortalTarget;
   // Inside the return's box on the dashboard, or anywhere on the page
   scope: "tile" | "page";
   url?: string;
+  // generate: the links the portal shows once the file is ready
+  links?: PortalTarget;
 }
 
 export interface PortalRecipe {
@@ -132,16 +135,22 @@ export const BUILT_IN_SETTINGS: PortalSettings = {
         { kind: "file", scope: "page", target: { text: anyLabel("download\\s*\\(pdf\\)") } },
       ],
     },
-    // Box: DOWNLOAD → the links "Click here to download - File 1…" if the
-    // JSON asked for earlier is ready, else GENERATE JSON FILE TO DOWNLOAD
-    // (ready about 20 minutes later; collected on the next run)
+    // Box: DOWNLOAD → GENERATE JSON FILE TO DOWNLOAD. The portal's page
+    // (main.js, offline download) asks /offline/download/generate on each
+    // click: with a JSON prepared already it answers with the links "Click
+    // here to download - File 1…" (to /returns/auth/api/offline/download/url),
+    // otherwise it starts preparing one (about 20 minutes)
     GSTR1_JSON: {
       tile: "GSTR1",
       filed: true,
       steps: [
         { kind: "click", scope: "tile", target: { text: anyLabel("download") } },
-        { kind: "links", scope: "page", target: { text: "click\\s*here\\s*to\\s*download\\s*-?\\s*file\\s*\\d+" } },
-        { kind: "generate", scope: "page", target: { text: anyLabel("generate\\s*json\\s*file\\s*to\\s*download") } },
+        {
+          kind: "generate",
+          scope: "page",
+          target: { text: anyLabel("generate\\s*json\\s*file\\s*to\\s*download") },
+          links: { text: "click\\s*here\\s*to\\s*download\\s*-?\\s*file\\s*\\d+" },
+        },
       ],
     },
     // Box: DOWNLOAD → GENERATE JSON FILE TO DOWNLOAD on gstr2b.gst.gov.in

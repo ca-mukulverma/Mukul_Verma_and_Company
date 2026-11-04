@@ -188,7 +188,7 @@ const KIND_LABELS: Record<PortalFile, string> = {
 };
 
 // One ticked file in a download run
-type FetchState = "waiting" | "fetching" | "saving" | "saved" | "not-filed" | "not-available" | "requested" | "pending" | "not-taught" | "skipped" | "error";
+type FetchState = "waiting" | "fetching" | "saving" | "saved" | "downloaded" | "not-filed" | "not-available" | "requested" | "pending" | "not-taught" | "skipped" | "error";
 
 interface FetchRow {
   kind: PortalFile;
@@ -203,6 +203,7 @@ const FETCH_TEXT: Record<FetchState, string> = {
   fetching: "Fetching…",
   saving: "Saving…",
   saved: "Saved",
+  downloaded: "In Downloads",
   "not-filed": "Not filed on the portal",
   "not-available": "Not on the portal",
   requested: "JSON asked for",
@@ -214,14 +215,16 @@ const FETCH_TEXT: Record<FetchState, string> = {
 
 const FETCH_STYLE: Partial<Record<FetchState, string>> = {
   saved: "text-emerald-700 dark:text-emerald-400",
+  downloaded: "text-amber-800 dark:text-amber-300",
   "not-filed": "text-amber-800 dark:text-amber-300",
   requested: "text-sky-700 dark:text-sky-400",
   pending: "text-sky-700 dark:text-sky-400",
   error: "text-red-700 dark:text-red-400",
 };
 
-// GSTR-1 JSON asked for on the portal, per client and month, in this
-// browser: the next run collects it instead of asking again
+// When GSTR-1 JSON was asked for on the portal, per client and month, in
+// this browser, to tell staff on the next run (the portal itself decides
+// whether it is ready: each Generate click answers with its links if so)
 const ASKED_KEY = "gst-json-asked";
 const ASKED_FOR_MS = 3 * 60 * 60_000;
 
@@ -301,7 +304,7 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
         }
         setRow(key, { state: "fetching", message: null });
         const asked = f.kind === "GSTR1_JSON" ? askedAt(clientId, f.month) : null;
-        const answer = await portalFetch(runId, { kind: f.kind, month: f.month, label: f.label, ...(asked && { noGenerate: true }) });
+        const answer = await portalFetch(runId, { kind: f.kind, month: f.month, label: f.label });
         if (!answer.ok) {
           setRow(key, { state: "error", message: answer.error ?? "The GST extension couldn't fetch it" });
           if (/log in|not open|didn't answer/i.test(answer.error ?? "")) stop = "The portal login ended";
@@ -309,23 +312,45 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
         }
         const message = answer.message ?? null;
         switch (answer.result) {
-          case "file": {
+          case "file":
+          case "downloaded": {
             if (f.kind === "GSTR1_JSON") setAsked(clientId, f.month, null);
+            if (answer.result === "downloaded" && !answer.files?.length) {
+              setRow(key, { state: "downloaded", message });
+              break;
+            }
             const period = `${f.month.slice(5, 7)}${f.month.slice(0, 4)}`;
             const fetched = (answer.files ?? []).map((x, i) => toFile(x, `${f.kind}_${gstin}_${period}${(answer.files?.length ?? 0) > 1 ? `_${i + 1}` : ""}`));
             setRow(key, { state: "saving", message: null });
             saves.push(
               sendPortalFiles(fetched).then(
                 (placed) =>
-                  setRow(key, placed ? { state: "saved", message: fetched.map((x) => x.name).join(", ") } : { state: "error", message: "Upload documents isn't on this page" }),
+                  setRow(
+                    key,
+                    !placed
+                      ? { state: "error", message: "Upload documents isn't on this page" }
+                      : answer.result === "downloaded"
+                        ? { state: "downloaded", message }
+                        : { state: "saved", message: fetched.map((x) => x.name).join(", ") }
+                  ),
                 (e) => setRow(key, { state: "error", message: apiError(e, "Couldn't save it") })
               )
             );
             break;
           }
           case "requested":
-            setAsked(clientId, f.month, Date.now());
-            setRow(key, { state: "requested", message: "The portal prepares it in about 20 minutes: download again after that to collect it." });
+            if (!asked) setAsked(clientId, f.month, Date.now());
+            setRow(key, {
+              state: asked ? "pending" : "requested",
+              message: [
+                message && `Portal: ${message}`,
+                asked
+                  ? `First asked at ${new Date(asked).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}; download again in a few minutes.`
+                  : "The portal prepares it in about 20 minutes: download again after that to collect it.",
+              ]
+                .filter(Boolean)
+                .join(" "),
+            });
             break;
           case "pending":
             setRow(key, {

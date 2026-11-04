@@ -431,7 +431,7 @@ What works now:
 - **Compliance → GST downloads**: for a month, every client whose GST files
   aren't all saved, with filters (My clients, GSTR-1 / 3B / 2B, Quarterly).
 - **Download N files from the GST portal** in the same box, with the **GST
-  extension** (0.3.0 or later) installed (Chrome or Edge; the box shows the
+  extension** (0.3.1 or later) installed (Chrome or Edge; the box shows the
   install steps): a portal tab opens next to the app with the client's saved
   GST login filled in (the first credential with "GST" in its title, not the
   e-way bill / e-invoice one) and the cursor in the captcha. Staff type the
@@ -445,7 +445,9 @@ What works now:
   offers Prepare Online / Prepare Offline, or FILE once submitted, instead of
   View / Download: nothing is clicked and the reason is shown), **Not on the
   portal**, **JSON asked for** (GSTR-1 JSON: the portal prepares it in about
-  20 minutes; the next Download collects it without asking again), **Download
+  20 minutes; the next Download collects every part), **In Downloads** (the
+  portal didn't let the extension read the file, so Chrome saved it to the
+  Downloads folder: upload it with Upload documents), **Download
   by hand** (GSTR-1A, not taught yet) or an error.
 
 ## Overview and notifications

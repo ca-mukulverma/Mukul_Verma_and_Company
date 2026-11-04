@@ -49,6 +49,12 @@ async function mvcPortalStep(step, ctx) {
     }
   };
   const expired = () => first(ctx.sessionExpired);
+  // The portal's message boxes (success / danger), as shown now
+  const alerts = () =>
+    [...document.querySelectorAll(".alert, alert-message, [role=alert], .msg")]
+      .filter(visible)
+      .map((a) => ({ text: text(a).replace(/^×\s*/, ""), danger: /danger|error/i.test(`${a.className} ${a.getAttribute("type") ?? ""}`) }))
+      .filter((a) => a.text);
   async function waitFor(get, ms) {
     const end = Date.now() + ms;
     for (;;) {
@@ -235,32 +241,45 @@ async function mvcPortalStep(step, ctx) {
         return { file: { name: got.name, type: blob.type, base64: await toBase64(blob) } };
       }
 
-      case "links": {
-        // Wait a moment for the page; no links is a normal answer
-        const links = (await waitFor(() => {
-          const found = findAll(document, step.target);
-          return found.length ? found : first(ctx.jsonPending) ? [] : null;
-        }, 8000)) ?? [];
-        const files = [];
-        for (const [i, a] of links.entries()) {
-          const href = a.href || a.closest("a")?.href;
-          if (!href) continue;
-          files.push(await fetchFile(href, `${ctx.returnLabel}_${ctx.period}_file${i + 1}.zip`));
-        }
-        return files.length ? { files } : { links: [] };
-      }
-
       case "generate": {
-        const pending = first(ctx.jsonPending);
-        if (pending) return { result: "pending", message: pending };
+        // One click per visit: the portal answers with the links of a file it
+        // has ready, or starts making one; a second click would make a new one
         const el = await waitFor(() => find(document, step.target), 15000);
         if (!el) return { error: `"${step.target.text}" wasn't found on the portal page` };
-        const before = counts([...(ctx.jsonPending ?? []), ...(ctx.notAvailable ?? [])]);
+        const before = new Set(alerts().map((a) => a.text));
+        const linksBefore = step.links ? findAll(document, step.links).length : 0;
+        const patterns = [...(ctx.jsonPending ?? []), ...(ctx.notAvailable ?? [])];
+        const counted = counts(patterns);
         press(el);
         let said = null;
-        await waitFor(() => (said = newMessage([...(ctx.jsonPending ?? []), ...(ctx.notAvailable ?? [])], before)), 6000);
-        if (said && (ctx.notAvailable ?? []).some((s) => re(s).test(said))) return { result: "not-available", message: said.toLowerCase() };
-        return { result: "requested", message: said };
+        let saidAt = 0;
+        const links = await waitFor(() => {
+          const found = step.links ? findAll(document, step.links) : [];
+          if (found.length > linksBefore || (found.length && said)) return found;
+          if (!said) {
+            const fresh = alerts().find((a) => !before.has(a.text));
+            const matched = newMessage(patterns, counted);
+            if (fresh || matched) {
+              said = fresh ?? { text: matched, danger: false };
+              saidAt = Date.now();
+            }
+          }
+          // The links come with the message: give them a moment
+          return said && Date.now() - saidAt > 3000 ? "message" : null;
+        }, 30000);
+        if (Array.isArray(links)) {
+          const files = [];
+          for (const [i, a] of links.entries()) {
+            const href = a.href || a.closest("a")?.href;
+            if (!href) continue;
+            files.push(await fetchFile(href, `GSTR1_${ctx.period}_file${i + 1}.zip`));
+          }
+          if (files.length) return { files };
+        }
+        const message = said?.text ?? null;
+        if (message && (ctx.notAvailable ?? []).some((s) => re(s).test(message))) return { result: "not-available", message };
+        if (said?.danger) return { error: `The portal said: ${message}` };
+        return { result: "requested", message };
       }
     }
     return { error: `Unknown step ${step.kind}` };
@@ -269,30 +288,36 @@ async function mvcPortalStep(step, ctx) {
   }
 
   // A link to the file (or to a JSON that names the file's address), fetched
-  // in the page with its login; addresses the page may not read (another
-  // site) are handed back for the worker to fetch
+  // in the page with its login. When the page may not read the answer (the
+  // portal sends the file from another address), the worker tries.
   async function fetchFile(href, fallback) {
+    let response;
     try {
-      const response = await fetch(href, { credentials: "include" });
-      if (!response.ok) return { href, error: `HTTP ${response.status}` };
-      const type = response.headers.get("content-type") ?? "";
-      if (/json/i.test(type)) {
-        const body = await response.clone().json().catch(() => null);
-        const url = body?.data?.url ?? body?.url ?? (typeof body?.data === "string" && /^https?:/.test(body.data) ? body.data : null);
-        if (url) {
-          try {
-            const inner = await fetch(url, { credentials: "include" });
-            if (inner.ok) return { name: nameFrom(inner, fallback), type: inner.headers.get("content-type") ?? "", base64: await toBase64(await inner.blob()) };
-          } catch {
-            // Another site: the worker fetches it
-          }
-          return { href: url, name: fallback };
-        }
-      }
-      if (/text\/html/i.test(type)) return { href, error: "The portal answered with a page instead of the file" };
-      return { name: nameFrom(response, fallback), type, base64: await toBase64(await response.blob()) };
+      response = await fetch(href, { credentials: "include" });
     } catch {
-      return { href, name: fallback };
+      return { href, name: fallback, why: "the page could not read the file's answer" };
     }
+    const type = response.headers.get("content-type") ?? "";
+    const where = `${new URL(response.url).host}${response.redirected ? " after a redirect" : ""}`;
+    if (!response.ok) return { href, name: fallback, why: `the portal answered ${response.status} (${where})` };
+    if (/json/i.test(type)) {
+      const body = await response.clone().json().catch(() => null);
+      const pick = (v) => (Array.isArray(v) ? v[0] : v);
+      const url = [body?.data?.url, body?.url, body?.data?.ul, body?.data].map(pick).find((v) => typeof v === "string" && /^https?:/.test(v));
+      if (url) {
+        try {
+          const inner = await fetch(url, { credentials: "include" });
+          if (inner.ok && !/text\/html/i.test(inner.headers.get("content-type") ?? "")) return { name: nameFrom(inner, fallback), type: inner.headers.get("content-type") ?? "", base64: await toBase64(await inner.blob()) };
+        } catch {
+          // Another site: the worker fetches it
+        }
+        return { href: url, name: fallback, why: "the file's address could not be read from the page" };
+      }
+      // A message instead of the file ({"status":0,"error":{"message":…}})
+      const said = body?.error?.message ?? body?.message ?? body?.data?.msg;
+      if (said) return { href, name: fallback, why: `the portal said: ${said}` };
+    }
+    if (/text\/html/i.test(type)) return { href, name: fallback, why: `the portal answered with a page instead of the file (${where})` };
+    return { name: nameFrom(response, fallback), type, base64: await toBase64(await response.blob()) };
   }
 }

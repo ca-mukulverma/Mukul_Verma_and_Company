@@ -509,9 +509,15 @@ portal's own page templates and scripts in the HAR:
 - GSTR-3B PDF: box → Download; built in the page (pdfMake → blob → FileSaver).
 - GSTR-1 PDF: box → VIEW (new page `/returns/auth/gstr1`) → VIEW SUMMARY →
   DOWNLOAD (PDF), also pdfMake. Unfiled shows "DOWNLOAD SUMMARY (PDF)".
-- GSTR-1 JSON: box → Download → GENERATE JSON FILE TO DOWNLOAD; later the
-  same page lists "Click here to download - File N", links to
-  `/returns/auth/api/offline/download/url?rtn_prd=…&rtn_typ=GSTR1&file_num=N`.
+- GSTR-1 JSON: box → Download → GENERATE JSON FILE TO DOWNLOAD. The links
+  "Click here to download - File N" (to
+  `/returns/auth/api/offline/download/url?rtn_prd=…&rtn_typ=GSTR1&file_num=N`)
+  appear **only as the answer of a Generate click** (`main.js` calls
+  `offline/download/generate`; `rc` = number of parts): the first click starts
+  preparing the file, a click once it is ready answers with the links. A
+  second click in the same visit sends `flag=1`, which makes a new file, so
+  it is clicked once per visit. (Extension 0.3.0 looked for the links before
+  clicking and never collected the JSON; fixed in 0.3.1.)
 - GSTR-2B JSON: box → Download (form POST to
   `gstr2b.gst.gov.in/gstr2b/auth/gstr2bdwld`) → GENERATE JSON FILE TO
   DOWNLOAD (made in the page).
@@ -535,9 +541,11 @@ checks the box, runs the steps across page loads and returns the bytes. The
 app (`gst-portal.tsx`) starts once the login is done, fetches the ticked
 files one by one, hands each to Upload documents (`portal-files.ts`) and logs
 out when done; the extension logs out by itself after `idleLogoutMinutes` if
-a download run goes quiet. GSTR-1 JSON asked for is remembered in the
-browser for 3 hours, and the portal's own "being prepared" text is checked,
-so it is never asked twice. Not yet: GSTR-1A, GSTR-2B PDF / Excel, the
+a download run goes quiet. GSTR-1 JSON: Generate is clicked once per
+visit; the portal answers with the links (every part fetched in the page; if
+the page may not read an answer, the worker fetches it; failing that, Chrome
+saves it to Downloads and staff are told) or starts preparing it. When it was
+first asked for is remembered in the browser for 3 hours, to tell staff. Not yet: GSTR-1A, GSTR-2B PDF / Excel, the
 background wait for GSTR-1 JSON, the round (stage 10). Test:
 `node --test tests/gst-extension/e2e.test.mjs` (mock portal built like the
 real one: a filed and an unfiled month; checks that no Prepare / File button
