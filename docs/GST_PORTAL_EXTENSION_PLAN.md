@@ -560,6 +560,18 @@ background wait for GSTR-1 JSON, the round (stage 10). Test:
 real one: a filed and an unfiled month; checks that no Prepare / File button
 is ever pressed).
 
+**Robustness (extension 0.3.3).** Each file opens the dashboard and waits
+for that load to start and finish (before, a step could run on the page
+that was about to be replaced); the worker is kept awake during slow portal
+answers (Chrome stops an idle extension worker after about 30 seconds); a
+file that fails on a page that changed or loaded badly is tried once more
+from the dashboard (never GSTR-1 JSON once Generate was reached); the
+portal's own error page (`/services/error/…`) and its login page are named
+as such; a fetch left half-done by a worker restart no longer blocks the
+next one. In the app, the box now shows what Upload documents did with each
+file: **Saved**, or **Got it; needs a look** with the reason (period locked,
+GSTIN differs, same file twice…) instead of a plain Saved.
+
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
 address matches `services.gst.gov.in/services/auth/`, and that the logout

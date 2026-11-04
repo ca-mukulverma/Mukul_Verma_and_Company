@@ -16,7 +16,7 @@ import type { WorkType } from "./setup";
 import { apiError, DOC_KIND_LABELS, rupees, STATUS_LABELS } from "./types";
 import { canStore, uploadComplianceFile } from "./upload";
 import { detectReturn, expandFiles, monthFromFolder, type Detected, type InputFile, type ReturnFound } from "./return-detect";
-import { onPortalFiles } from "./portal-files";
+import { onPortalFiles, type PortalSaved } from "./portal-files";
 
 // Upload documents (Compliance → Clients → a client): drop all of a party's
 // PDFs, JSONs, ZIPs, RARs or whole folders at once. Each file is read for its
@@ -236,8 +236,9 @@ export function ReturnUpload({ party, workTypes, onChanged, onAddGstin }: Props)
   // Uploaded without asking: ticked, and nothing in it was guessed
   const sure = (row: Row) => row.include && !row.detected?.monthGuessed && (!!row.workTypeId || !row.detected?.found);
 
-  const read = async (inputs: InputFile[]) => {
-    if (!inputs.length) return;
+  // What happened to each file read (for the GST portal box)
+  const read = async (inputs: InputFile[]): Promise<PortalSaved[]> => {
+    if (!inputs.length) return [];
     setReading("Opening the files…");
     let fresh: Row[] = [];
     try {
@@ -295,9 +296,17 @@ export function ReturnUpload({ party, workTypes, onChanged, onAddGstin }: Props)
       if (folderRef.current) folderRef.current.value = "";
     }
     const now = fresh.filter(sure);
-    if (now.length) await upload(now);
+    const uploaded = now.length ? await upload(now) : new Map<number, PortalSaved>();
     const waiting = fresh.length - now.length;
     if (waiting) toast.info(`${waiting} file(s) need a look before they are uploaded: see the highlighted rows`);
+    return fresh.map(
+      (r) =>
+        uploaded.get(r.id) ?? {
+          name: r.file.name,
+          ok: false,
+          message: `Needs a look in Upload documents: ${r.error ?? r.warning ?? (r.place && !r.place.ok ? r.place.error : null) ?? (r.idCheck === "mismatch" ? r.idNote ?? "GSTIN differs" : null) ?? (r.detected?.monthGuessed ? "month read from the name" : null) ?? (!r.workTypeId && r.detected?.found ? "no matching work for this client" : null) ?? "check the highlighted row"}`,
+        }
+    );
   };
 
   // Files fetched from the GST portal (the GST portal box below) come in here
@@ -367,6 +376,7 @@ export function ReturnUpload({ party, workTypes, onChanged, onAddGstin }: Props)
   const ticked = rows.filter((r) => r.include && (!r.upload || r.upload === "failed") && r.client);
 
   const upload = async (list: Row[]) => {
+    const results = new Map<number, PortalSaved>();
     setBusy(true);
     const setRow = (id: number, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
     let done = 0;
@@ -403,6 +413,7 @@ export function ReturnUpload({ party, workTypes, onChanged, onAddGstin }: Props)
         const place = row.workTypeId ? placed.get(placeOf(row)) : null;
         if (place && (!place.ok || !place.itemId)) {
           setRow(row.id, { upload: "failed", message: place.ok ? "No period" : place.error });
+          results.set(row.id, { name: row.file.name, ok: false, message: place.ok ? "No period for it" : place.error });
           continue;
         }
         setRow(row.id, { upload: "uploading" });
@@ -417,9 +428,12 @@ export function ReturnUpload({ party, workTypes, onChanged, onAddGstin }: Props)
           if (row.detected?.gst) uploadedGst.add(row.client!.id);
           if (row.workTypeId) uploadedTo.add(placeOf(row));
           setRow(row.id, { upload: "done", place: place ?? row.place, message: result.filed ?? undefined });
+          results.set(row.id, { name: row.file.name, ok: true, message: result.filed ?? null });
           done++;
         } catch (error) {
-          setRow(row.id, { upload: "failed", message: error instanceof Error && !axios.isAxiosError(error) ? error.message : apiError(error) });
+          const failed = error instanceof Error && !axios.isAxiosError(error) ? error.message : apiError(error);
+          setRow(row.id, { upload: "failed", message: failed });
+          results.set(row.id, { name: row.file.name, ok: false, message: failed });
         }
       }
       // Periods locked by an earlier one uploaded later in the batch
@@ -431,6 +445,7 @@ export function ReturnUpload({ party, workTypes, onChanged, onAddGstin }: Props)
       if (done < list.length) toast.error(`${list.length - done} file(s) could not be uploaded: see the red rows`);
     } catch (error) {
       toast.error(apiError(error));
+      for (const row of list) if (!results.has(row.id)) results.set(row.id, { name: row.file.name, ok: false, message: apiError(error) });
     } finally {
       // A past period made for this upload whose files all failed is removed
       // again, so it doesn't show as done without its files
@@ -442,6 +457,7 @@ export function ReturnUpload({ party, workTypes, onChanged, onAddGstin }: Props)
       setBusy(false);
       if (done) onChanged();
     }
+    return results;
   };
 
   const disabled = !!reading || busy || !!adding;
