@@ -93,7 +93,32 @@ async function mvcPortalStep(step, ctx) {
     if (!window.__mvcCapture) {
       const blobs = new Map();
       const got = [];
-      const state = { armed: false, got };
+      // The page's own requests while armed (address, answer; no contents)
+      const net = [];
+      const state = { armed: false, got, net };
+      const note = (method, url, status, type) => {
+        if (!state.armed) return;
+        try {
+          const u = new URL(url, location.href);
+          net.push({ method, path: `${u.host === location.host ? "" : u.host}${u.pathname}`, status, type: (type ?? "").split(";")[0] });
+        } catch {
+          // Not an address
+        }
+      };
+      const pageFetch = window.fetch;
+      window.fetch = function (input, init) {
+        const url = typeof input === "string" ? input : input?.url;
+        const method = (init?.method ?? input?.method ?? "GET").toUpperCase();
+        return pageFetch.apply(this, arguments).then((r) => {
+          note(method, url, r.status, r.headers.get("content-type"));
+          return r;
+        });
+      };
+      const xhrOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function (method, url) {
+        this.addEventListener("loadend", () => note(String(method).toUpperCase(), String(url), this.status, this.getResponseHeader("content-type")));
+        return xhrOpen.apply(this, arguments);
+      };
       const create = URL.createObjectURL;
       URL.createObjectURL = function (obj) {
         const url = create.apply(this, arguments);
@@ -131,6 +156,7 @@ async function mvcPortalStep(step, ctx) {
       window.__mvcCapture = state;
     }
     window.__mvcCapture.got.length = 0;
+    window.__mvcCapture.net.length = 0;
     window.__mvcCapture.armed = true;
     return window.__mvcCapture;
   }
@@ -226,7 +252,10 @@ async function mvcPortalStep(step, ctx) {
           if (why) return { result: "not-available", message: why.toLowerCase() };
           return { error: `"${step.target.text ?? step.target.css}" wasn't found on the portal page (${location.pathname})` };
         }
+        // Pages that load their data first keep the button disabled meanwhile
+        await waitFor(() => !el.disabled && !el.closest("[disabled], .disabled") && el.getAttribute("aria-disabled") !== "true", 30000);
         const capture = arm();
+        const shown = new Set(alerts().map((a) => a.text));
         const before = counts(ctx.notAvailable);
         press(el);
         let why = null;
@@ -235,7 +264,16 @@ async function mvcPortalStep(step, ctx) {
           return capture.got[0] ?? why;
         }, 120000);
         capture.armed = false;
-        if (!got) return { error: "No file came from the portal within 2 minutes" };
+        if (!got) {
+          // What the page did instead, so the next fix is exact
+          const said = alerts()
+            .map((a) => a.text)
+            .filter((t) => !shown.has(t));
+          const asked = capture.net.slice(-4).map((n) => `${n.method} ${n.path} → ${n.status} ${n.type}`);
+          return {
+            error: `No file came from the portal within 2 minutes after "${text(el)}" (${location.host}${location.pathname})${said.length ? `. The page says: ${said.join(" | ")}` : ""}${asked.length ? `. It asked: ${asked.join("; ")}` : ". It asked the portal nothing"}`,
+          };
+        }
         if (typeof got === "string") return got === "session" ? { result: "session-expired", message: expired() } : { result: "not-available", message: got.toLowerCase() };
         const blob = got.blob ?? (await (await fetch(got.href)).blob());
         return { file: { name: got.name, type: blob.type, base64: await toBase64(blob) } };

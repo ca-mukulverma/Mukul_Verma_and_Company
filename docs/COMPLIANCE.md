@@ -431,7 +431,7 @@ What works now:
 - **Compliance → GST downloads**: for a month, every client whose GST files
   aren't all saved, with filters (My clients, GSTR-1 / 3B / 2B, Quarterly).
 - **Download N files from the GST portal** in the same box, with the **GST
-  extension** (0.3.1 or later) installed (Chrome or Edge; the box shows the
+  extension** (0.3.2 or later) installed (Chrome or Edge; the box shows the
   install steps): a portal tab opens next to the app with the client's saved
   GST login filled in (the first credential with "GST" in its title, not the
   e-way bill / e-invoice one) and the cursor in the captcha. Staff type the

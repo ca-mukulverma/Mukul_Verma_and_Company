@@ -286,6 +286,80 @@ async function fetchHere(link) {
   return { name: named ? decodeURIComponent(named.trim()) : link.name, type, base64: btoa(raw) };
 }
 
+// The bytes of a blob: / data: address, read in the portal page that made it
+async function bytesInPage(tabId, url) {
+  const [answer] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [url],
+    func: async (href) => {
+      try {
+        const blob = await (await fetch(href)).blob();
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let raw = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) raw += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return { type: blob.type, base64: btoa(raw) };
+      } catch (error) {
+        return { error: String(error?.message ?? error) };
+      }
+    },
+  });
+  return answer?.result ?? { error: "the page didn't answer" };
+}
+
+const PORTAL_BLOB = /^blob:https:\/\/([a-z0-9-]+\.)*gst\.gov\.in\//i;
+const baseName = (path) => (path ?? "").split(/[\\/]/).pop() ?? "";
+
+// A file step, also catching a file the page hands to Chrome as a normal
+// download (a link or address the in-page catch doesn't see, a new tab, a
+// server attachment): its bytes are read and the download removed again.
+// Tabs the portal opens meanwhile are closed.
+async function fileStep(tabId, st, ctx) {
+  let seen;
+  const download = new Promise((resolve) => (seen = resolve));
+  const opened = [];
+  const onCreated = (item) => {
+    if (PORTAL.test(item.url) || PORTAL_BLOB.test(item.url) || PORTAL.test(item.referrer ?? "") || /^data:/i.test(item.url)) seen(item);
+  };
+  const onTab = (tab) => {
+    if (tab.openerTabId === tabId) opened.push(tab.id);
+  };
+  // The name the page gave the file (the saved name can differ)
+  const names = new Map();
+  const onName = (item, suggest) => {
+    names.set(item.id, item.filename);
+    suggest();
+  };
+  chrome.downloads.onCreated.addListener(onCreated);
+  chrome.downloads.onDeterminingFilename?.addListener(onName);
+  chrome.tabs.onCreated.addListener(onTab);
+  try {
+    const page = step(tabId, st, ctx);
+    page.catch(() => undefined);
+    const first = await Promise.race([page.then((answer) => ({ answer })), download.then((item) => ({ item }))]);
+    if (first.answer) return first.answer;
+    const item = first.item;
+    // The name is known once Chrome has chosen where to save it
+    await new Promise((r) => setTimeout(r, 400));
+    const [now] = await chrome.downloads.search({ id: item.id }).catch(() => []);
+    const named = (n) => (/\.[a-z0-9]{2,5}$/i.test(n) ? n : "");
+    const name = named(baseName(names.get(item.id))) || named(baseName(now?.filename)) || named(baseName(new URL(item.finalUrl || item.url).pathname));
+    const got = /^(blob|data):/i.test(item.url) ? await bytesInPage(tabId, item.url) : await fetchHere({ href: item.finalUrl || item.url, name });
+    if (!got.base64) {
+      return { result: "downloaded", message: `The portal saved it to this computer's Downloads folder (${got.error}): upload it with Upload documents.` };
+    }
+    await chrome.downloads.cancel(item.id).catch(() => undefined);
+    if (now?.state === "complete") await chrome.downloads.removeFile(item.id).catch(() => undefined);
+    await chrome.downloads.erase({ id: item.id }).catch(() => undefined);
+    return { file: { name: got.name || name, type: got.type ?? item.mime ?? "", base64: got.base64 } };
+  } finally {
+    chrome.downloads.onCreated.removeListener(onCreated);
+    chrome.downloads.onDeterminingFilename?.removeListener(onName);
+    chrome.tabs.onCreated.removeListener(onTab);
+    for (const id of opened) await closeTab(id);
+  }
+}
+
 // Last resort: Chrome saves it to the Downloads folder like a click would
 async function saveToDownloads(links) {
   const saved = [];
@@ -341,7 +415,7 @@ async function fetchFile(message, run) {
     const steps = [{ kind: "period" }, { kind: "tile", filed: recipe.filed }, ...recipe.steps];
     for (const st of steps) {
       await pause();
-      const answer = await step(tabId, st, ctx);
+      const answer = st.kind === "file" ? await fileStep(tabId, st, ctx) : await step(tabId, st, ctx);
       if (answer.error) return done({ result: "error", message: answer.error });
       if (answer.result) return done(answer);
       if (answer.file) return done({ result: "file", files: [answer.file] });
