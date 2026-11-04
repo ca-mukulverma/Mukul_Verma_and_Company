@@ -227,7 +227,9 @@ async function mvcPortalStep(step, ctx) {
       case "click": {
         const root = step.scope === "tile" ? await waitFor(findTile, 15000) : document;
         if (!root) return { error: `The ${ctx.returnLabel} box went away` };
-        const el = await waitFor(() => find(root, step.target), 20000);
+        const el = await waitFor(() => find(root, step.target) ?? (step.orFile ? find(root, step.orFile) : null), (step.waitSeconds ?? 20) * 1000);
+        // The page shows the file's own button instead: the worker catches it
+        if (el && step.orFile && !re(step.target.text ?? "^$").test(text(el))) return { fileInstead: true };
         if (!el) {
           const why = first(ctx.notAvailable);
           if (why) return { result: "not-available", message: why.toLowerCase() };
@@ -246,7 +248,7 @@ async function mvcPortalStep(step, ctx) {
       case "file": {
         const root = step.scope === "tile" ? await waitFor(findTile, 15000) : document;
         if (!root) return { error: `The ${ctx.returnLabel} box went away` };
-        const el = await waitFor(() => find(root, step.target), 20000);
+        const el = await waitFor(() => find(root, step.target), (step.waitSeconds ?? 20) * 1000);
         if (!el) {
           const why = first(ctx.notAvailable);
           if (why) return { result: "not-available", message: why.toLowerCase() };

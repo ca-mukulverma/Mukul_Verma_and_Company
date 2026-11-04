@@ -67,7 +67,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.3");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.4");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -146,6 +146,11 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   assert.equal(r1.result, "file", r1.message);
   assert.match(text(r1.files[0]), /GSTR-1 092026/);
   assert.equal(portal.state.failGstr1Once, false);
+
+  // A NIL GSTR-1: the page's DOWNLOAD FILED (PDF) stands in for VIEW SUMMARY
+  const nil = await fetchFile(runId, "GSTR1_PDF", "2026-07");
+  assert.equal(nil.result, "file", nil.message);
+  assert.match(text(nil.files[0]), /GSTR-1 NIL 072026/);
 
   // The portal's own error page is named, not a blind timeout
   const err = await fetchFile(runId, "GSTR3B_PDF", "2026-08");

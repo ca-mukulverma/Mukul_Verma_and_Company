@@ -158,6 +158,10 @@ const TILES = {
     tile("Auto - drafted ITC Statement for the month", "GSTR-2B", `<div class="row"><div><button>View</button></div><div><button onclick="go2b()">Download</button></div></div>`),
     tile("Monthly Return", "GSTR-3B", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button>VIEW GSTR3B</button></div><div><button onclick="saveAs(new Blob(['%PDF-1.4 GSTR-3B 092026'], { type: 'application/pdf' }), 'GSTR3B_23AAFFC2640H1ZX_092026.pdf')">Download</button></div></div>`),
   ],
+  // A NIL GSTR-1: its page has DOWNLOAD FILED (PDF) and no VIEW SUMMARY
+  "072026": [
+    tile("Details of outward supplies of goods or services", "GSTR-1", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button onclick="go('/returns/auth/gstr1')">VIEW</button></div><div><button>Download</button></div></div>`),
+  ],
   // The portal's own failure: its Download goes to the system error page
   "082026": [
     tile("Monthly Return", "GSTR-3B", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button>VIEW GSTR3B</button></div><div><button onclick="location.href='https://services.gst.gov.in/services/error/system'">Download</button></div></div>`),
@@ -200,7 +204,7 @@ function returnsPage(path, url, state) {
         }, 300);
         function search() {
           const text = mon.options[mon.selectedIndex]?.text;
-          const prd = { August: "082026", September: "092026", October: "102026" }[text];
+          const prd = { July: "072026", August: "082026", September: "092026", October: "102026" }[text];
           sessionStorage.setItem("prd", prd);
           document.getElementById("offline").innerHTML = "";
           setTimeout(() => { document.getElementById("tiles").innerHTML = (TILES[prd] ?? []).join(""); }, 400);
@@ -250,8 +254,13 @@ function returnsPage(path, url, state) {
       "GSTR-1",
       `<div id="g"></div><script>
         setTimeout(() => {
-          document.getElementById("g").innerHTML = '<button onclick="sum()"><span style="display:none">GENERATE SUMMARY</span><span>VIEW SUMMARY</span></button>';
+          document.getElementById("g").innerHTML = sessionStorage.getItem("prd") === "072026"
+            ? '<button onclick="nilPdf()">DOWNLOAD FILED (PDF)</button>'
+            : '<button onclick="sum()"><span style="display:none">GENERATE SUMMARY</span><span>VIEW SUMMARY</span></button>';
         }, 300);
+        function nilPdf() {
+          saveAs(new Blob(["%PDF-1.4 GSTR-1 NIL 072026"], { type: "application/pdf" }), "GSTR1_23AAFFC2640H1ZX_072026.pdf");
+        }
         function sum() {
           document.getElementById("g").innerHTML = '<button onclick="pdf()"><span style="display:none">DOWNLOAD SUMMARY (PDF)</span><span>DOWNLOAD (PDF)</span></button><button>File Statement</button>';
         }

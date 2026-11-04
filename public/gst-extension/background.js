@@ -471,7 +471,9 @@ async function attemptFile(tabId, s, recipe, ctx, onGenerate) {
   for (const st of steps) {
     await pause();
     if (st.kind === "generate") onGenerate();
-    const answer = st.kind === "file" ? await fileStep(tabId, st, ctx) : await step(tabId, st, ctx);
+    let answer = st.kind === "file" ? await fileStep(tabId, st, ctx) : await step(tabId, st, ctx);
+    // A click step whose page shows the file's button instead (NIL GSTR-1)
+    if (answer.fileInstead) answer = await fileStep(tabId, { kind: "file", scope: st.scope, target: st.orFile, waitSeconds: 10 }, ctx);
     if (answer.error) {
       // The page left for the portal's error or login page during the step:
       // let the new page arrive, then look where the tab is
