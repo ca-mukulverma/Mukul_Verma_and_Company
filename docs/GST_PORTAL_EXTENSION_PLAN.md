@@ -508,7 +508,12 @@ portal's own page templates and scripts in the HAR:
   is never clicked.
 - GSTR-3B PDF: box → Download; built in the page (pdfMake → blob → FileSaver).
 - GSTR-1 PDF: box → VIEW (new page `/returns/auth/gstr1`) → VIEW SUMMARY →
-  DOWNLOAD (PDF), also pdfMake. Unfiled shows "DOWNLOAD SUMMARY (PDF)".
+  DOWNLOAD (PDF), also pdfMake. Unfiled shows "DOWNLOAD SUMMARY (PDF)". A
+  **NIL** return's page (`isnil == 'Y'`, `summaryv3.html`) has no VIEW
+  SUMMARY but **DOWNLOAD FILED (PDF)** (`generateNILGstr1Pdf`); the recipe's
+  click step takes it as the file's button (`orFile`; extension 0.3.4, which
+  also waits up to 60 s on both pages: DOWNLOAD (PDF) appears only once the
+  summary figures have loaded).
 - GSTR-1 JSON: box → Download → GENERATE JSON FILE TO DOWNLOAD. The links
   "Click here to download - File N" (to
   `/returns/auth/api/offline/download/url?rtn_prd=…&rtn_typ=GSTR1&file_num=N`)

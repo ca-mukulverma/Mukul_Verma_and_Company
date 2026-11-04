@@ -38,6 +38,11 @@ export interface PortalStep {
   url?: string;
   // generate: the links the portal shows once the file is ready
   links?: PortalTarget;
+  // click: if the page shows this instead, it is the file's button (a NIL
+  // GSTR-1 has DOWNLOAD FILED (PDF) where others have VIEW SUMMARY)
+  orFile?: PortalTarget;
+  // How long the target may take to appear (default 20 s)
+  waitSeconds?: number;
 }
 
 export interface PortalRecipe {
@@ -125,14 +130,22 @@ export const BUILT_IN_SETTINGS: PortalSettings = {
       steps: [{ kind: "file", scope: "tile", target: { text: anyLabel("download") } }],
     },
     // Box: VIEW → VIEW SUMMARY → DOWNLOAD (PDF). A return not filed shows
-    // "DOWNLOAD SUMMARY (PDF)" there instead, which is not matched.
+    // "DOWNLOAD SUMMARY (PDF)" there instead, which is not matched. A NIL
+    // return has no VIEW SUMMARY: its page shows DOWNLOAD FILED (PDF). Both
+    // pages load the return's figures first (DOWNLOAD (PDF) appears after).
     GSTR1_PDF: {
       tile: "GSTR1",
       filed: true,
       steps: [
         { kind: "click", scope: "tile", target: { text: anyLabel("view") }, url: "^https://return\\.gst\\.gov\\.in/returns/auth/gstr1\\b" },
-        { kind: "click", scope: "page", target: { text: anyLabel("view summary") } },
-        { kind: "file", scope: "page", target: { text: anyLabel("download\\s*\\(pdf\\)") } },
+        {
+          kind: "click",
+          scope: "page",
+          target: { text: anyLabel("view summary") },
+          orFile: { text: anyLabel("download\\s*filed\\s*\\(pdf\\)") },
+          waitSeconds: 60,
+        },
+        { kind: "file", scope: "page", target: { text: anyLabel("download\\s*\\(pdf\\)") }, waitSeconds: 60 },
       ],
     },
     // Box: DOWNLOAD → GENERATE JSON FILE TO DOWNLOAD. The portal's page
