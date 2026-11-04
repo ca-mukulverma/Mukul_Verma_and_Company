@@ -443,6 +443,13 @@ What works now:
   and closes the tab by itself**. If the app tab is closed mid-run, the
   extension logs out on its own after 5 quiet minutes. One client at a time
   per browser. With nothing ticked the button only logs in, for work by hand.
+- **Step-by-step guide** (button in the GST portal box, the install / update
+  dialog and Help → Compliance; `src/components/compliance/gst-guide.tsx`):
+  what to install, installing and updating the extension, saving the client's
+  GST login, a download step by step, GSTR-1 JSON's two visits, what each
+  result means and what to do when something goes wrong, in **English,
+  हिंदी and Hinglish** (button names stay in English as on screen; the last
+  choice is kept in the browser, else the app's language).
 - Each file shows: **Saved**, **Got it; needs a look** (fetched, but Upload
   documents holds it back: the reason is shown and the row is highlighted
   there), **Not filed on the portal** (the return's box

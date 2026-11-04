@@ -6,12 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLanguage } from "@/components/language-provider";
 import { START_TOUR_EVENT } from "@/components/onboarding/tour";
+import { GstGuideButton } from "@/components/compliance/gst-guide";
 
 interface Section {
   id: string;
   title: string;
   steps: string[];
   link?: { href: string; label: string };
+  // Shows the GST portal step-by-step guide button (English / Hindi / Hinglish)
+  gstGuide?: boolean;
 }
 
 // The staff guide inside the app. Each page's "?" button opens its section
@@ -85,9 +88,11 @@ const SECTIONS: Section[] = [
       "Setup (Admins and Partners) stays on the Compliance page: work types, teams, due dates, files needed and fees.",
       "GST downloads lists, for a month, the clients whose GST return files aren't all saved. On a client's page, the GST portal box (below the GST working) shows each month's files as saved, missing, not due yet or only if filed.",
       "With the GST extension installed (Chrome or Edge; the GST portal box shows how), Download … from the GST portal opens the portal with the client's saved GST login filled in. You type the captcha and OTP; the ticked files are then fetched, saved through Upload documents, and the portal logs out by itself.",
+      "Step-by-step guide (button below and in the GST portal box): installing and updating the GST extension, saving the client's GST login, downloading, and what each result means, in English, Hindi or Hinglish.",
       "A return not filed on the portal yet (its box offers Prepare Online / Prepare Offline or FILE instead of Download) is shown as Not filed on the portal and skipped: the extension never files anything. GSTR-1 JSON is asked for on the first visit and collected on the next one (about 20 minutes later).",
     ],
     link: { href: "/dashboard/compliance", label: "Open Compliance" },
+    gstGuide: true,
   },
   {
     id: "billing",
@@ -192,10 +197,15 @@ export default function HelpPage() {
                 <li key={step}>{step}</li>
               ))}
             </ol>
-            {section.link && (
-              <Button asChild size="sm" variant="secondary">
-                <Link href={section.link.href}>{section.link.label}</Link>
-              </Button>
+            {(section.link || section.gstGuide) && (
+              <div className="flex flex-wrap gap-2">
+                {section.link && (
+                  <Button asChild size="sm" variant="secondary">
+                    <Link href={section.link.href}>{section.link.label}</Link>
+                  </Button>
+                )}
+                {section.gstGuide && <GstGuideButton label="GST portal downloads: step-by-step guide (English / हिंदी / Hinglish)" />}
+              </div>
             )}
           </CardContent>
         </Card>

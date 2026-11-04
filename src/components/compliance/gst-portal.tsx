@@ -14,6 +14,7 @@ import type { ClientPortalFiles, RoundPortalFiles } from "@/lib/gst-portal-files
 import type { PortalSettings } from "@/lib/gst-portal-settings";
 import { canFetch, compareVersions, downloadGstExtension, ENDED, FetchedFile, gstExtensionVersion, isOpen, latestGstExtension, onPortalStatus, PortalRun, portalFetch, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
 import { sendPortalFiles } from "./portal-files";
+import { GstGuideButton } from "./gst-guide";
 import { FyStepper, fyOf, previousMonth } from "./gst-working";
 import { apiError, currentMonthKey } from "./types";
 
@@ -412,9 +413,12 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
     return (
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed p-2 text-sm">
         <span className="text-muted-foreground">Install the GST extension (Chrome or Edge) to download from the GST portal from here.</span>
-        <Button size="sm" variant="outline" onClick={() => setInstalling(true)}>
-          <Puzzle className="mr-1 h-4 w-4" /> Install the GST extension
-        </Button>
+        <span className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => setInstalling(true)}>
+            <Puzzle className="mr-1 h-4 w-4" /> Install the GST extension
+          </Button>
+          <GstGuideButton />
+        </span>
         {installing && <InstallDialog onClose={() => setInstalling(false)} />}
       </div>
     );
@@ -553,13 +557,16 @@ function ExtensionVersion({ installed, latest, needed, busy, onUpdate }: { insta
   const outdated = needed || (!!latest && compareVersions(installed, latest) < 0);
   if (!outdated) {
     return (
-      <p className="text-xs text-muted-foreground">
-        GST extension {installed}
-        {latest && " (latest)"} ·{" "}
-        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={onUpdate}>
-          reinstall
-        </button>
-      </p>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <span>
+          GST extension {installed}
+          {latest && " (latest)"} ·{" "}
+          <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={onUpdate}>
+            reinstall
+          </button>
+        </span>
+        <GstGuideButton variant="ghost" className="h-7 px-2 text-xs" label="Step-by-step guide · English / हिंदी / Hinglish" />
+      </div>
     );
   }
   return (
@@ -573,6 +580,7 @@ function ExtensionVersion({ installed, latest, needed, busy, onUpdate }: { insta
       <Button size="sm" variant="outline" className="h-7" onClick={onUpdate}>
         <RefreshCw className="mr-1 h-3.5 w-3.5" /> Update the GST extension{latest ? ` to ${latest}` : ""}
       </Button>
+      <GstGuideButton variant="ghost" className="h-7 px-2 text-xs" label="Step-by-step guide · English / हिंदी / Hinglish" />
     </div>
   );
 }
@@ -645,7 +653,8 @@ function InstallDialog({ onClose, update = null, latest = null }: { onClose: () 
             <>To update it later, use Update the GST extension in this box.</>
           )}
         </p>
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:justify-between">
+          <GstGuideButton label="Full guide · English / हिंदी / Hinglish" />
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
