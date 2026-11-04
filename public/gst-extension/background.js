@@ -263,16 +263,37 @@ async function step(tabId, step, ctx) {
   return step.url ? { next: true } : { error: "The portal page didn't answer" };
 }
 
-// A link the page couldn't read (another site): fetched here, where the
-// host permission for *.gst.gov.in applies
+// A link the page couldn't read (the portal sent the file from another
+// address): fetched here, where the host permission for *.gst.gov.in lets
+// the answer be read
 async function fetchHere(link) {
-  if (!PORTAL.test(link.href)) return { error: "The file's address is not on the GST portal" };
-  const response = await fetch(link.href, { credentials: "include" });
-  if (!response.ok) return { error: `The portal answered ${response.status} for the file` };
+  if (!PORTAL.test(link.href)) return { error: `the file's address is not on the GST portal (${new URL(link.href).host})` };
+  let response;
+  try {
+    response = await fetch(link.href, { credentials: "include" });
+  } catch (error) {
+    return { error: `it could not be fetched (${String(error?.message ?? error)})` };
+  }
+  const type = response.headers.get("content-type") ?? "";
+  const where = new URL(response.url).host;
+  if (!response.ok) return { error: `the portal answered ${response.status} (${where})` };
+  if (/text\/html/i.test(type)) return { error: `the portal answered with a page instead of the file (${where})` };
   const bytes = new Uint8Array(await response.arrayBuffer());
   let raw = "";
   for (let i = 0; i < bytes.length; i += 0x8000) raw += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  return { name: link.name, type: response.headers.get("content-type") ?? "", base64: btoa(raw) };
+  const cd = response.headers.get("content-disposition") ?? "";
+  const named = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)?.[1];
+  return { name: named ? decodeURIComponent(named.trim()) : link.name, type, base64: btoa(raw) };
+}
+
+// Last resort: Chrome saves it to the Downloads folder like a click would
+async function saveToDownloads(links) {
+  const saved = [];
+  for (const link of links) {
+    if (!PORTAL.test(link.href)) continue;
+    await chrome.downloads.download({ url: link.href, conflictAction: "uniquify" }).then(() => saved.push(link), () => undefined);
+  }
+  return saved.length;
 }
 
 // { file: { kind, month: "2026-09", label } } → { ok, result, files, message }
@@ -319,8 +340,6 @@ async function fetchFile(message, run) {
     if ((tab.url ?? "").startsWith(s.urls.login)) return done({ result: "session-expired", message: "The portal logged out" });
     const steps = [{ kind: "period" }, { kind: "tile", filed: recipe.filed }, ...recipe.steps];
     for (const st of steps) {
-      // Asked for on an earlier visit: collect only, never ask twice
-      if (st.kind === "generate" && message.file.noGenerate) return done({ result: "pending", message: null });
       await pause();
       const answer = await step(tabId, st, ctx);
       if (answer.error) return done({ result: "error", message: answer.error });
@@ -328,12 +347,21 @@ async function fetchFile(message, run) {
       if (answer.file) return done({ result: "file", files: [answer.file] });
       if (answer.files) {
         const files = [];
+        const failed = [];
         for (const f of answer.files) {
-          const got = f.base64 ? f : f.href && !f.error ? await fetchHere(f) : f;
-          if (got.error || !got.base64) return done({ result: "error", message: got.error ?? "A part of the JSON couldn't be fetched" });
-          files.push(got);
+          if (f.base64) {
+            files.push(f);
+            continue;
+          }
+          const got = f.href ? await fetchHere(f) : { error: f.why ?? "no address" };
+          if (got.base64) files.push(got);
+          else failed.push({ ...f, why: `${f.why ?? "the page couldn't read it"}; ${got.error}` });
         }
-        return done({ result: "file", files });
+        if (!failed.length) return done({ result: "file", files });
+        const saved = await saveToDownloads(failed);
+        const why = failed.map((f) => f.why).join(" · ");
+        if (saved) return done({ result: "downloaded", files, message: `${saved} part${saved === 1 ? "" : "s"} saved to this computer's Downloads folder instead (${why}): upload ${saved === 1 ? "it" : "them"} with Upload documents.` });
+        return done({ result: "error", message: `The GSTR-1 JSON link didn't give the file: ${why}` });
       }
       // A click that opens another page
       await settle(tabId, st.url ?? null);

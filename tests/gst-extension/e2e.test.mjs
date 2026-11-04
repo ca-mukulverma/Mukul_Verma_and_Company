@@ -67,7 +67,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.0");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.1");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -148,14 +148,18 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   assert.equal(r2b.result, "file", r2b.message);
   assert.equal(JSON.parse(text(r2b.files[0])).data.rtnprd, "092026");
 
-  // GSTR-1 JSON: asked for on the first visit, collected on the next
+  // GSTR-1 JSON: each visit clicks Generate once; the first starts it, a
+  // later one gets the links, every part fetched
   const ask1 = await fetchFile(runId, "GSTR1_JSON", "2026-09");
   assert.equal(ask1.result, "requested", ask1.message);
+  assert.match(ask1.message, /request for generation of JSON file has been accepted/);
   assert.equal(portal.state.jsonAsked, 1);
-  const pending = await fetchFile(runId, "GSTR1_JSON", "2026-09", { noGenerate: true });
-  assert.equal(pending.result, "file", "the ready parts are collected without asking again");
-  assert.match(text(pending.files[0]), /GSTR1 JSON 092026/);
-  assert.equal(portal.state.jsonAsked, 1, "never asked twice");
+  const got = await fetchFile(runId, "GSTR1_JSON", "2026-09");
+  assert.equal(got.result, "file", got.message);
+  assert.equal(got.files.length, 2);
+  assert.match(text(got.files[0]), /GSTR1 JSON 092026 part 1/);
+  assert.match(text(got.files[1]), /GSTR1 JSON 092026 part 2/);
+  assert.equal(portal.state.jsonAsked, 2, "Generate clicked once per visit, never twice");
 
   // October is not filed: the boxes offer Prepare / File instead of Download
   const n3b = await fetchFile(runId, "GSTR3B_PDF", "2026-10");

@@ -205,26 +205,36 @@ function returnsPage(path, url, state) {
           f.method = "POST"; f.action = "https://gstr2b.gst.gov.in/gstr2b/auth/gstr2bdwld";
           document.body.appendChild(f); f.submit();
         }
-        async function show1json() {
+        // Like the portal's offline download page (main.js): the links come
+        // only as the answer of a Generate click
+        function show1json() {
           document.getElementById("tiles").innerHTML = "";
-          const state = await (await fetch("/json-state")).json();
-          document.getElementById("offline").innerHTML =
-            '<button onclick="gen()">Generate JSON File to Download</button>' +
-            (state.ready ? '<div><a target="_blank" href="/returns/auth/api/offline/download/url?rtn_prd=092026&rtn_typ=GSTR1&file_num=1"><span>Click here to download - File 1</span></a></div>' : "");
+          document.getElementById("offline").innerHTML = '<button onclick="gen()">Generate JSON File to Download</button><div id="said"></div><div id="links"></div>';
         }
         async function gen() {
-          await fetch("/json-generate", { method: "POST" });
-          document.getElementById("offline").insertAdjacentHTML("beforeend", "<p>Your request for generation of JSON file has been accepted. Kindly wait for 20 minutes.</p>");
+          const answer = await (await fetch("/json-generate", { method: "POST" })).json();
+          document.getElementById("said").innerHTML = '<div class="alert alert-msg alert-success">' + answer.msg + "</div>";
+          let links = "";
+          for (let i = 1; i <= answer.rc; i++) links += '<a target="_blank" href="/returns/auth/api/offline/download/url?rtn_prd=092026&rtn_typ=GSTR1&file_num=' + i + '"><span>Click here to download - File ' + i + "</span></a><br>";
+          document.getElementById("links").innerHTML = links;
         }
       </script>`
     );
   }
-  if (path === "/return.gst.gov.in/json-state") return [JSON.stringify({ ready: state.jsonAsked > 0 }), "application/json"];
   if (path === "/return.gst.gov.in/json-generate") {
+    // First click: the request is taken; later clicks: the file is ready, in two parts
     state.jsonAsked++;
-    return ["{}", "application/json"];
+    return state.jsonAsked === 1
+      ? [JSON.stringify({ msg: "Your request for generation of JSON file has been accepted. Kindly wait for 20 minutes.", rc: 0 }), "application/json"]
+      : [JSON.stringify({ msg: "Your file is generated. Click on the links below to download.", rc: 2 }), "application/json"];
   }
-  if (path === "/return.gst.gov.in/returns/auth/api/offline/download/url") return [`PK\u0003\u0004 GSTR1 JSON ${url.searchParams.get("rtn_prd")}`, "application/zip"];
+  if (path === "/return.gst.gov.in/returns/auth/api/offline/download/url") {
+    const part = url.searchParams.get("file_num");
+    // Part 2 answers with the address of the file, as some portal links do
+    if (part === "2") return [JSON.stringify({ status: 1, data: { url: "https://files.gst.gov.in/dl/r1_092026_2.zip" } }), "application/json"];
+    return [`PK\u0003\u0004 GSTR1 JSON ${url.searchParams.get("rtn_prd")} part ${part}`, "application/zip"];
+  }
+  if (path === "/files.gst.gov.in/dl/r1_092026_2.zip") return ["PK\u0003\u0004 GSTR1 JSON 092026 part 2", "application/zip"];
   if (path === "/return.gst.gov.in/returns/auth/gstr1") {
     return page(
       "GSTR-1",

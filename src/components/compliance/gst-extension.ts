@@ -21,7 +21,7 @@ export interface PortalRun {
 }
 
 // What the portal gave for one file
-export type FetchResult = "file" | "not-filed" | "not-available" | "requested" | "pending" | "session-expired" | "not-taught" | "error";
+export type FetchResult = "file" | "downloaded" | "not-filed" | "not-available" | "requested" | "pending" | "session-expired" | "not-taught" | "error";
 
 export interface FetchedFile {
   name: string;
@@ -29,8 +29,9 @@ export interface FetchedFile {
   base64: string;
 }
 
-// The extension that can fetch files (older ones only log in)
-export const FETCH_VERSION = "0.3.0";
+// The extension that can fetch files (older ones only log in; 0.3.0 could
+// not collect GSTR-1 JSON)
+export const FETCH_VERSION = "0.3.1";
 export function canFetch(version: string | null | undefined) {
   if (!version) return false;
   const [a, b] = version.split(".").map(Number);
@@ -88,8 +89,7 @@ export const portalLogin = (args: {
 }) => ask({ type: "gst-login", ...args });
 
 // One file from the portal (a few seconds to two minutes)
-// noGenerate: GSTR-1 JSON asked for already; only collect it
-export const portalFetch = (runId: string, file: { kind: string; month: string; label: string; noGenerate?: boolean }) => ask({ type: "gst-fetch", runId, file }, 4 * 60_000);
+export const portalFetch = (runId: string, file: { kind: string; month: string; label: string }) => ask({ type: "gst-fetch", runId, file }, 4 * 60_000);
 
 export const portalLogout = (runId: string) => ask({ type: "gst-logout", runId });
 export const showPortal = (runId: string) => ask({ type: "gst-show", runId });
