@@ -432,7 +432,9 @@ What works now:
   aren't all saved, with filters (My clients, GSTR-1 / 3B / 2B, Quarterly).
 - **Download N files from the GST portal** in the same box, with the **GST
   extension** (0.3.4 or later) installed (Chrome or Edge; the box shows the
-  install steps): a portal tab opens next to the app with the client's saved
+  install steps; once installed, the box shows the extension's version and an
+  **Update the GST extension** button whenever the app ships a newer one): a
+  portal tab opens next to the app with the client's saved
   GST login filled in (the first credential with "GST" in its title, not the
   e-way bill / e-invoice one) and the cursor in the captcha. Staff type the
   captcha and OTP. The extension then fetches each ticked file (GSTR-1 JSON

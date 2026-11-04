@@ -34,11 +34,31 @@ export interface FetchedFile {
 // normal download, 0.3.2 could act on the page before it reloaded and had
 // no retry, 0.3.3 failed on a NIL GSTR-1's PDF)
 export const FETCH_VERSION = "0.3.4";
+// "0.3.10" > "0.3.9": every part compared as a number
+export function compareVersions(a: string, b: string) {
+  const x = a.split(".").map(Number);
+  const y = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] || 0) - (y[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
 export function canFetch(version: string | null | undefined) {
-  if (!version) return false;
-  const [a, b] = version.split(".").map(Number);
-  const [x, y] = FETCH_VERSION.split(".").map(Number);
-  return a > x || (a === x && b >= y);
+  return !!version && compareVersions(version, FETCH_VERSION) >= 0;
+}
+
+// The version this app ships (public/gst-extension/manifest.json), to offer
+// an update when the installed one is older; null if it can't be read
+export async function latestGstExtension(): Promise<string | null> {
+  try {
+    const response = await fetch("/gst-extension/manifest.json", { cache: "no-store" });
+    const manifest = (await response.json()) as { version?: string };
+    return typeof manifest.version === "string" ? manifest.version : null;
+  } catch {
+    return null;
+  }
 }
 
 export const ENDED: PortalRunStatus[] = ["logged-out", "closed", "timed-out", "failed"];

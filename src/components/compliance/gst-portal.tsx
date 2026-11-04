@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Check, ChevronLeft, ChevronRight, CircleDashed, Clock, Download, ExternalLink, KeyRound, LogIn, LogOut, Loader2, PanelTop, Puzzle, UserCheck } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CircleDashed, Clock, Download, ExternalLink, KeyRound, LogIn, LogOut, Loader2, PanelTop, Puzzle, RefreshCw, UserCheck } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { fileKey, PORTAL_RETURNS, PortalFile, PortalFileRow, PortalFileState, PortalReturn, RETURN_LABELS, RETURN_OF, STATE_LABELS } from "@/lib/gst-portal";
 import type { ClientPortalFiles, RoundPortalFiles } from "@/lib/gst-portal-files";
 import type { PortalSettings } from "@/lib/gst-portal-settings";
-import { canFetch, downloadGstExtension, ENDED, FetchedFile, gstExtensionVersion, isOpen, onPortalStatus, PortalRun, portalFetch, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
+import { canFetch, compareVersions, downloadGstExtension, ENDED, FetchedFile, gstExtensionVersion, isOpen, latestGstExtension, onPortalStatus, PortalRun, portalFetch, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
 import { sendPortalFiles } from "./portal-files";
 import { FyStepper, fyOf, previousMonth } from "./gst-working";
 import { apiError, currentMonthKey } from "./types";
@@ -282,9 +282,13 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
   // The run that should fetch the ticked files once logged in
   const job = useRef<{ runId: string; rows: FetchRow[]; started: boolean } | null>(null);
 
+  // The version this app ships, to offer an update
+  const [latest, setLatest] = useState<string | null>(null);
+
   useEffect(() => {
     const installed = gstExtensionVersion();
     setVersion(installed);
+    latestGstExtension().then(setLatest);
     if (!installed) return;
     portalStatus().then((a) => a.ok && setRun(a.run ?? null));
     return onPortalStatus(setRun);
@@ -535,16 +539,45 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
                 ? "Opens the portal with the login filled in; you type the captcha and OTP. The ticked files are then fetched and saved, and the portal logs out by itself."
                 : "Opens the portal in a new tab with the login filled in; you type the captcha and OTP."}
           </span>
-          {!fetching && files.length > 0 && (
-            <span className="text-xs text-amber-700 dark:text-amber-400">Update the GST extension (Install the GST extension → download again) to fetch the ticked files from here.</span>
-          )}
         </div>
       )}
+      <ExtensionVersion installed={version} latest={latest} needed={!fetching} busy={working || !!mine} onUpdate={() => setInstalling(true)} />
+      {installing && <InstallDialog update={version} latest={latest} onClose={() => setInstalling(false)} />}
     </div>
   );
 }
 
-function InstallDialog({ onClose }: { onClose: () => void }) {
+// The installed extension's version, with an update button when the app
+// ships a newer one (or the installed one can't fetch files at all)
+function ExtensionVersion({ installed, latest, needed, busy, onUpdate }: { installed: string; latest: string | null; needed: boolean; busy: boolean; onUpdate: () => void }) {
+  const outdated = needed || (!!latest && compareVersions(installed, latest) < 0);
+  if (!outdated) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        GST extension {installed}
+        {latest && " (latest)"} ·{" "}
+        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={onUpdate}>
+          reinstall
+        </button>
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+      <span>
+        {needed
+          ? `This computer has GST extension ${installed}, which can't fetch the ticked files.`
+          : `This computer has GST extension ${installed}; ${latest} is out, with fixes.`}{" "}
+        Update it once on this computer{busy ? " (after this login ends)" : ""}.
+      </span>
+      <Button size="sm" variant="outline" className="h-7" onClick={onUpdate}>
+        <RefreshCw className="mr-1 h-3.5 w-3.5" /> Update the GST extension{latest ? ` to ${latest}` : ""}
+      </Button>
+    </div>
+  );
+}
+
+function InstallDialog({ onClose, update = null, latest = null }: { onClose: () => void; update?: string | null; latest?: string | null }) {
   const [downloading, setDownloading] = useState(false);
   const download = async () => {
     setDownloading(true);
@@ -560,27 +593,57 @@ function InstallDialog({ onClose }: { onClose: () => void }) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Install the GST extension</DialogTitle>
-          <DialogDescription>Once on each computer, in Chrome or Edge. It only works on the GST portal and on this app.</DialogDescription>
+          <DialogTitle>{update ? "Update the GST extension" : "Install the GST extension"}</DialogTitle>
+          <DialogDescription>
+            {update
+              ? `This computer has ${update}${latest ? `; the new one is ${latest}` : ""}. Nothing is lost: the extension keeps no data.`
+              : "Once on each computer, in Chrome or Edge. It only works on the GST portal and on this app."}
+          </DialogDescription>
         </DialogHeader>
-        <ol className="list-decimal space-y-1.5 pl-5 text-sm">
-          <li>
-            <Button size="sm" variant="outline" onClick={download} disabled={downloading}>
-              {downloading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />} Download the extension
-            </Button>{" "}
-            and unzip it (right-click → Extract all). Keep the <span className="font-mono">mvc-gst</span> folder where it won&apos;t be deleted.
-          </li>
-          <li>
-            Open <span className="font-mono">chrome://extensions</span> (Edge: <span className="font-mono">edge://extensions</span>) in the address bar.
-          </li>
-          <li>Turn on <span className="font-medium">Developer mode</span>.</li>
-          <li>
-            Click <span className="font-medium">Load unpacked</span> and choose the <span className="font-mono">mvc-gst</span> folder.
-          </li>
-          <li>Reload this page.</li>
-        </ol>
+        {update ? (
+          <ol className="list-decimal space-y-1.5 pl-5 text-sm">
+            <li>
+              <Button size="sm" variant="outline" onClick={download} disabled={downloading}>
+                {downloading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />} Download the new extension
+              </Button>
+            </li>
+            <li>
+              Right-click the ZIP → <span className="font-medium">Extract all</span>, and extract it over the existing <span className="font-mono">mvc-gst</span>{" "}
+              folder (choose <span className="font-medium">Replace the files</span> if asked).
+            </li>
+            <li>
+              Open <span className="font-mono">chrome://extensions</span> (Edge: <span className="font-mono">edge://extensions</span>) and click the{" "}
+              <span className="font-medium">reload arrow</span> on <span className="font-medium">MV Company GST portal</span>. Allow any new permission it asks for.
+            </li>
+            <li>Check it shows version {latest ?? "the new number"}, then reload this page.</li>
+          </ol>
+        ) : (
+          <ol className="list-decimal space-y-1.5 pl-5 text-sm">
+            <li>
+              <Button size="sm" variant="outline" onClick={download} disabled={downloading}>
+                {downloading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />} Download the extension
+              </Button>{" "}
+              and unzip it (right-click → Extract all). Keep the <span className="font-mono">mvc-gst</span> folder where it won&apos;t be deleted.
+            </li>
+            <li>
+              Open <span className="font-mono">chrome://extensions</span> (Edge: <span className="font-mono">edge://extensions</span>) in the address bar.
+            </li>
+            <li>Turn on <span className="font-medium">Developer mode</span>.</li>
+            <li>
+              Click <span className="font-medium">Load unpacked</span> and choose the <span className="font-mono">mvc-gst</span> folder.
+            </li>
+            <li>Reload this page.</li>
+          </ol>
+        )}
         <p className="text-xs text-muted-foreground">
-          To update it later, download it again, replace the folder&apos;s files and click the reload arrow on the extension in the extensions page.
+          {update ? (
+            <>
+              Can&apos;t find the old <span className="font-mono">mvc-gst</span> folder? Click <span className="font-medium">Remove</span> on the extension in the extensions page, unzip
+              the new one anywhere permanent, then <span className="font-medium">Load unpacked</span> that folder (Developer mode on).
+            </>
+          ) : (
+            <>To update it later, use Update the GST extension in this box.</>
+          )}
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
