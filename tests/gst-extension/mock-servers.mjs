@@ -87,11 +87,20 @@ export async function startPortal() {
         html(
           "Welcome",
           `<h1>Welcome to the GST portal</h1>
+          <img src="/services/slow-banner.png" alt="">
           ${remind ? '<div id="adhr"><a onclick="this.parentElement.remove()">REMIND ME LATER</a></div>' : ""}
           <div class="dp-btns"><div><button onclick="location.href='https://return.gst.gov.in/returns/auth/dashboard'"><span>RETURN DASHBOARD</span></button></div></div>
           <script>document.addEventListener("click", (e) => { const b = e.target.closest("button, a"); if (b) fetch("/log", { method: "POST", body: b.innerText.trim() }); }, true);</script>`
         )
       );
+    }
+    // Like the real welcome page: its address shows at once, but it takes a
+    // while to finish loading (this image holds it back)
+    if (path === "/services/slow-banner.png") {
+      await new Promise((r) => setTimeout(r, 1200));
+      state.welcomeAt = Date.now();
+      res.writeHead(200, { "content-type": "image/png" });
+      return res.end();
     }
     if (path === "/services/error/accessdenied") {
       state.denied++;

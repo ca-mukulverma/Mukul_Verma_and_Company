@@ -33,8 +33,9 @@ export interface FetchedFile {
 // not collect GSTR-1 JSON, 0.3.1 missed GSTR-2B JSON handed to Chrome as a
 // normal download, 0.3.2 could act on the page before it reloaded and had
 // no retry, 0.3.3 failed on a NIL GSTR-1's PDF, 0.3.4 opened the Returns
-// Dashboard from outside the portal, which the portal refuses: access denied)
-export const FETCH_VERSION = "0.3.5";
+// Dashboard from outside the portal, which the portal refuses: access denied;
+// 0.3.5 could start before the welcome page had loaded)
+export const FETCH_VERSION = "0.3.6";
 // "0.3.10" > "0.3.9": every part compared as a number
 export function compareVersions(a: string, b: string) {
   const x = a.split(".").map(Number);

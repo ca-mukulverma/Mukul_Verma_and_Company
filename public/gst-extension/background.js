@@ -179,6 +179,9 @@ async function onPortalTab(tabId, info, tab) {
   const url = info.url ?? tab.url ?? "";
   if (run.status === "waiting-login") {
     if (new RegExp(run.settings.urls.loggedIn, "i").test(url)) {
+      // Logged in once the welcome page has loaded, not when its address first
+      // shows: until then the tab still holds the login page
+      if (info.status !== "complete" || !new RegExp(run.settings.urls.loggedIn, "i").test(tab.url ?? "")) return;
       pending = null;
       await chrome.alarms.clear(LOGIN_TIMEOUT);
       await setRun({ ...run, status: "logged-in", note: null, at: Date.now() });
@@ -411,6 +414,10 @@ async function fetchFile(message, run) {
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => undefined), 15000);
   const done = async (answer) => {
     clearInterval(keepAlive);
+    // Which extension said it, so a computer not yet updated shows at once
+    if (answer.message && ["error", "access-denied", "session-expired"].includes(answer.result)) {
+      answer = { ...answer, message: `${answer.message} [extension ${chrome.runtime.getManifest().version}]` };
+    }
     const now = await getRun();
     if (now?.runId === run.runId) {
       await setRun({ ...now, doing: null, doingAt: null, at: Date.now() });
@@ -444,12 +451,19 @@ async function fetchFile(message, run) {
 async function toDashboard(tabId, s, ctx) {
   const dashboard = new RegExp(`^${literal(s.urls.dashboard)}(?:[?#]|$)`, "i");
   const landed = `^${literal(s.urls.dashboard)}(?:[?#]|$)|${s.urls.accessDenied}|^${literal(s.urls.login)}|/services/error/`;
+  // Work only on a page that has finished loading
   let tab = await chrome.tabs.get(tabId);
-  if (tab.status === "complete" && dashboard.test(tab.url ?? "")) return tab;
-  if (s.dashboardEntry && /^https:\/\/services\.gst\.gov\.in\/services\/auth\//i.test(tab.url ?? "")) {
+  if (tab.status !== "complete") tab = await settle(tabId, null, 30000);
+  const url = tab.url ?? "";
+  if (dashboard.test(url)) return tab;
+  // Still (or again) on the login page: the run reports it, nothing is opened
+  if (url.startsWith(s.urls.login)) return tab;
+  if (!PORTAL.test(url)) throw new Error("The portal tab is not on a GST portal page");
+  if (s.dashboardEntry && /^https:\/\/services\.gst\.gov\.in\/services\/auth\//i.test(url)) {
     const clicked = await step(tabId, { kind: "click", scope: "page", target: s.dashboardEntry, url: landed, waitSeconds: 10 }, ctx);
     if (!clicked.error) return settle(tabId, landed);
   }
+  // Otherwise a link from the loaded portal page the tab is on
   await openFromPage(tabId, [s.urls.dashboard], false);
   return settle(tabId, landed);
 }

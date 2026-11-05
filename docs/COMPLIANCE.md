@@ -431,7 +431,7 @@ What works now:
 - **Compliance → GST downloads**: for a month, every client whose GST files
   aren't all saved, with filters (My clients, GSTR-1 / 3B / 2B, Quarterly).
 - **Download N files from the GST portal** in the same box, with the **GST
-  extension** (0.3.5 or later) installed (Chrome or Edge; the box shows the
+  extension** (0.3.6 or later) installed (Chrome or Edge; the box shows the
   install steps; once installed, the box shows the extension's version and an
   **Update the GST extension** button whenever the app ships a newer one): a
   portal tab opens next to the app with the client's saved
