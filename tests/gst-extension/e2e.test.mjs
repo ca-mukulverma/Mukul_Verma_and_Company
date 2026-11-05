@@ -67,7 +67,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.5");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.6");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -126,6 +126,9 @@ async function logIn(runId) {
   await tab.fill("#otp", OTP);
   await tab.click("#verify");
   await until(async () => (await ask({ type: "gst-status" })).run?.status === "logged-in", "logged-in");
+  const loggedInAt = (await ask({ type: "gst-status" })).run.at;
+  assert.ok(portal.state.welcomeAt && loggedInAt >= portal.state.welcomeAt, "logged in only once the welcome page has arrived");
+  assert.match(tab.url(), /services\/auth\/fowelcome/);
   return tab;
 }
 
@@ -160,6 +163,7 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   const err = await fetchFile(runId, "GSTR3B_PDF", "2026-08");
   assert.equal(err.result, "error");
   assert.match(err.message, /own error page/);
+  assert.match(err.message, /\[extension 0\.3\.6\]$/, "errors name the extension version");
 
   const r2b = await fetchFile(runId, "GSTR2B_JSON", "2026-09");
   assert.equal(r2b.result, "file", r2b.message);

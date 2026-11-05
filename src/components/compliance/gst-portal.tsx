@@ -445,6 +445,19 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
   const toFetch = fetching ? [...files].sort((a, b) => fetchOrder(a).localeCompare(fetchOrder(b))) : [];
   const start = () =>
     act(async () => {
+      // Checked when clicked, not when this page loaded: the extension asked for
+      // the version it is running now, the app server for the newest one (a page
+      // left open from before an update still catches an old extension)
+      if (toFetch.length) {
+        const [status, newest] = await Promise.all([portalStatus(), latestGstExtension()]);
+        const running = status.version ?? gstExtensionVersion();
+        if (newest) setLatest(newest);
+        if (running) setVersion(running);
+        if (running && newest && compareVersions(running, newest) < 0) {
+          setInstalling(true);
+          return { ok: false, error: `This computer runs GST extension ${running}; update it to ${newest} first (Update the GST extension), then reload this page.` };
+        }
+      }
       let answer: { settings: PortalSettings; login: { username: string; password: string } | null };
       try {
         answer = (await axios.post("/api/compliance/gst-portal/login", { clientId })).data;

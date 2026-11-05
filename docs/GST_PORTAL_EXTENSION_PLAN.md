@@ -596,6 +596,21 @@ from the page so Chrome saves it in Downloads). The access-denied page
 never forged. The test portal now refuses the dashboard without a GST
 `Referer`, like the real one.
 
+**Second log, and extension 0.3.6.** A second net-export log (Nov 2026)
+showed the same refused request: opened by the extension itself, no
+`Referer`, a quarter-second after login. Tested in Chrome: only 0.3.4's way
+(the extension opening the address) sends no `Referer`; 0.3.5's button click
+and page link send `https://services.gst.gov.in/` like a person. So that
+computer still ran 0.3.4 (files replaced but the extension not reloaded, and
+an app page opened before the update). 0.3.6: "logged in" only once the
+welcome page has finished loading (it used to be when its address first
+showed); the dashboard is entered only from a fully loaded portal page,
+never from the login page; every error names the extension version that
+produced it ("… [extension 0.3.6]"); and on Download the app asks the
+extension for the version it is running and the server for the newest one,
+and stops with the update dialog if they differ, even on a page left open
+from before an update.
+
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
 address matches `services.gst.gov.in/services/auth/`, and that the logout
