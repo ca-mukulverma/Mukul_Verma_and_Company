@@ -16,6 +16,12 @@ export const LOGIN = { username: "citymotors", password: "s3cret!" };
 export const CAPTCHA = "AB12CD";
 export const OTP = "123456";
 
+// Chrome reports a page opened by a click the extension made by script as
+// coming from the extension, and the real portal refuses it (access denied).
+// A page can't see that header here, so its buttons that open pages refuse a
+// click that isn't a real one (event.isTrusted) the same way.
+const DENY_SCRIPTED = "if (!event.isTrusted) { location.href = 'https://services.gst.gov.in/services/error/accessdenied'; return; }";
+
 const html = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
 
 async function body(req) {
@@ -89,7 +95,7 @@ export async function startPortal() {
           `<h1>Welcome to the GST portal</h1>
           <img src="/services/slow-banner.png" alt="">
           ${remind ? '<div id="adhr"><a onclick="this.parentElement.remove()">REMIND ME LATER</a></div>' : ""}
-          <div class="dp-btns"><div><button onclick="location.href='https://return.gst.gov.in/returns/auth/dashboard'"><span>RETURN DASHBOARD</span></button></div></div>
+          <div class="dp-btns"><div><button onclick="${DENY_SCRIPTED} location.href='https://return.gst.gov.in/returns/auth/dashboard'"><span>RETURN DASHBOARD</span></button></div></div>
           <script>document.addEventListener("click", (e) => { const b = e.target.closest("button, a"); if (b) fetch("/log", { method: "POST", body: b.innerText.trim() }); }, true);</script>`
         )
       );
@@ -191,13 +197,13 @@ const page = (title, body) => [html(title, COMMON + body)];
 const tile = (title, name, inner) => `<div class="col-sm-4"><div><a><div class="hd"><p class="inv">${title}</p><p>${name}</p></div></a><div class="ct">${inner}</div></div></div>`;
 const TILES = {
   "092026": [
-    tile("Details of outward supplies of goods or services", "GSTR-1", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button onclick="go('/returns/auth/gstr1')">VIEW</button></div><div><button onclick="show1json()">Download</button></div></div>`),
-    tile("Auto - drafted ITC Statement for the month", "GSTR-2B", `<div class="row"><div><button>View</button></div><div><button onclick="go2b()">Download</button></div></div>`),
+    tile("Details of outward supplies of goods or services", "GSTR-1", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button onclick="${DENY_SCRIPTED} go('/returns/auth/gstr1')">VIEW</button></div><div><button onclick="show1json()">Download</button></div></div>`),
+    tile("Auto - drafted ITC Statement for the month", "GSTR-2B", `<div class="row"><div><button>View</button></div><div><button onclick="${DENY_SCRIPTED} go2b()">Download</button></div></div>`),
     tile("Monthly Return", "GSTR-3B", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button>VIEW GSTR3B</button></div><div><button onclick="saveAs(new Blob(['%PDF-1.4 GSTR-3B 092026'], { type: 'application/pdf' }), 'GSTR3B_23AAFFC2640H1ZX_092026.pdf')">Download</button></div></div>`),
   ],
   // A NIL GSTR-1: its page has DOWNLOAD FILED (PDF) and no VIEW SUMMARY
   "072026": [
-    tile("Details of outward supplies of goods or services", "GSTR-1", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button onclick="go('/returns/auth/gstr1')">VIEW</button></div><div><button>Download</button></div></div>`),
+    tile("Details of outward supplies of goods or services", "GSTR-1", `<p class="f-wt">Status- <span>Filed</span></p><div class="row"><div><button onclick="${DENY_SCRIPTED} go('/returns/auth/gstr1')">VIEW</button></div><div><button>Download</button></div></div>`),
   ],
   // The portal's own failure: its Download goes to the system error page
   "082026": [

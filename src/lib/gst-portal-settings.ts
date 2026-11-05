@@ -64,7 +64,14 @@ export interface PortalSettings {
     dashboard: string;
     // Regular expression (source) for the portal's "access denied" page
     accessDenied: string;
+    // The welcome page after login, where RETURN DASHBOARD is (opened to get
+    // back to the dashboard from other portal pages)
+    welcome: string;
   };
+  // "real": Chrome itself clicks portal buttons (real mouse events through
+  // its debugging interface), which the portal treats as a person's click;
+  // "assisted": staff click the buttons that open another page themselves
+  clicks: "real" | "assisted";
   // On the welcome page after login: the button to the Returns Dashboard
   dashboardEntry: PortalTarget;
   login: { username: PortalTarget; password: PortalTarget; captcha: PortalTarget };
@@ -98,7 +105,7 @@ export interface PortalSettings {
 const anyLabel = (s: string) => `^\\s*${s}\\s*$`;
 
 export const BUILT_IN_SETTINGS: PortalSettings = {
-  version: 2,
+  version: 3,
   urls: {
     login: "https://services.gst.gov.in/services/login",
     // After the captcha (and OTP, where asked) the address has /services/auth/
@@ -106,7 +113,9 @@ export const BUILT_IN_SETTINGS: PortalSettings = {
     logout: "https://services.gst.gov.in/services/logout",
     dashboard: "https://return.gst.gov.in/returns/auth/dashboard",
     accessDenied: "/services/error/accessdenied",
+    welcome: "https://services.gst.gov.in/services/auth/fowelcome",
   },
+  clicks: "real",
   dashboardEntry: { text: anyLabel("return\\s*dashboard") },
   login: {
     username: { css: "#username" },

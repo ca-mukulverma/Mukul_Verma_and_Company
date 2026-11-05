@@ -65,11 +65,87 @@ async function mvcPortalStep(step, ctx) {
       await sleep(300);
     }
   }
-  const press = (el) => {
+  // A click, made the way a person's is: Chrome itself clicks the spot (real
+  // mouse events through the extension, via relay.js and the worker), so the
+  // portal sees an ordinary click from its own page. A click made by script
+  // instead is treated by Chrome as coming from the extension, and the portal
+  // refuses the pages it opens (access denied). If real clicks aren't
+  // available (Chrome's debugging bar was cancelled), a click that opens
+  // another page is left to the person: the button is highlighted and the
+  // step waits for their click; other clicks are made by script.
+  async function press(el, opensPage) {
     if (blocked(el)) throw new Error(`Refused to click "${text(el)}": it may file or change the return`);
     el.scrollIntoView({ block: "center" });
-    el.click();
-  };
+    await sleep(200);
+    if (ctx.clicks !== "assisted") {
+      const at = await clearSpot(el);
+      if (at) {
+        const answer = await toWorker({ type: "real-click", x: at.x, y: at.y });
+        if (answer?.ok) return;
+        if (answer?.assisted) ctx.clicks = "assisted";
+      }
+    }
+    if (!opensPage) {
+      el.click();
+      return;
+    }
+    await personClicks(el);
+  }
+
+  // The middle of the element, once nothing covers it (the portal's "please
+  // wait" layer, a pop-up); null if it stays covered
+  async function clearSpot(el) {
+    return waitFor(() => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      const x = Math.round(r.left + r.width / 2);
+      const y = Math.round(r.top + r.height / 2);
+      const top = document.elementFromPoint(x, y);
+      return top && (top === el || el.contains(top)) ? { x, y } : null;
+    }, 10000);
+  }
+
+  // Asks the extension (through relay.js) and waits for its answer
+  function toWorker(message, ms = 20000) {
+    const id = `${Date.now()}-${Math.random()}`;
+    return new Promise((resolve) => {
+      const done = (answer) => {
+        window.removeEventListener("message", listener);
+        clearTimeout(timer);
+        resolve(answer);
+      };
+      const listener = (e) => {
+        if (e.source === window && e.data?.source === "mvc-portal-ext" && e.data.id === id) done(e.data);
+      };
+      const timer = setTimeout(() => done(null), ms);
+      window.addEventListener("message", listener);
+      window.postMessage({ source: "mvc-portal-page", id, token: ctx.token, ...message }, location.origin);
+    });
+  }
+
+  // The person clicks: the button is outlined, a banner says what to click,
+  // and the step waits for a real click on it
+  async function personClicks(el) {
+    const label = text(el) || "the highlighted button";
+    toWorker({ type: "ask-person", label }, 3000);
+    const banner = document.createElement("div");
+    banner.textContent = `MV Company app: please click "${label}" (highlighted in orange) to continue.`;
+    banner.setAttribute("style", "position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#f59e0b;color:#111;font:600 16px/1.4 sans-serif;padding:10px 14px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3);pointer-events:none");
+    document.documentElement.appendChild(banner);
+    const outline = el.style.outline;
+    el.style.outline = "4px solid #f59e0b";
+    el.style.outlineOffset = "3px";
+    try {
+      const clicked = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(false), 170000);
+        el.addEventListener("click", (e) => e.isTrusted && (clearTimeout(timer), resolve(true)), { capture: true, once: false });
+      });
+      if (!clicked) throw new Error(`Nobody clicked "${label}" in the GST portal tab within 3 minutes`);
+    } finally {
+      banner.remove();
+      el.style.outline = outline;
+    }
+  }
 
   // The return's box: the element holding just its name ("GSTR-3B"), and
   // up from there to the first block that also holds a button
@@ -201,7 +277,7 @@ async function mvcPortalStep(step, ctx) {
         }
         const search = await waitFor(() => find(document, ctx.search), 10000);
         if (!search) return { error: "The Returns Dashboard has no Search button" };
-        press(search);
+        await press(search, false);
         return { next: true };
       }
 
@@ -236,7 +312,7 @@ async function mvcPortalStep(step, ctx) {
           return { error: `"${step.target.text ?? step.target.css}" wasn't found on the portal page (${location.pathname})` };
         }
         const before = counts(ctx.notAvailable);
-        press(el);
+        await press(el, !!step.url);
         // Another page opens: the worker waits for it
         if (step.url) return { next: true };
         await sleep(800);
@@ -259,7 +335,7 @@ async function mvcPortalStep(step, ctx) {
         const capture = arm();
         const shown = new Set(alerts().map((a) => a.text));
         const before = counts(ctx.notAvailable);
-        press(el);
+        await press(el, false);
         let why = null;
         const got = await waitFor(() => {
           why = newMessage(ctx.notAvailable, before) ?? (expired() ? "session" : null);
@@ -290,7 +366,7 @@ async function mvcPortalStep(step, ctx) {
         const linksBefore = step.links ? findAll(document, step.links).length : 0;
         const patterns = [...(ctx.jsonPending ?? []), ...(ctx.notAvailable ?? [])];
         const counted = counts(patterns);
-        press(el);
+        await press(el, false);
         let said = null;
         let saidAt = 0;
         const links = await waitFor(() => {

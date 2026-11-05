@@ -56,11 +56,18 @@ function validSettings(s) {
   } catch {
     return false;
   }
-  if (s.urls.dashboard !== undefined && !(typeof s.urls.dashboard === "string" && PORTAL.test(s.urls.dashboard))) return false;
+  for (const key of ["dashboard", "welcome"]) {
+    if (s.urls[key] !== undefined && !(typeof s.urls[key] === "string" && PORTAL.test(s.urls[key]))) return false;
+  }
   return ["username", "password", "captcha"].every((k) => typeof s.login[k]?.css === "string");
 }
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  // From the portal tab's own pages (relay.js): real clicks, asking the person
+  if (message?.type === "gst-portal-page" && sender.id === chrome.runtime.id && sender.tab && sender.frameId === 0) {
+    fromPortal(message, sender).then(reply, (error) => reply({ ok: false, error: String(error?.message ?? error) }));
+    return true;
+  }
   if (!fromApp(sender)) return false;
   handle(message, sender).then(reply, (error) => reply({ ok: false, error: String(error?.message ?? error) }));
   return true;
@@ -104,6 +111,9 @@ async function startLogin(message, sender, run) {
     filled: false,
     // Files to fetch: log out by itself when the run goes quiet
     autoLogout: !!autoLogout,
+    // "real": Chrome clicks for real; "assisted": staff click buttons that open pages
+    clicks: settings.clicks === "assisted" ? "assisted" : "real",
+    ask: null,
     doing: null,
     settings,
     at: Date.now(),
@@ -125,6 +135,7 @@ async function logout(runId, run) {
     await closeTab(run.portalTabId);
     return { ok: true, run: publicRun(next) };
   }
+  await detachDebugger(run.portalTabId);
   const next = await setRun({ ...run, status: "logging-out", at: Date.now() });
   await chrome.alarms.create(LOGOUT_CLOSE, { delayInMinutes: 0.5 });
   await chrome.tabs.update(run.portalTabId, { url: run.settings.urls.logout });
@@ -133,6 +144,7 @@ async function logout(runId, run) {
 
 async function finishLogout(run) {
   await chrome.alarms.clear(LOGOUT_CLOSE);
+  await detachDebugger(run.portalTabId);
   await setRun({ ...run, status: "logged-out", at: Date.now() });
   await closeTab(run.portalTabId);
 }
@@ -214,6 +226,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     const run = await getRun();
     if (!run || run.portalTabId !== tabId || ENDED.includes(run.status)) return;
     pending = null;
+    if (attachedTab === tabId) attachedTab = null;
     await chrome.alarms.clear(LOGIN_TIMEOUT);
     await setRun({ ...run, status: run.status === "logging-out" ? "logged-out" : "closed", at: Date.now() });
   })().catch(() => undefined);
@@ -234,6 +247,80 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
   })().catch(() => undefined);
 });
+
+// ─── Real clicks ────────────────────────────────────────────────────────────
+//
+// Chrome treats a page change started by a script the extension put in the
+// page as coming from the extension: no Referer, "cross-site". The portal
+// refuses return.gst.gov.in opened that way (access denied, seen in Chrome's
+// network log). So clicks are made by Chrome itself, as real mouse events,
+// through its debugging interface; the portal then sees an ordinary click on
+// its own page. Chrome shows "… started debugging this browser" meanwhile.
+// If that is refused or cancelled, the run turns "assisted": a click that
+// opens another page is left to the person (portal.js highlights it).
+
+let attachedTab = null;
+
+async function attachDebugger(tabId) {
+  if (attachedTab === tabId) return;
+  try {
+    await chrome.debugger.attach({ tabId }, "1.3");
+  } catch (error) {
+    // Still attached from before a worker restart
+    if (!/already attached/i.test(String(error?.message ?? error))) throw error;
+  }
+  attachedTab = tabId;
+}
+
+async function detachDebugger(tabId) {
+  if (tabId == null) return;
+  await chrome.debugger.detach({ tabId }).catch(() => undefined);
+  if (attachedTab === tabId) attachedTab = null;
+}
+
+async function turnAssisted(run, why) {
+  if (run.clicks === "assisted") return run;
+  return setRun({ ...run, clicks: "assisted", note: `Chrome's real clicks aren't available (${why}): you'll be asked to click some portal buttons yourself.`, at: Date.now() });
+}
+
+chrome.debugger.onDetach.addListener((source, reason) => {
+  (async () => {
+    if (source.tabId === attachedTab) attachedTab = null;
+    const run = await getRun();
+    if (run && run.portalTabId === source.tabId && !ENDED.includes(run.status) && reason === "canceled_by_user") await turnAssisted(run, "the debugging bar was cancelled");
+  })().catch(() => undefined);
+});
+
+async function fromPortal(message, sender) {
+  const run = await getRun();
+  if (!run || run.portalTabId !== sender.tab.id || ENDED.includes(run.status) || message.token !== run.runId) return { ok: false };
+  if (message.request === "real-click") {
+    if (run.clicks === "assisted") return { ok: false, assisted: true };
+    const x = Number(message.x);
+    const y = Number(message.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return { ok: false };
+    try {
+      await attachDebugger(run.portalTabId);
+      const target = { tabId: run.portalTabId };
+      const mouse = (type, extra = {}) => chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type, x, y, ...extra });
+      await mouse("mouseMoved");
+      await mouse("mousePressed", { button: "left", buttons: 1, clickCount: 1 });
+      await mouse("mouseReleased", { button: "left", buttons: 0, clickCount: 1 });
+      return { ok: true };
+    } catch (error) {
+      await turnAssisted(run, String(error?.message ?? error));
+      return { ok: false, assisted: true };
+    }
+  }
+  if (message.request === "ask-person") {
+    // Bring the portal tab forward and tell the app what to click
+    await setRun({ ...run, ask: String(message.label ?? "the highlighted button").slice(0, 80), at: Date.now() });
+    const tab = await chrome.tabs.update(run.portalTabId, { active: true }).catch(() => null);
+    if (tab) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+    return { ok: true };
+  }
+  return { ok: false };
+}
 
 // ─── Fetching one file ──────────────────────────────────────────────────────
 
@@ -261,6 +348,17 @@ async function settle(tabId, urlPattern, ms = 45000) {
 const RETRY = /frame|removed|didn't answer|no tab|in time|wasn't found|went away|didn't show its drop-downs|no search button|fetch/i;
 
 async function step(tabId, step, ctx) {
+  const run = await getRun();
+  ctx = { ...ctx, clicks: run?.clicks ?? "real" };
+  try {
+    return await runStep(tabId, step, ctx);
+  } finally {
+    const now = await getRun();
+    if (now?.ask) await setRun({ ...now, ask: null, at: Date.now() });
+  }
+}
+
+async function runStep(tabId, step, ctx) {
   try {
     const [answer] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: mvcPortalStep, args: [step, ctx] });
     if (answer?.result) return answer.result;
@@ -405,6 +503,8 @@ async function fetchFile(message, run) {
     fy: `${fyStart}-${String((fyStart + 1) % 100).padStart(2, "0")}`,
     quarter: m >= 4 ? Math.ceil((m - 3) / 3) : 4,
     monthName: MONTHS[m - 1],
+    // For portal.js's requests through relay.js
+    token: run.runId,
   };
   await chrome.alarms.clear(IDLE_LOGOUT);
   run = await setRun({ ...run, doing: String(label ?? kind), doingAt: Date.now(), at: Date.now() });
@@ -454,18 +554,22 @@ async function toDashboard(tabId, s, ctx) {
   // Work only on a page that has finished loading
   let tab = await chrome.tabs.get(tabId);
   if (tab.status !== "complete") tab = await settle(tabId, null, 30000);
-  const url = tab.url ?? "";
+  let url = tab.url ?? "";
   if (dashboard.test(url)) return tab;
   // Still (or again) on the login page: the run reports it, nothing is opened
   if (url.startsWith(s.urls.login)) return tab;
   if (!PORTAL.test(url)) throw new Error("The portal tab is not on a GST portal page");
-  if (s.dashboardEntry && /^https:\/\/services\.gst\.gov\.in\/services\/auth\//i.test(url)) {
-    const clicked = await step(tabId, { kind: "click", scope: "page", target: s.dashboardEntry, url: landed, waitSeconds: 10 }, ctx);
-    if (!clicked.error) return settle(tabId, landed);
+  // Elsewhere on the portal: back to the welcome page (as typing its address
+  // would), whose RETURN DASHBOARD button is how the portal expects to be entered
+  if (!/^https:\/\/services\.gst\.gov\.in\/services\/auth\//i.test(url) && s.urls.welcome) {
+    await chrome.tabs.update(tabId, { url: s.urls.welcome });
+    tab = await settle(tabId, `${literal(s.urls.welcome)}|${s.urls.accessDenied}|^${literal(s.urls.login)}|/services/error/`);
+    url = tab.url ?? "";
+    if (!url.startsWith(s.urls.welcome)) return tab;
   }
-  // Otherwise a link from the loaded portal page the tab is on
-  await openFromPage(tabId, [s.urls.dashboard], false);
-  return settle(tabId, landed);
+  const clicked = await step(tabId, { kind: "click", scope: "page", target: s.dashboardEntry, url: landed, waitSeconds: 15 }, ctx);
+  if (clicked.error) throw new Error(`The welcome page's "Return Dashboard" button: ${clicked.error}`);
+  return settle(tabId, landed, 200000);
 }
 
 // One try at a file: dashboard, period, the return's box, then its steps
