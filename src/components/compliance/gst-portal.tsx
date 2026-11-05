@@ -519,7 +519,23 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
               </span>
             )}
           </p>
+          {mine.ask && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border-2 border-amber-400 bg-amber-50 p-2 font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              <span>
+                Your turn: click <span className="font-semibold">“{mine.ask}”</span> in the GST portal tab (it is highlighted in orange).
+              </span>
+              <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => act(() => showPortal(mine.runId))}>
+                <PanelTop className="mr-1 h-3.5 w-3.5" /> Show the portal tab
+              </Button>
+            </div>
+          )}
           {mine.note && <p className="text-xs text-amber-700 dark:text-amber-400">{mine.note}</p>}
+          {mine.status === "logged-in" && mine.clicks !== "assisted" && working && (
+            <p className="text-xs text-muted-foreground">
+              Chrome shows a bar “MV Company GST portal started debugging this browser” while it clicks the portal&apos;s buttons for you. Don&apos;t press Cancel on it: it goes when the
+              portal logs out.
+            </p>
+          )}
           {mine.status === "logged-in" && !rows?.length && (
             <p className="text-xs text-muted-foreground">Nothing was ticked: work in the portal tab, upload the files with Upload documents above, then log out.</p>
           )}

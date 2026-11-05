@@ -16,6 +16,10 @@ export interface PortalRun {
   note: string | null;
   // The file being fetched now ("GSTR-3B PDF Sep 2026")
   doing?: string | null;
+  // "assisted" once Chrome's real clicks aren't available
+  clicks?: "real" | "assisted";
+  // A button staff must click in the portal tab now (assisted)
+  ask?: string | null;
   autoLogout?: boolean;
   at: number;
 }
@@ -34,8 +38,9 @@ export interface FetchedFile {
 // normal download, 0.3.2 could act on the page before it reloaded and had
 // no retry, 0.3.3 failed on a NIL GSTR-1's PDF, 0.3.4 opened the Returns
 // Dashboard from outside the portal, which the portal refuses: access denied;
-// 0.3.5 could start before the welcome page had loaded)
-export const FETCH_VERSION = "0.3.6";
+// 0.3.5 could start before the welcome page had loaded, 0.3.6 clicked by
+// script, which Chrome reports as the extension: access denied)
+export const FETCH_VERSION = "0.4.0";
 // "0.3.10" > "0.3.9": every part compared as a number
 export function compareVersions(a: string, b: string) {
   const x = a.split(".").map(Number);
@@ -113,7 +118,7 @@ export const portalLogin = (args: {
 }) => ask({ type: "gst-login", ...args });
 
 // One file from the portal (a few seconds to two minutes)
-export const portalFetch = (runId: string, file: { kind: string; month: string; label: string }) => ask({ type: "gst-fetch", runId, file }, 4 * 60_000);
+export const portalFetch = (runId: string, file: { kind: string; month: string; label: string }) => ask({ type: "gst-fetch", runId, file }, 10 * 60_000);
 
 export const portalLogout = (runId: string) => ask({ type: "gst-logout", runId });
 export const showPortal = (runId: string) => ask({ type: "gst-show", runId });
@@ -131,7 +136,7 @@ export function onPortalStatus(handler: (run: PortalRun) => void) {
 // The extension as a ZIP to load unpacked, set up for this app's address
 export async function downloadGstExtension() {
   const { origin, protocol, hostname } = window.location;
-  await downloadExtensionZip("gst-extension", ["manifest.json", "background.js", "bridge.js", "portal.js"], { root: "mvc-gst", fileName: "mvc-gst-extension.zip" }, (name, text) => {
+  await downloadExtensionZip("gst-extension", ["manifest.json", "background.js", "bridge.js", "portal.js", "relay.js"], { root: "mvc-gst", fileName: "mvc-gst-extension.zip" }, (name, text) => {
     // Match patterns can't hold a port; the worker checks the full origin
     if (name === "manifest.json") return text.replace("__APP_MATCH__", `${protocol}//${hostname}/*`);
     if (name === "background.js") return text.replace("__APP_ORIGIN__", origin);

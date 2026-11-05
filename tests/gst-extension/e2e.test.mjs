@@ -67,7 +67,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.6");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.4.0");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -113,11 +113,11 @@ test("login filled, captcha and OTP typed by staff, logged in, logged out", asyn
 });
 
 // Logs in as staff would and returns the portal tab
-async function logIn(runId) {
+async function logIn(runId, runSettings = settings) {
   // A new portal session: the Aadhaar pop-up shows again
   portal.state.reminded = false;
   const opened = context.waitForEvent("page");
-  const answer = await ask({ type: "gst-login", runId, clientId: "c1", clientName: "CITY MOTORS", settings, login: LOGIN, autoLogout: true });
+  const answer = await ask({ type: "gst-login", runId, clientId: "c1", clientName: "CITY MOTORS", settings: runSettings, login: LOGIN, autoLogout: true });
   assert.equal(answer.ok, true, answer.error);
   const tab = await opened;
   await until(() => tab.evaluate(() => document.activeElement?.id === "captcha"), "the cursor in the captcha");
@@ -145,7 +145,7 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   assert.match(text(r3b.files[0]), /^%PDF-1\.4 GSTR-3B 092026/);
   assert.ok(portal.state.clicks.includes("REMIND ME LATER"), "the Aadhaar pop-up is closed when it shows");
   assert.ok(portal.state.clicks.includes("RETURN DASHBOARD"), "the dashboard is entered from the welcome page's button");
-  assert.equal(portal.state.denied, 0, "never refused: every page was reached from the portal's own pages");
+  assert.equal(portal.state.denied, 0, "never refused: every page-opening button got a real click");
 
   // The summary page fails to load the first time: tried again from the dashboard
   portal.state.failGstr1Once = true;
@@ -163,7 +163,7 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   const err = await fetchFile(runId, "GSTR3B_PDF", "2026-08");
   assert.equal(err.result, "error");
   assert.match(err.message, /own error page/);
-  assert.match(err.message, /\[extension 0\.3\.6\]$/, "errors name the extension version");
+  assert.match(err.message, /\[extension 0\.4\.0\]$/, "errors name the extension version");
 
   const r2b = await fetchFile(runId, "GSTR2B_JSON", "2026-09");
   assert.equal(r2b.result, "file", r2b.message);
@@ -223,6 +223,25 @@ test("the portal refuses its Returns Dashboard opened from outside, and the run 
   portal.state.denyAll = false;
   const closed = tab.waitForEvent("close");
   await ask({ type: "gst-logout", runId: "run-d" });
+  await closed;
+});
+
+test("assisted: without Chrome's real clicks, the person clicks the buttons that open pages", { timeout: 120000 }, async () => {
+  const tab = await logIn("run-a", { ...settings, clicks: "assisted" });
+  const before = portal.state.denied;
+  const answer = fetchFile("run-a", "GSTR3B_PDF", "2026-09");
+  // The extension asks for RETURN DASHBOARD; the app is told and the button is highlighted
+  await until(async () => (await ask({ type: "gst-status" })).run?.ask === "RETURN DASHBOARD", "the ask for RETURN DASHBOARD", 30000);
+  await until(() => tab.evaluate(() => [...document.querySelectorAll("button")].some((b) => b.style.outline.includes("solid"))), "the highlighted button");
+  // The person clicks it (a real click)
+  await tab.click("text=RETURN DASHBOARD");
+  const got = await answer;
+  assert.equal(got.result, "file", got.message);
+  assert.match(text(got.files[0]), /GSTR-3B 092026/);
+  assert.equal((await ask({ type: "gst-status" })).run.ask, null, "the ask is cleared");
+  assert.equal(portal.state.denied, before, "nothing refused");
+  const closed = tab.waitForEvent("close");
+  await ask({ type: "gst-logout", runId: "run-a" });
   await closed;
 });
 

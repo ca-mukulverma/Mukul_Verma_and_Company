@@ -611,6 +611,27 @@ extension for the version it is running and the server for the newest one,
 and stops with the update dialog if they differ, even on a page left open
 from before an update.
 
+**Third log, and extension 0.4.0: real clicks.** With 0.3.6 running (the
+app's version check passed), the dashboard was still refused: Chrome 156
+reports a page change started by a click the extension makes by script
+(`el.click()` in the page, even the portal's own RETURN DASHBOARD button) as
+coming from the extension (`initiator: chrome-extension://…`, `cross-site`,
+no `Referer`). The bundled test Chromium did not, so the tests had passed.
+0.4.0 makes every click a real one: `portal.js` finds the button, waits
+until nothing covers it, and asks the worker (through `relay.js`, a content
+script on the portal) to click its middle with `chrome.debugger`
+`Input.dispatchMouseEvent`, so the portal sees an ordinary click from its own
+page. Chrome shows "… started debugging this browser" during a run; the
+debugger is detached at logout. If attaching fails or the bar is cancelled,
+the run turns **assisted**: a click that opens another page is left to the
+person (the button is outlined in orange with a banner, the app shows "Your
+turn: click …" and brings the portal tab forward); other clicks are made by
+script. To get back to the dashboard from other portal pages the tab goes to
+the welcome page and clicks RETURN DASHBOARD. Settings v3: `urls.welcome`,
+`clicks` ("real" / "assisted"). The test portal's page-opening buttons
+refuse clicks that aren't real (`event.isTrusted`), so script clicks fail
+the tests, as they fail on the real portal.
+
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
 address matches `services.gst.gov.in/services/auth/`, and that the logout
