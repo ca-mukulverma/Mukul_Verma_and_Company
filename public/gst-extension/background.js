@@ -252,27 +252,6 @@ async function settle(tabId, urlPattern, ms = 45000) {
   throw new Error(wanted ? "The portal page didn't open in time" : "The portal page didn't finish loading");
 }
 
-// Opens an address in the tab and waits until that page has loaded (not the
-// page that was there before: the load must start first)
-async function navigate(tabId, url, ms = 60000) {
-  let started = false;
-  let finish;
-  const loaded = new Promise((resolve) => (finish = resolve));
-  const listener = (id, info) => {
-    if (id !== tabId) return;
-    if (info.status === "loading") started = true;
-    else if (info.status === "complete" && started) finish(true);
-  };
-  chrome.tabs.onUpdated.addListener(listener);
-  try {
-    await chrome.tabs.update(tabId, { url });
-    const timer = new Promise((resolve) => setTimeout(() => resolve(false), ms));
-    if (!(await Promise.race([loaded, timer]))) throw new Error("The portal page didn't finish loading in time");
-    return await chrome.tabs.get(tabId);
-  } finally {
-    chrome.tabs.onUpdated.removeListener(listener);
-  }
-}
 
 // Errors worth one more try from the dashboard: the page changed or went
 // away under a step, or a slow load
@@ -289,30 +268,38 @@ async function step(tabId, step, ctx) {
   return step.url ? { next: true } : { error: "The portal page didn't answer" };
 }
 
-// A link the page couldn't read (the portal sent the file from another
-// address): fetched here, where the host permission for *.gst.gov.in lets
-// the answer be read
-async function fetchHere(link) {
-  if (!PORTAL.test(link.href)) return { error: `the file's address is not on the GST portal (${new URL(link.href).host})` };
-  let response;
-  try {
-    response = await fetch(link.href, { credentials: "include" });
-  } catch (error) {
-    return { error: `it could not be fetched (${String(error?.message ?? error)})` };
-  }
-  const type = response.headers.get("content-type") ?? "";
-  const where = new URL(response.url).host;
-  if (!response.ok) return { error: `the portal answered ${response.status} (${where})` };
-  if (/text\/html/i.test(type)) return { error: `the portal answered with a page instead of the file (${where})` };
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  let raw = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) raw += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  const cd = response.headers.get("content-disposition") ?? "";
-  const named = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)?.[1];
-  return { name: named ? decodeURIComponent(named.trim()) : link.name, type, base64: btoa(raw) };
+// Escapes text for use inside a regular expression
+const literal = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Opens addresses from inside the portal page, as following a link there
+// would: the browser then says the request comes from the portal's own page.
+// Requests made by the extension itself come "from outside", and the portal
+// refuses those (access denied), so files and pages are never asked for that way.
+async function openFromPage(tabId, urls, newTab) {
+  const [answer] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    args: [urls, newTab],
+    func: (list, blank) => {
+      for (const href of list) {
+        const a = document.createElement("a");
+        a.href = href;
+        if (blank) {
+          a.target = "_blank";
+          a.rel = "noopener";
+        }
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      return list.length;
+    },
+  });
+  return answer?.result ?? 0;
 }
 
-// The bytes of a blob: / data: address, read in the portal page that made it
+// The bytes of an address, read inside the portal page (a blob: / data:
+// address it made, or a file on the portal, asked for as the page would)
 async function bytesInPage(tabId, url) {
   const [answer] = await chrome.scripting.executeScript({
     target: { tabId },
@@ -370,7 +357,8 @@ async function fileStep(tabId, st, ctx) {
     const [now] = await chrome.downloads.search({ id: item.id }).catch(() => []);
     const named = (n) => (/\.[a-z0-9]{2,5}$/i.test(n) ? n : "");
     const name = named(baseName(names.get(item.id))) || named(baseName(now?.filename)) || named(baseName(new URL(item.finalUrl || item.url).pathname));
-    const got = /^(blob|data):/i.test(item.url) ? await bytesInPage(tabId, item.url) : await fetchHere({ href: item.finalUrl || item.url, name });
+    const href = item.finalUrl || item.url;
+    const got = /^(blob|data):/i.test(href) || PORTAL.test(href) ? await bytesInPage(tabId, href) : { error: `the file came from ${new URL(href).host}` };
     if (!got.base64) {
       return { result: "downloaded", message: `The portal saved it to this computer's Downloads folder (${got.error}): upload it with Upload documents.` };
     }
@@ -386,15 +374,6 @@ async function fileStep(tabId, st, ctx) {
   }
 }
 
-// Last resort: Chrome saves it to the Downloads folder like a click would
-async function saveToDownloads(links) {
-  const saved = [];
-  for (const link of links) {
-    if (!PORTAL.test(link.href)) continue;
-    await chrome.downloads.download({ url: link.href, conflictAction: "uniquify" }).then(() => saved.push(link), () => undefined);
-  }
-  return saved.length;
-}
 
 // { file: { kind, month: "2026-09", label } } → { ok, result, files, message }
 // result: saved-ready ("file"), not-filed, not-available, requested, pending,
@@ -458,14 +437,37 @@ async function fetchFile(message, run) {
   return done({ result: "error", message: first ?? "The portal didn't give the file" });
 }
 
+// The Returns Dashboard, reached the way a person reaches it: the welcome
+// page's RETURN DASHBOARD button after login, else a link from the portal page
+// the tab is on. Its address is never opened by the extension itself: the
+// portal refuses that (access denied). Already there: used as it is.
+async function toDashboard(tabId, s, ctx) {
+  const dashboard = new RegExp(`^${literal(s.urls.dashboard)}(?:[?#]|$)`, "i");
+  const landed = `^${literal(s.urls.dashboard)}(?:[?#]|$)|${s.urls.accessDenied}|^${literal(s.urls.login)}|/services/error/`;
+  let tab = await chrome.tabs.get(tabId);
+  if (tab.status === "complete" && dashboard.test(tab.url ?? "")) return tab;
+  if (s.dashboardEntry && /^https:\/\/services\.gst\.gov\.in\/services\/auth\//i.test(tab.url ?? "")) {
+    const clicked = await step(tabId, { kind: "click", scope: "page", target: s.dashboardEntry, url: landed, waitSeconds: 10 }, ctx);
+    if (!clicked.error) return settle(tabId, landed);
+  }
+  await openFromPage(tabId, [s.urls.dashboard], false);
+  return settle(tabId, landed);
+}
+
 // One try at a file: dashboard, period, the return's box, then its steps
 async function attemptFile(tabId, s, recipe, ctx, onGenerate) {
-  const tab = await navigate(tabId, s.urls.dashboard);
   const where = (u) => {
+    if (new RegExp(s.urls.accessDenied, "i").test(u ?? "")) {
+      return {
+        result: "access-denied",
+        message: "The GST portal refused access (its \"access denied\" page). The run stopped so as not to ask again: try later, and tell the admin if it repeats.",
+      };
+    }
     if ((u ?? "").startsWith(s.urls.login)) return { result: "session-expired", message: "The portal logged out" };
     if (/\/services\/error\//i.test(u ?? "")) return { result: "error", message: `The portal showed its own error page (${new URL(u).pathname}): try again in a while` };
     return null;
   };
+  const tab = await toDashboard(tabId, s, ctx);
   if (where(tab.url)) return where(tab.url);
   const steps = [{ kind: "period" }, { kind: "tile", filed: recipe.filed }, ...recipe.steps];
   for (const st of steps) {
@@ -486,18 +488,19 @@ async function attemptFile(tabId, s, recipe, ctx, onGenerate) {
       const files = [];
       const failed = [];
       for (const f of answer.files) {
-        if (f.base64) {
-          files.push(f);
-          continue;
-        }
-        const got = f.href ? await fetchHere(f) : { error: f.why ?? "no address" };
-        if (got.base64) files.push(got);
-        else failed.push({ ...f, why: `${f.why ?? "the page couldn't read it"}; ${got.error}` });
+        if (f.base64) files.push(f);
+        else failed.push(f);
       }
       if (!failed.length) return { result: "file", files };
-      const saved = await saveToDownloads(failed);
-      const why = failed.map((f) => f.why).join(" · ");
-      if (saved) return { result: "downloaded", files, message: `${saved} part${saved === 1 ? "" : "s"} saved to this computer's Downloads folder instead (${why}): upload ${saved === 1 ? "it" : "them"} with Upload documents.` };
+      // Parts the page couldn't read: opened from the page like a click on
+      // the link, so Chrome saves them in Downloads for staff to upload
+      const portalLinks = failed.filter((f) => f.href && PORTAL.test(f.href)).map((f) => f.href);
+      const opened = portalLinks.length ? await openFromPage(tabId, portalLinks, true).catch(() => 0) : 0;
+      const why = failed.map((f) => f.why ?? "the page couldn't read it").join(" · ");
+      if (opened) {
+        await new Promise((r) => setTimeout(r, 3000));
+        return { result: "downloaded", files, message: `${opened} part${opened === 1 ? "" : "s"} saved to this computer's Downloads folder instead (${why}): upload ${opened === 1 ? "it" : "them"} with Upload documents.` };
+      }
       return { result: "error", message: `The GSTR-1 JSON link didn't give the file: ${why}` };
     }
     // A click that opens another page

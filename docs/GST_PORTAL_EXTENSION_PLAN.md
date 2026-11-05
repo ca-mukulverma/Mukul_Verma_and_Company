@@ -577,6 +577,25 @@ next one. In the app, the box now shows what Upload documents did with each
 file: **Saved**, or **Got it; needs a look** with the reason (period locked,
 GSTIN differs, same file twice…) instead of a plain Saved.
 
+**Access denied (extension 0.3.5).** The first real runs ended within
+seconds: Chrome's net-export log (Nov 2026) showed every
+`return.gst.gov.in/returns/auth/dashboard` answered **302 →
+`services.gst.gov.in/services/error/accessdenied`**, though the login
+cookies were sent. The extension opened the dashboard itself
+(`chrome.tabs.update`: `Sec-Fetch-Site: cross-site`, no `Referer`); in the
+training HAR the same request came from the welcome page's RETURN DASHBOARD
+button (`Referer: https://services.gst.gov.in/`, `Sec-Fetch-Site:
+same-site`). The portal lets `return.gst.gov.in` be entered only from its own
+pages. So the extension now enters the dashboard by clicking RETURN DASHBOARD
+on the welcome page (`dashboardEntry` in the settings), reuses the dashboard
+while the tab is on it, and otherwise goes there by a link from the portal
+page the tab is on; it never opens portal pages or files itself (the
+worker's own file fetches are gone: a part the page can't read is opened
+from the page so Chrome saves it in Downloads). The access-denied page
+(`urls.accessDenied`) stops the run at once, without retrying. Headers are
+never forged. The test portal now refuses the dashboard without a GST
+`Referer`, like the real one.
+
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
 address matches `services.gst.gov.in/services/auth/`, and that the logout
