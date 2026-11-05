@@ -59,8 +59,14 @@ export interface PortalSettings {
     // Regular expression (source) the address matches once logged in
     loggedIn: string;
     logout: string;
+    // Reached only from the portal's own pages: the portal refuses it when
+    // opened from outside (typed in, or by the extension), even logged in
     dashboard: string;
+    // Regular expression (source) for the portal's "access denied" page
+    accessDenied: string;
   };
+  // On the welcome page after login: the button to the Returns Dashboard
+  dashboardEntry: PortalTarget;
   login: { username: PortalTarget; password: PortalTarget; captcha: PortalTarget };
   // Close the portal tab if nobody completes the login in this time
   loginWaitMinutes: number;
@@ -92,14 +98,16 @@ export interface PortalSettings {
 const anyLabel = (s: string) => `^\\s*${s}\\s*$`;
 
 export const BUILT_IN_SETTINGS: PortalSettings = {
-  version: 1,
+  version: 2,
   urls: {
     login: "https://services.gst.gov.in/services/login",
     // After the captcha (and OTP, where asked) the address has /services/auth/
     loggedIn: "^https://services\\.gst\\.gov\\.in/services/auth/",
     logout: "https://services.gst.gov.in/services/logout",
     dashboard: "https://return.gst.gov.in/returns/auth/dashboard",
+    accessDenied: "/services/error/accessdenied",
   },
+  dashboardEntry: { text: anyLabel("return\\s*dashboard") },
   login: {
     username: { css: "#username" },
     password: { css: "#user_pass" },

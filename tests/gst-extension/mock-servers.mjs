@@ -29,7 +29,7 @@ function listen(server) {
 }
 
 export async function startPortal() {
-  const state = { events: [], typed: {}, clicks: [], jsonAsked: 0, reminded: false };
+  const state = { events: [], typed: {}, clicks: [], jsonAsked: 0, reminded: false, denied: 0, denyAll: false };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const host = url.pathname.split("/")[1];
@@ -78,10 +78,38 @@ export async function startPortal() {
         )
       );
     }
-    if (path === "/services/auth/fowelcome") return send(html("Welcome", "<h1>Welcome to the GST portal</h1>"));
+    // The welcome page after login: the Aadhaar pop-up once a session, and the
+    // button to the Returns Dashboard (the way the portal expects to be entered)
+    if (path === "/services/auth/fowelcome") {
+      const remind = !state.reminded;
+      state.reminded = true;
+      return send(
+        html(
+          "Welcome",
+          `<h1>Welcome to the GST portal</h1>
+          ${remind ? '<div id="adhr"><a onclick="this.parentElement.remove()">REMIND ME LATER</a></div>' : ""}
+          <div class="dp-btns"><div><button onclick="location.href='https://return.gst.gov.in/returns/auth/dashboard'"><span>RETURN DASHBOARD</span></button></div></div>
+          <script>document.addEventListener("click", (e) => { const b = e.target.closest("button, a"); if (b) fetch("/log", { method: "POST", body: b.innerText.trim() }); }, true);</script>`
+        )
+      );
+    }
+    if (path === "/services/error/accessdenied") {
+      state.denied++;
+      return send(html("Access Denied", "<h1>Access Denied</h1><p>You are not authorized to access this page.</p>"));
+    }
     if (rest === "/log" && req.method === "POST") {
       state.clicks.push(await body(req));
       return send("{}", "application/json");
+    }
+    // Like the real portal: return.gst.gov.in's pages only when arriving from
+    // a GST portal page (a link or button there), never opened from outside
+    if (host === "return.gst.gov.in" && rest === "/returns/auth/dashboard") {
+      const from = req.headers.referer ?? "";
+      if (state.denyAll || !/^https:\/\/([a-z0-9-]+\.)*gst\.gov\.in\//i.test(from)) {
+        // The portal answers 302 to its access-denied page; a routed response
+        // can't redirect a page load, so the page moves on by itself
+        return send(html("Redirect", `<script>location.replace("https://services.gst.gov.in/services/error/accessdenied")</script>`));
+      }
     }
     const returns = returnsPage(path, url, state);
     if (returns) return send(...returns);
@@ -175,13 +203,9 @@ const TILES = {
 
 function returnsPage(path, url, state) {
   if (path === "/return.gst.gov.in/returns/auth/dashboard") {
-    // The Aadhaar pop-up comes once a session
-    const remind = !state.reminded;
-    state.reminded = true;
     return page(
       "Dashboard",
-      `${remind ? '<div id="adhr"><a onclick="this.parentElement.remove()">REMIND ME LATER</a></div>' : ""}
-      <form onsubmit="event.preventDefault(); search()">
+      `<form onsubmit="event.preventDefault(); search()">
         <div><label>Financial Year</label><select name="fin"></select></div>
         <div id="q"></div>
         <div><label>Period</label><select name="mon"></select></div>

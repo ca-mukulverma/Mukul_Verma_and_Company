@@ -375,6 +375,11 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
             setRow(key, { state: "error", message: "The portal session ended" });
             stop = "The portal session ended: log in again";
             break;
+          case "access-denied":
+            // Asking again would only be refused again
+            setRow(key, { state: "error", message });
+            stop = "Stopped: the GST portal refused access";
+            break;
           case "not-filed":
           case "not-available":
           case "not-taught":

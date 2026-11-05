@@ -67,7 +67,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.4");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.3.5");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -114,6 +114,8 @@ test("login filled, captcha and OTP typed by staff, logged in, logged out", asyn
 
 // Logs in as staff would and returns the portal tab
 async function logIn(runId) {
+  // A new portal session: the Aadhaar pop-up shows again
+  portal.state.reminded = false;
   const opened = context.waitForEvent("page");
   const answer = await ask({ type: "gst-login", runId, clientId: "c1", clientName: "CITY MOTORS", settings, login: LOGIN, autoLogout: true });
   assert.equal(answer.ok, true, answer.error);
@@ -139,6 +141,8 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   assert.equal(r3b.files[0].name, "GSTR3B_23AAFFC2640H1ZX_092026.pdf");
   assert.match(text(r3b.files[0]), /^%PDF-1\.4 GSTR-3B 092026/);
   assert.ok(portal.state.clicks.includes("REMIND ME LATER"), "the Aadhaar pop-up is closed when it shows");
+  assert.ok(portal.state.clicks.includes("RETURN DASHBOARD"), "the dashboard is entered from the welcome page's button");
+  assert.equal(portal.state.denied, 0, "never refused: every page was reached from the portal's own pages");
 
   // The summary page fails to load the first time: tried again from the dashboard
   portal.state.failGstr1Once = true;
@@ -194,6 +198,27 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
 
   const closed = tab.waitForEvent("close");
   assert.equal((await ask({ type: "gst-logout", runId })).ok, true);
+  await closed;
+});
+
+test("the portal refuses its Returns Dashboard opened from outside, and the run stops there", { timeout: 120000 }, async () => {
+  // Opened directly (typed in), as extension 0.3.4 did: refused
+  const direct = await context.newPage();
+  await direct.goto("https://return.gst.gov.in/returns/auth/dashboard");
+  assert.match(direct.url(), /services\/error\/accessdenied/);
+  await direct.close();
+
+  // When the portal refuses anyway, the run says so and asks nothing more
+  const tab = await logIn("run-d");
+  portal.state.denyAll = true;
+  const before = portal.state.denied;
+  const answer = await fetchFile("run-d", "GSTR3B_PDF", "2026-09");
+  assert.equal(answer.result, "access-denied", answer.message);
+  assert.match(answer.message, /refused access/);
+  assert.equal(portal.state.denied - before, 1, "asked once, not retried");
+  portal.state.denyAll = false;
+  const closed = tab.waitForEvent("close");
+  await ask({ type: "gst-logout", runId: "run-d" });
   await closed;
 });
 
