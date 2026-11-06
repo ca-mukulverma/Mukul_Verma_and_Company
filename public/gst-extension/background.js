@@ -399,6 +399,69 @@ async function openFromPage(tabId, urls, newTab) {
   return answer?.result ?? 0;
 }
 
+// Opens links from the portal page (a new tab each, as a click would) and
+// catches the downloads they start: each is read from its final address on
+// files.gst.gov.in (a signed address that needs no login), then removed from
+// Downloads. left: downloads that couldn't be read and stay in Downloads.
+async function downloadFromPage(tabId, hrefs) {
+  const items = [];
+  const opened = [];
+  const onCreated = (item) => {
+    if (PORTAL.test(item.url) || PORTAL.test(item.finalUrl ?? "")) items.push(item);
+  };
+  const onTab = (tab) => {
+    if (tab.openerTabId === tabId) opened.push(tab.id);
+  };
+  chrome.downloads.onCreated.addListener(onCreated);
+  chrome.tabs.onCreated.addListener(onTab);
+  const files = [];
+  let left = 0;
+  try {
+    await openFromPage(tabId, hrefs, true).catch(() => 0);
+    const end = Date.now() + 30000;
+    while (items.length < hrefs.length && Date.now() < end) await new Promise((r) => setTimeout(r, 250));
+    for (const item of items) {
+      let final = item.finalUrl || item.url;
+      // The final address is known once the portal's redirect is followed
+      for (let i = 0; i < 20 && !/^https:\/\/files\.gst\.gov\.in\//i.test(final); i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        const [now] = await chrome.downloads.search({ id: item.id }).catch(() => []);
+        final = now?.finalUrl || final;
+      }
+      let got = null;
+      if (/^https:\/\/files\.gst\.gov\.in\//i.test(final)) {
+        try {
+          const response = await fetch(final);
+          const type = response.headers.get("content-type") ?? "";
+          if (response.ok && !/text\/html/i.test(type)) {
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            let raw = "";
+            for (let i = 0; i < bytes.length; i += 0x8000) raw += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+            got = { name: baseName(new URL(final).pathname), type, base64: btoa(raw) };
+          }
+        } catch {
+          // Stays in Downloads
+        }
+      }
+      if (!got) {
+        left++;
+        continue;
+      }
+      files.push(got);
+      await chrome.downloads.cancel(item.id).catch(() => undefined);
+      const [now] = await chrome.downloads.search({ id: item.id }).catch(() => []);
+      if (now?.state === "complete") await chrome.downloads.removeFile(item.id).catch(() => undefined);
+      await chrome.downloads.erase({ id: item.id }).catch(() => undefined);
+    }
+    left += Math.max(0, hrefs.length - items.length);
+  } finally {
+    chrome.downloads.onCreated.removeListener(onCreated);
+    chrome.tabs.onCreated.removeListener(onTab);
+    for (const id of opened) await closeTab(id);
+  }
+  return { files, left };
+}
+
 // The bytes of an address, read inside the portal page (a blob: / data:
 // address it made, or a file on the portal, asked for as the page would)
 async function bytesInPage(tabId, url) {
@@ -534,6 +597,18 @@ async function fetchFile(message, run) {
     } catch (error) {
       answer = { result: "error", message: String(error?.message ?? error) };
     }
+    // Refused once: go Back from the access-denied page and carry on with
+    // the next file; refused again in this login: stop
+    if (answer.result === "access-denied") {
+      const now = await getRun();
+      const denied = (now?.denied ?? 0) + 1;
+      if (now?.runId === run.runId) await setRun({ ...now, denied });
+      if (denied < 2) {
+        await goBack(tabId).catch(() => false);
+        return done({ result: "error", message: "The GST portal refused this one (access denied); went back and carried on" });
+      }
+      return done(answer);
+    }
     // Asking for GSTR-1 JSON again would make a new file: never retried
     if (answer.result !== "error" || reachedGenerate || !RETRY.test(answer.message ?? "")) {
       return done(first && answer.result === "error" ? { ...answer, message: `${answer.message} (also on a second try; first: ${first})` } : answer);
@@ -551,25 +626,49 @@ async function fetchFile(message, run) {
 async function toDashboard(tabId, s, ctx) {
   const dashboard = new RegExp(`^${literal(s.urls.dashboard)}(?:[?#]|$)`, "i");
   const landed = `^${literal(s.urls.dashboard)}(?:[?#]|$)|${s.urls.accessDenied}|^${literal(s.urls.login)}|/services/error/`;
-  // Work only on a page that has finished loading
-  let tab = await chrome.tabs.get(tabId);
-  if (tab.status !== "complete") tab = await settle(tabId, null, 30000);
-  let url = tab.url ?? "";
-  if (dashboard.test(url)) return tab;
-  // Still (or again) on the login page: the run reports it, nothing is opened
-  if (url.startsWith(s.urls.login)) return tab;
-  if (!PORTAL.test(url)) throw new Error("The portal tab is not on a GST portal page");
-  // Elsewhere on the portal: back to the welcome page (as typing its address
-  // would), whose RETURN DASHBOARD button is how the portal expects to be entered
-  if (!/^https:\/\/services\.gst\.gov\.in\/services\/auth\//i.test(url) && s.urls.welcome) {
-    await chrome.tabs.update(tabId, { url: s.urls.welcome });
-    tab = await settle(tabId, `${literal(s.urls.welcome)}|${s.urls.accessDenied}|^${literal(s.urls.login)}|/services/error/`);
-    url = tab.url ?? "";
-    if (!url.startsWith(s.urls.welcome)) return tab;
+  // The portal refuses any of its logged-in pages opened directly (typed in,
+  // or by the extension), the welcome page included. So the extension never
+  // opens one: it uses the browser's Back (which the portal accepts like the
+  // click that led there) and real clicks on the portal's own buttons.
+  for (let backs = 0; backs <= 6; backs++) {
+    let tab = await chrome.tabs.get(tabId);
+    if (tab.status !== "complete") tab = await settle(tabId, null, 30000);
+    const url = tab.url ?? "";
+    if (dashboard.test(url)) return tab;
+    // On the login page: the run reports it
+    if (url.startsWith(s.urls.login)) return tab;
+    if (!PORTAL.test(url)) throw new Error("The portal tab is not on a GST portal page");
+    // The welcome page: its RETURN DASHBOARD button, as after login
+    if (s.urls.welcome && url.startsWith(s.urls.welcome)) {
+      const clicked = await step(tabId, { kind: "click", scope: "page", target: s.dashboardEntry, url: landed, waitSeconds: 15 }, ctx);
+      if (clicked.error) throw new Error(`The welcome page's "Return Dashboard" button: ${clicked.error}`);
+      return settle(tabId, landed, 200000);
+    }
+    // Any other page or view (a return's page, GSTR-2B, the access-denied
+    // page): one step Back
+    if (!(await goBack(tabId))) break;
   }
-  const clicked = await step(tabId, { kind: "click", scope: "page", target: s.dashboardEntry, url: landed, waitSeconds: 15 }, ctx);
-  if (clicked.error) throw new Error(`The welcome page's "Return Dashboard" button: ${clicked.error}`);
-  return settle(tabId, landed, 200000);
+  throw new Error("Couldn't get back to the Returns Dashboard with the browser's Back: log in again");
+}
+
+// The browser's Back in the portal tab; false if there is nothing to go back to
+async function goBack(tabId) {
+  const before = (await chrome.tabs.get(tabId)).url;
+  try {
+    await chrome.tabs.goBack(tabId);
+  } catch {
+    return false;
+  }
+  // Back within a page (Angular) only changes the address; otherwise a page loads
+  const end = Date.now() + 20000;
+  while (Date.now() < end) {
+    await new Promise((r) => setTimeout(r, 250));
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) throw new Error("The GST portal tab was closed");
+    if (tab.url !== before && tab.status === "complete") break;
+  }
+  await new Promise((r) => setTimeout(r, 600));
+  return true;
 }
 
 // One try at a file: dashboard, period, the return's box, then its steps
@@ -610,14 +709,18 @@ async function attemptFile(tabId, s, recipe, ctx, onGenerate) {
         else failed.push(f);
       }
       if (!failed.length) return { result: "file", files };
-      // Parts the page couldn't read: opened from the page like a click on
-      // the link, so Chrome saves them in Downloads for staff to upload
+      // Parts the page couldn't read (the portal sends them from
+      // files.gst.gov.in, which the page may not read): opened from the page
+      // like a click on the link; Chrome downloads them, and the extension
+      // reads each from its signed files.gst.gov.in address and removes it
+      // from Downloads. If that is refused too, the file stays in Downloads.
       const portalLinks = failed.filter((f) => f.href && PORTAL.test(f.href)).map((f) => f.href);
-      const opened = portalLinks.length ? await openFromPage(tabId, portalLinks, true).catch(() => 0) : 0;
       const why = failed.map((f) => f.why ?? "the page couldn't read it").join(" · ");
-      if (opened) {
-        await new Promise((r) => setTimeout(r, 3000));
-        return { result: "downloaded", files, message: `${opened} part${opened === 1 ? "" : "s"} saved to this computer's Downloads folder instead (${why}): upload ${opened === 1 ? "it" : "them"} with Upload documents.` };
+      const caught = portalLinks.length ? await downloadFromPage(tabId, portalLinks) : { files: [], left: 0 };
+      files.push(...caught.files);
+      if (caught.files.length === failed.length) return { result: "file", files };
+      if (caught.left) {
+        return { result: "downloaded", files, message: `${caught.left} part${caught.left === 1 ? "" : "s"} saved to this computer's Downloads folder instead (${why}): upload ${caught.left === 1 ? "it" : "them"} with Upload documents.` };
       }
       return { result: "error", message: `The GSTR-1 JSON link didn't give the file: ${why}` };
     }

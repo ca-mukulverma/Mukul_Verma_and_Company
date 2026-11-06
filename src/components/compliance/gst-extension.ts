@@ -39,8 +39,9 @@ export interface FetchedFile {
 // no retry, 0.3.3 failed on a NIL GSTR-1's PDF, 0.3.4 opened the Returns
 // Dashboard from outside the portal, which the portal refuses: access denied;
 // 0.3.5 could start before the welcome page had loaded, 0.3.6 clicked by
-// script, which Chrome reports as the extension: access denied)
-export const FETCH_VERSION = "0.4.0";
+// script, which Chrome reports as the extension: access denied; 0.4.0
+// opened the welcome page directly to get back, which the portal refuses)
+export const FETCH_VERSION = "0.4.1";
 // "0.3.10" > "0.3.9": every part compared as a number
 export function compareVersions(a: string, b: string) {
   const x = a.split(".").map(Number);

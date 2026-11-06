@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
+import { readFileSync } from "node:fs";
 
 // Two local servers for the extension test (e2e.test.mjs):
 //   portal  a mock GST portal: login with captcha, OTP, a logged-in page,
@@ -6,9 +8,14 @@ import { createServer } from "node:http";
 //           a box per return whose buttons depend on whether it is filed),
 //           the GSTR-1 summary, GSTR-1 JSON and GSTR-2B pages, and logout.
 //           Sep 2026 is filed; Oct 2026 is not (GSTR-1 submitted, GSTR-3B
-//           not filed). Every button pressed is logged in state.clicks. The test routes every https://*.gst.gov.in request here as
-//           /<host><path>, and pages move on with location.replace, which
-//           Playwright follows for routed responses.
+//           not filed). Every button pressed is logged in state.clicks.
+//           It is a real HTTPS server for the portal's own host names: the
+//           test points *.gst.gov.in at it (Chrome's --host-resolver-rules,
+//           a test certificate in certs/), so redirects, Referer and
+//           Sec-Fetch headers, cross-site reading rules and the extension's
+//           own requests behave as on the real portal. Like the real one, it
+//           refuses its logged-in pages opened from outside (typed in, or by
+//           the extension: no GST Referer) with a 302 to access denied.
 //   app     a stand-in for the app's page: it talks to the extension's bridge
 //           with the same messages as src/components/compliance/gst-extension.ts.
 
@@ -34,13 +41,33 @@ function listen(server) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
 }
 
+const CERTS = new URL("./certs/", import.meta.url);
+
+// A logged-in page of the portal (not its APIs, files or the login itself)
+const guarded = (host, path) =>
+  (host === "services.gst.gov.in" && path.startsWith("/services/auth/")) ||
+  (host === "return.gst.gov.in" && path.startsWith("/returns/auth/") && !path.startsWith("/returns/auth/api/")) ||
+  (host === "gstr2b.gst.gov.in" && path.startsWith("/gstr2b/auth/"));
+
 export async function startPortal() {
-  const state = { events: [], typed: {}, clicks: [], jsonAsked: 0, reminded: false, denied: 0, denyAll: false };
-  const server = createServer(async (req, res) => {
-    const url = new URL(req.url, "http://x");
-    const host = url.pathname.split("/")[1];
-    const rest = url.pathname.slice(host.length + 1);
+  const state = { events: [], typed: {}, clicks: [], jsonAsked: 0, reminded: false, denied: 0, denyAll: false, refused: [] };
+  const options = { key: readFileSync(new URL("test-key.pem", CERTS)), cert: readFileSync(new URL("test-cert.pem", CERTS)) };
+  const server = createHttpsServer(options, async (req, res) => {
+    const host = (req.headers.host ?? "").split(":")[0];
+    const url = new URL(req.url, `https://${host}`);
+    const rest = url.pathname;
     const path = host === "services.gst.gov.in" ? rest : `/${host}${rest}`;
+    // Opened from outside: no Referer from a GST page (typed in, or opened by
+    // the extension itself, which Chrome reports as cross-site)
+    if (req.headers["sec-fetch-dest"] === "document" && guarded(host, rest)) {
+      const fromPortal = /^https:\/\/([a-z0-9-]+\.)*gst\.gov\.in\//i.test(req.headers.referer ?? "");
+      // denyAll: the Returns Dashboard refuses even arrivals from the portal's pages
+      if ((state.denyAll && host === "return.gst.gov.in") || !fromPortal) {
+        state.refused.push(`${host}${rest} (${req.headers["sec-fetch-site"] ?? "?"})`);
+        res.writeHead(302, { location: "https://services.gst.gov.in/services/error/accessdenied" });
+        return res.end();
+      }
+    }
     const send = (text, type = "text/html") => {
       res.writeHead(200, { "content-type": type });
       res.end(text);
@@ -112,21 +139,15 @@ export async function startPortal() {
       state.denied++;
       return send(html("Access Denied", "<h1>Access Denied</h1><p>You are not authorized to access this page.</p>"));
     }
-    if (rest === "/log" && req.method === "POST") {
+    if (url.pathname === "/log" && req.method === "POST") {
       state.clicks.push(await body(req));
       return send("{}", "application/json");
     }
-    // Like the real portal: return.gst.gov.in's pages only when arriving from
-    // a GST portal page (a link or button there), never opened from outside
-    if (host === "return.gst.gov.in" && rest === "/returns/auth/dashboard") {
-      const from = req.headers.referer ?? "";
-      if (state.denyAll || !/^https:\/\/([a-z0-9-]+\.)*gst\.gov\.in\//i.test(from)) {
-        // The portal answers 302 to its access-denied page; a routed response
-        // can't redirect a page load, so the page moves on by itself
-        return send(html("Redirect", `<script>location.replace("https://services.gst.gov.in/services/error/accessdenied")</script>`));
-      }
-    }
     const returns = returnsPage(path, url, state);
+    if (returns?.redirect) {
+      res.writeHead(302, { location: returns.redirect });
+      return res.end();
+    }
     if (returns) return send(...returns);
     if (path === "/services/error/system") return send(html("Error", "<h1>System error</h1><p>Something went wrong</p>"));
     if (path === "/services/logout") {
@@ -137,7 +158,7 @@ export async function startPortal() {
     res.end("not found");
   });
   const port = await listen(server);
-  return { base: `http://127.0.0.1:${port}`, state, close: () => server.close() };
+  return { port, state, close: () => server.close() };
 }
 
 // The app page: window.ask(message) answers like ask() in gst-extension.ts;
@@ -255,7 +276,12 @@ function returnsPage(path, url, state) {
         }
         // Like the portal's offline download page (main.js): the links come
         // only as the answer of a Generate click
+        // Angular changes the address without loading a page; Back returns
+        addEventListener("popstate", () => {
+          if (location.pathname === "/returns/auth/dashboard") document.getElementById("offline").innerHTML = "";
+        });
         function show1json() {
+          history.pushState({}, "", "/returns/auth/gstr/offlinedownload");
           document.getElementById("tiles").innerHTML = "";
           document.getElementById("offline").innerHTML = '<button onclick="gen()">Generate JSON File to Download</button><div id="said"></div><div id="links"></div>';
         }
@@ -276,13 +302,14 @@ function returnsPage(path, url, state) {
       ? [JSON.stringify({ msg: "Your request for generation of JSON file has been accepted. Kindly wait for 20 minutes.", rc: 0 }), "application/json"]
       : [JSON.stringify({ msg: "Your file is generated. Click on the links below to download.", rc: 2 }), "application/json"];
   }
+  // Like the real portal: the link answers 302 to the file on files.gst.gov.in,
+  // a signed address the page may not read (no cross-site permission)
   if (path === "/return.gst.gov.in/returns/auth/api/offline/download/url") {
     const part = url.searchParams.get("file_num");
-    // Part 2 answers with the address of the file, as some portal links do
-    if (part === "2") return [JSON.stringify({ status: 1, data: { url: "https://files.gst.gov.in/dl/r1_092026_2.zip" } }), "application/json"];
-    return [`PK\u0003\u0004 GSTR1 JSON ${url.searchParams.get("rtn_prd")} part ${part}`, "application/zip"];
+    return { redirect: `https://files.gst.gov.in/returns/R1/returns_${url.searchParams.get("rtn_prd")}_R1_offline_others_${part}.zip?md5=x&expires=1` };
   }
-  if (path === "/files.gst.gov.in/dl/r1_092026_2.zip") return ["PK\u0003\u0004 GSTR1 JSON 092026 part 2", "application/zip"];
+  const file = path.match(/^\/files\.gst\.gov\.in\/returns\/R1\/returns_(\d{6})_R1_offline_others_(\d)\.zip$/);
+  if (file) return [`PK\u0003\u0004 GSTR1 JSON ${file[1]} part ${file[2]}`, "application/zip"];
   if (path === "/return.gst.gov.in/returns/auth/gstr1") {
     // Once, the page comes up empty (a failed load): the extension tries again
     if (state.failGstr1Once) {
@@ -301,6 +328,7 @@ function returnsPage(path, url, state) {
           saveAs(new Blob(["%PDF-1.4 GSTR-1 NIL 072026"], { type: "application/pdf" }), "GSTR1_23AAFFC2640H1ZX_072026.pdf");
         }
         function sum() {
+          history.pushState({}, "", "/returns/auth/gstr1/gstr1sum");
           document.getElementById("g").innerHTML = '<button onclick="pdf()"><span style="display:none">DOWNLOAD SUMMARY (PDF)</span><span>DOWNLOAD (PDF)</span></button><button>File Statement</button>';
         }
         function pdf() {
