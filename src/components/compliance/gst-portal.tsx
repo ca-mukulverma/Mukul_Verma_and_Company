@@ -269,9 +269,11 @@ function toFile(f: FetchedFile, fallback: string) {
   return new File([bytes], name, { type: type || undefined });
 }
 
-// GSTR-1 JSON first (it is asked for and collected later), then oldest first
-const fetchOrder = (f: Pick<FetchRow, "kind" | "month">) => `${f.kind === "GSTR1_JSON" ? 0 : 1}|${f.month}|${PORTAL_FILE_ORDER.indexOf(f.kind)}`;
-const PORTAL_FILE_ORDER: PortalFile[] = ["GSTR1_JSON", "GSTR1_PDF", "GSTR1A_PDF", "GSTR3B_PDF", "GSTR2B_JSON"];
+// GSTR-1 JSON first (it is asked for and collected later), then the files
+// that stay on the Returns Dashboard (GSTR-3B PDF), then those that open
+// another page (GSTR-1 PDF, GSTR-2B): fewer page changes. Oldest first.
+const PORTAL_FILE_ORDER: PortalFile[] = ["GSTR1_JSON", "GSTR3B_PDF", "GSTR1_PDF", "GSTR1A_PDF", "GSTR2B_JSON"];
+const fetchOrder = (f: Pick<FetchRow, "kind" | "month">) => `${PORTAL_FILE_ORDER.indexOf(f.kind)}|${f.month}`;
 
 function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId: string; clientName: string; gstin: string; files: PortalFileRow[]; onSaved: () => void }) {
   // undefined: not checked yet (the page has just loaded)

@@ -32,15 +32,21 @@ before(async () => {
   await fill("manifest.json", "__APP_MATCH__", "http://127.0.0.1/*");
   await fill("background.js", "__APP_ORIGIN__", `http://127.0.0.1:${app.port}`);
 
+  // *.gst.gov.in goes to the mock portal, a real HTTPS server (test
+  // certificate): nothing is intercepted, so the browser sends what it would
+  // send to the real portal. GST_TEST_CHROME=/path/to/chrome runs the tests in
+  // that Chrome (e.g. the version staff use); Playwright's Chromium otherwise.
+  const chrome = process.env.GST_TEST_CHROME;
   context = await chromium.launchPersistentContext(path.join(dir, "profile"), {
-    channel: "chromium",
-    headless: true,
-    args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`],
-  });
-  await context.route(/^https:\/\/[^/]*\.gst\.gov\.in\//, async (route) => {
-    const url = new URL(route.request().url());
-    const response = await route.fetch({ url: `${portal.base}/${url.host}${url.pathname}${url.search}` });
-    await route.fulfill({ response });
+    ...(chrome ? { executablePath: chrome } : { channel: "chromium" }),
+    headless: !process.env.GST_TEST_HEADED,
+    args: [
+      `--disable-extensions-except=${ext}`,
+      `--load-extension=${ext}`,
+      `--host-resolver-rules=MAP *.gst.gov.in 127.0.0.1:${portal.port}`,
+      "--ignore-certificate-errors",
+      "--no-proxy-server",
+    ],
   });
   appPage = await context.newPage();
   await appPage.goto(`http://127.0.0.1:${app.port}/dashboard/compliance`);
@@ -67,7 +73,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.4.0");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.4.1");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -146,6 +152,7 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   assert.ok(portal.state.clicks.includes("REMIND ME LATER"), "the Aadhaar pop-up is closed when it shows");
   assert.ok(portal.state.clicks.includes("RETURN DASHBOARD"), "the dashboard is entered from the welcome page's button");
   assert.equal(portal.state.denied, 0, "never refused: every page-opening button got a real click");
+  assert.deepEqual(portal.state.refused, [], "nothing opened from outside");
 
   // The summary page fails to load the first time: tried again from the dashboard
   portal.state.failGstr1Once = true;
@@ -163,7 +170,7 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   const err = await fetchFile(runId, "GSTR3B_PDF", "2026-08");
   assert.equal(err.result, "error");
   assert.match(err.message, /own error page/);
-  assert.match(err.message, /\[extension 0\.4\.0\]$/, "errors name the extension version");
+  assert.match(err.message, /\[extension 0\.4\.1\]$/, "errors name the extension version");
 
   const r2b = await fetchFile(runId, "GSTR2B_JSON", "2026-09");
   assert.equal(r2b.result, "file", r2b.message);
@@ -206,23 +213,49 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
 });
 
 test("the portal refuses its Returns Dashboard opened from outside, and the run stops there", { timeout: 120000 }, async () => {
-  // Opened directly (typed in), as extension 0.3.4 did: refused
+  // Opened directly (typed in), as extensions 0.3.4 and 0.4.0 did: refused,
+  // the dashboard and the welcome page alike
   const direct = await context.newPage();
-  await direct.goto("https://return.gst.gov.in/returns/auth/dashboard");
-  assert.match(direct.url(), /services\/error\/accessdenied/);
+  for (const address of ["https://return.gst.gov.in/returns/auth/dashboard", "https://services.gst.gov.in/services/auth/fowelcome"]) {
+    await direct.goto(address);
+    assert.match(direct.url(), /services\/error\/accessdenied/, address);
+  }
   await direct.close();
 
-  // When the portal refuses anyway, the run says so and asks nothing more
+  // A refusal during a run: the first one goes Back and carries on, a second stops the run
   const tab = await logIn("run-d");
   portal.state.denyAll = true;
-  const before = portal.state.denied;
-  const answer = await fetchFile("run-d", "GSTR3B_PDF", "2026-09");
-  assert.equal(answer.result, "access-denied", answer.message);
-  assert.match(answer.message, /refused access/);
-  assert.equal(portal.state.denied - before, 1, "asked once, not retried");
+  const first = await fetchFile("run-d", "GSTR3B_PDF", "2026-09");
+  assert.equal(first.result, "error", first.message);
+  assert.match(first.message, /refused this one.*went back/);
+  const second = await fetchFile("run-d", "GSTR3B_PDF", "2026-09");
+  assert.equal(second.result, "access-denied", second.message);
+  assert.match(second.message, /refused access/);
   portal.state.denyAll = false;
   const closed = tab.waitForEvent("close");
   await ask({ type: "gst-logout", runId: "run-d" });
+  await closed;
+});
+
+test("GSTR-1 JSON then GSTR-3B in one login: back to the dashboard without being refused, the JSON saved from files.gst.gov.in", { timeout: 180000 }, async () => {
+  portal.state.jsonAsked = 5; // a JSON already prepared on the portal
+  const refusedBefore = portal.state.refused.length;
+  const tab = await logIn("run-s");
+  const json = await fetchFile("run-s", "GSTR1_JSON", "2026-09");
+  assert.equal(json.result, "file", json.message);
+  assert.equal(json.files.length, 2);
+  assert.match(text(json.files[0]), /GSTR1 JSON 092026 part 1/);
+  assert.match(json.files[0].name, /\.zip$/);
+  const pdf = await fetchFile("run-s", "GSTR3B_PDF", "2026-09");
+  assert.equal(pdf.result, "file", pdf.message);
+  assert.match(text(pdf.files[0]), /GSTR-3B 092026/);
+  const twoB = await fetchFile("run-s", "GSTR2B_JSON", "2026-09");
+  assert.equal(twoB.result, "file", twoB.message);
+  const again = await fetchFile("run-s", "GSTR3B_PDF", "2026-09");
+  assert.equal(again.result, "file", again.message);
+  assert.deepEqual(portal.state.refused.slice(refusedBefore), [], "the portal refused nothing");
+  const closed = tab.waitForEvent("close");
+  await ask({ type: "gst-logout", runId: "run-s" });
   await closed;
 });
 

@@ -632,6 +632,31 @@ the welcome page and clicks RETURN DASHBOARD. Settings v3: `urls.welcome`,
 refuse clicks that aren't real (`event.isTrusted`), so script clicks fail
 the tests, as they fail on the real portal.
 
+**Fourth log, and extension 0.4.1.** First real run with 0.4.0: the
+portal **accepted** the real click on RETURN DASHBOARD (`same-site`,
+`Referer: https://services.gst.gov.in/`, `Sec-Fetch-User: ?1`), the period,
+Search and GSTR-1 *Generate JSON* worked, and the link answered 302 to the ZIP
+on `files.gst.gov.in` (a signed address; the page may not read it, so it went
+to Downloads). To fetch the next file (GSTR-3B), 0.4.0 opened the welcome
+page directly to get back: refused too (302 → access denied). So **every
+logged-in page is refused when opened directly**; only login and logout may
+be. 0.4.1 never opens a logged-in page itself: it returns to the dashboard
+with the browser's **Back** (which sends what the original click sent, checked
+in Chrome 156), clicking RETURN DASHBOARD when Back reaches the welcome page;
+a single refusal goes Back and carries on, a second stops the run. A GSTR-1
+JSON part is caught as Chrome downloads it and read from its signed
+`files.gst.gov.in` address, then removed from Downloads. Files that stay on
+the dashboard (GSTR-3B PDF) are fetched before those that open other pages.
+
+Testing: the extension test now runs against the mock portal as a real HTTPS
+server for the GST host names (Chrome's `--host-resolver-rules`, a test
+certificate in `tests/gst-extension/certs/`), with nothing intercepted, so
+Referer, `Sec-Fetch-*`, redirects and cross-site rules are real; the mock
+refuses its logged-in pages without a GST Referer like the real portal.
+`GST_TEST_CHROME=/path/to/chrome` runs it in a given Chrome
+(`GST_TEST_HEADED=1` for a visible window); it passes in Chrome for Testing
+156.0.8078.80, the version staff use.
+
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
 address matches `services.gst.gov.in/services/auth/`, and that the logout
