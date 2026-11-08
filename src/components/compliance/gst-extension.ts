@@ -80,6 +80,8 @@ interface Answer {
   result?: FetchResult;
   files?: FetchedFile[];
   message?: string | null;
+  // gst-diag: the record of the last login, as text
+  text?: string;
 }
 
 // The installed version, or null
@@ -123,6 +125,12 @@ export const portalFetch = (runId: string, file: { kind: string; month: string; 
 
 export const portalLogout = (runId: string) => ask({ type: "gst-logout", runId });
 export const showPortal = (runId: string) => ask({ type: "gst-show", runId });
+
+// The extension's record of the last GST portal login (0.4.2 and newer): what
+// it did, every click in the portal tab and how Chrome classed each page
+// change, to find out why the portal refuses a page
+export const DIAG_VERSION = "0.4.2";
+export const portalDiagnostics = () => ask({ type: "gst-diag" });
 
 export function onPortalStatus(handler: (run: PortalRun) => void) {
   const listener = (event: MessageEvent) => {

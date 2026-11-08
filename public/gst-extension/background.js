@@ -36,10 +36,153 @@ function publicRun(run) {
 }
 
 async function setRun(run) {
+  const before = await getRun();
+  const changed = {};
+  for (const key of ["status", "clicks", "ask", "note", "doing", "denied"]) if (before?.[key] !== run[key] && (before?.[key] ?? null) !== (run[key] ?? null)) changed[key] = run[key] ?? null;
+  if (Object.keys(changed).length) diag("run", changed);
   await chrome.storage.session.set({ run });
   if (run.appTabId != null) chrome.tabs.sendMessage(run.appTabId, { type: "gst-status", run: publicRun(run) }).catch(() => undefined);
   return run;
 }
+
+// ─── Diagnostics ────────────────────────────────────────────────────────────
+//
+// A record of one login's run, for the app's "Save diagnostics" (to find why
+// the portal refuses a page): what the extension did, what portal.js saw in
+// the page, every click there, and every page change in the portal tab with
+// how Chrome classed it (who started it, its Referer, a link or an address
+// opened). Addresses without their query; no passwords, cookies or typed
+// text. Kept in session storage (memory only) until the next login.
+
+const DIAG_MAX = 800;
+let diagChain = Promise.resolve();
+
+const address = (u) => {
+  try {
+    const x = new URL(u);
+    if (!/^https?:$/.test(x.protocol)) return String(u).slice(0, 60);
+    return `${x.origin}${x.pathname}${x.hash}`.slice(0, 200);
+  } catch {
+    return String(u ?? "").slice(0, 200);
+  }
+};
+
+function diag(event, data = {}) {
+  const entry = { t: Date.now(), event, ...data };
+  diagChain = diagChain
+    .then(async () => {
+      const list = (await chrome.storage.session.get("diag")).diag ?? [];
+      list.push(entry);
+      if (list.length > DIAG_MAX) list.splice(0, list.length - DIAG_MAX);
+      await chrome.storage.session.set({ diag: list });
+    })
+    .catch(() => undefined);
+}
+
+function resetDiag() {
+  diagChain = diagChain.then(() => chrome.storage.session.set({ diag: [] })).catch(() => undefined);
+}
+
+// Tabs of the run: the portal tab and tabs opened from it
+async function runTab(tabId) {
+  const run = await getRun();
+  if (!run || (ENDED.includes(run.status) && Date.now() - run.at > 60000)) return false;
+  return tabId === run.portalTabId || openedFromPortal.has(tabId);
+}
+const openedFromPortal = new Set();
+
+async function diagnostics() {
+  await diagChain;
+  const run = await getRun();
+  const list = (await chrome.storage.session.get("diag")).diag ?? [];
+  const time = (t) => {
+    const d = new Date(t);
+    return `${d.toLocaleTimeString("en-GB", { hour12: false })}.${String(d.getMilliseconds()).padStart(3, "0")}`;
+  };
+  const start = list[0]?.t ?? Date.now();
+  const lines = [
+    "MV Company GST extension diagnostics",
+    `Extension ${chrome.runtime.getManifest().version} · ${navigator.userAgent}`,
+    `Saved ${new Date().toString()}`,
+    `Run: ${run ? JSON.stringify(publicRun(run)) : "none"}`,
+    `${list.length} entries${list.length >= DIAG_MAX ? " (the oldest were dropped)" : ""}`,
+    "",
+    ...list.map(({ t, event, ...rest }) => `${time(t)} +${((t - start) / 1000).toFixed(1)}s ${event} ${Object.keys(rest).length ? JSON.stringify(rest) : ""}`),
+  ];
+  return { ok: true, text: lines.join("\n"), entries: list.length };
+}
+
+// Page changes in the run's tabs, as Chrome sees them
+chrome.webNavigation.onBeforeNavigate.addListener((d) => {
+  if (d.frameId !== 0) return;
+  runTab(d.tabId).then((mine) => mine && diag("tab: going to", { tab: d.tabId, to: address(d.url) }));
+});
+chrome.webNavigation.onCommitted.addListener((d) => {
+  if (d.frameId !== 0) return;
+  runTab(d.tabId).then((mine) => mine && diag("tab: arrived", { tab: d.tabId, at: address(d.url), transition: d.transitionType, qualifiers: d.transitionQualifiers }));
+});
+chrome.webNavigation.onHistoryStateUpdated.addListener((d) => {
+  if (d.frameId !== 0) return;
+  runTab(d.tabId).then((mine) => mine && diag("tab: in-page address change", { tab: d.tabId, at: address(d.url), transition: d.transitionType, qualifiers: d.transitionQualifiers }));
+});
+chrome.webNavigation.onReferenceFragmentUpdated.addListener((d) => {
+  if (d.frameId !== 0) return;
+  runTab(d.tabId).then((mine) => mine && diag("tab: # changed", { tab: d.tabId, at: address(d.url), transition: d.transitionType, qualifiers: d.transitionQualifiers }));
+});
+chrome.webNavigation.onErrorOccurred.addListener((d) => {
+  if (d.frameId !== 0) return;
+  runTab(d.tabId).then((mine) => mine && diag("tab: page failed", { tab: d.tabId, at: address(d.url), error: d.error }));
+});
+chrome.webNavigation.onCreatedNavigationTarget.addListener((d) => {
+  runTab(d.sourceTabId).then((mine) => {
+    if (!mine) return;
+    openedFromPortal.add(d.tabId);
+    diag("tab: new tab opened from the portal tab", { tab: d.tabId, to: address(d.url) });
+  });
+});
+
+// The requests for pages in those tabs: who Chrome says started each, and
+// the headers the portal judges it by (Referer, Sec-Fetch-*)
+const PAGE_REQUESTS = { urls: ["https://*.gst.gov.in/*"], types: ["main_frame", "sub_frame"] };
+chrome.webRequest.onSendHeaders.addListener(
+  (d) => {
+    runTab(d.tabId).then((mine) => {
+      if (!mine) return;
+      const header = (name) => d.requestHeaders?.find((h) => h.name.toLowerCase() === name)?.value;
+      const referer = header("referer");
+      diag("request", {
+        tab: d.tabId,
+        type: d.type,
+        method: d.method,
+        url: address(d.url),
+        initiator: d.initiator ?? "(none)",
+        referer: referer ? address(referer) : "(none)",
+        secFetchSite: header("sec-fetch-site"),
+        secFetchUser: header("sec-fetch-user"),
+      });
+    });
+  },
+  PAGE_REQUESTS,
+  ["requestHeaders", "extraHeaders"]
+);
+chrome.webRequest.onBeforeRedirect.addListener(
+  (d) => {
+    runTab(d.tabId).then((mine) => mine && diag("answer: redirect", { tab: d.tabId, url: address(d.url), status: d.statusCode, to: address(d.redirectUrl) }));
+  },
+  PAGE_REQUESTS
+);
+chrome.webRequest.onCompleted.addListener(
+  (d) => {
+    runTab(d.tabId).then((mine) => mine && diag("answer", { tab: d.tabId, url: address(d.url), status: d.statusCode }));
+  },
+  PAGE_REQUESTS
+);
+chrome.webRequest.onErrorOccurred.addListener(
+  (d) => {
+    runTab(d.tabId).then((mine) => mine && diag("answer: failed", { tab: d.tabId, url: address(d.url), error: d.error }));
+  },
+  PAGE_REQUESTS
+);
 
 const tabExists = (tabId) => (tabId == null ? Promise.resolve(false) : chrome.tabs.get(tabId).then(() => true, () => false));
 const closeTab = (tabId) => chrome.tabs.remove(tabId).catch(() => undefined);
@@ -86,6 +229,8 @@ async function handle(message, sender) {
       return show(message.runId, run);
     case "gst-fetch":
       return fetchFile(message, run);
+    case "gst-diag":
+      return diagnostics();
   }
   return { ok: false, error: "Unknown request" };
 }
@@ -97,6 +242,9 @@ async function startLogin(message, sender, run) {
   if (run && !ENDED.includes(run.status) && (await tabExists(run.portalTabId))) {
     return { ok: false, error: `The GST portal is open for ${run.clientName}: log out there first.`, run: publicRun(run) };
   }
+  resetDiag();
+  openedFromPortal.clear();
+  diag("login asked", { client: String(clientName ?? ""), clicks: settings.clicks, autoLogout: !!autoLogout, loginSaved: !!login?.username });
   // The run is saved before the portal loads, so its page events find it
   const tab = await chrome.tabs.create({ url: "about:blank", active: true, index: sender.tab.index + 1, windowId: sender.tab.windowId });
   pending = login?.username ? { tabId: tab.id, username: String(login.username), password: String(login.password ?? "") } : null;
@@ -119,6 +267,7 @@ async function startLogin(message, sender, run) {
     at: Date.now(),
   });
   await chrome.alarms.create(LOGIN_TIMEOUT, { delayInMinutes: Math.max(1, Number(settings.loginWaitMinutes) || 10) });
+  diag("extension opens the login page (an address it opens itself)", { tab: tab.id, url: address(settings.urls.login) });
   await chrome.tabs.update(tab.id, { url: settings.urls.login });
   return { ok: true, run: publicRun(next) };
 }
@@ -138,6 +287,7 @@ async function logout(runId, run) {
   await detachDebugger(run.portalTabId);
   const next = await setRun({ ...run, status: "logging-out", at: Date.now() });
   await chrome.alarms.create(LOGOUT_CLOSE, { delayInMinutes: 0.5 });
+  diag("extension opens the logout page", { url: address(run.settings.urls.logout) });
   await chrome.tabs.update(run.portalTabId, { url: run.settings.urls.logout });
   return { ok: true, run: publicRun(next) };
 }
@@ -189,6 +339,7 @@ async function onPortalTab(tabId, info, tab) {
   const run = await getRun();
   if (!run || run.portalTabId !== tabId || ENDED.includes(run.status)) return;
   const url = info.url ?? tab.url ?? "";
+  if (info.url || info.status) diag("tab: update", { ...(info.url ? { url: address(info.url) } : {}), ...(info.status ? { status: info.status, at: address(tab.url) } : {}) });
   if (run.status === "waiting-login") {
     if (new RegExp(run.settings.urls.loggedIn, "i").test(url)) {
       // Logged in once the welcome page has loaded, not when its address first
@@ -286,6 +437,7 @@ async function turnAssisted(run, why) {
 chrome.debugger.onDetach.addListener((source, reason) => {
   (async () => {
     if (source.tabId === attachedTab) attachedTab = null;
+    diag("debugger detached", { tab: source.tabId, reason });
     const run = await getRun();
     if (run && run.portalTabId === source.tabId && !ENDED.includes(run.status) && reason === "canceled_by_user") await turnAssisted(run, "the debugging bar was cancelled");
   })().catch(() => undefined);
@@ -293,6 +445,19 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 
 async function fromPortal(message, sender) {
   const run = await getRun();
+  if (message.request === "diag") {
+    if (await runTab(sender.tab.id)) {
+      let note;
+      try {
+        note = JSON.parse(String(message.note ?? "{}"));
+      } catch {
+        note = { note: String(message.note ?? "").slice(0, 500) };
+      }
+      const { what, ...rest } = note ?? {};
+      diag(`page: ${String(what ?? "note").slice(0, 60)}`, { tab: sender.tab.id, ...rest });
+    }
+    return { ok: true };
+  }
   if (!run || run.portalTabId !== sender.tab.id || ENDED.includes(run.status) || message.token !== run.runId) return { ok: false };
   if (message.request === "real-click") {
     if (run.clicks === "assisted") return { ok: false, assisted: true };
@@ -300,19 +465,24 @@ async function fromPortal(message, sender) {
     const y = Number(message.y);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return { ok: false };
     try {
+      diag("real click: attaching Chrome's debugger", { x, y, alreadyAttached: attachedTab === run.portalTabId });
       await attachDebugger(run.portalTabId);
+      diag("real click: debugger attached");
       const target = { tabId: run.portalTabId };
       const mouse = (type, extra = {}) => chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type, x, y, ...extra });
       await mouse("mouseMoved");
       await mouse("mousePressed", { button: "left", buttons: 1, clickCount: 1 });
       await mouse("mouseReleased", { button: "left", buttons: 0, clickCount: 1 });
+      diag("real click: mouse pressed and released");
       return { ok: true };
     } catch (error) {
+      diag("real click: failed", { error: String(error?.message ?? error) });
       await turnAssisted(run, String(error?.message ?? error));
       return { ok: false, assisted: true };
     }
   }
   if (message.request === "ask-person") {
+    diag("asking the person to click", { label: String(message.label ?? "").slice(0, 80) });
     // Bring the portal tab forward and tell the app what to click
     await setRun({ ...run, ask: String(message.label ?? "the highlighted button").slice(0, 80), at: Date.now() });
     const tab = await chrome.tabs.update(run.portalTabId, { active: true }).catch(() => null);
@@ -350,12 +520,28 @@ const RETRY = /frame|removed|didn't answer|no tab|in time|wasn't found|went away
 async function step(tabId, step, ctx) {
   const run = await getRun();
   ctx = { ...ctx, clicks: run?.clicks ?? "real" };
+  diag("step", { kind: step.kind, target: step.target?.text ?? step.target?.css, scope: step.scope, opensPage: !!step.url, clicks: ctx.clicks });
   try {
-    return await runStep(tabId, step, ctx);
+    const answer = await runStep(tabId, step, ctx);
+    diag("step answer", { kind: step.kind, ...summary(answer) });
+    return answer;
   } finally {
     const now = await getRun();
     if (now?.ask) await setRun({ ...now, ask: null, at: Date.now() });
   }
+}
+
+// An answer as the log shows it (files without their bytes)
+function summary(answer) {
+  if (!answer || typeof answer !== "object") return { answer: String(answer) };
+  const out = {};
+  for (const [k, v] of Object.entries(answer)) {
+    if (k === "file") out.file = v?.name ?? true;
+    else if (k === "files") out.files = Array.isArray(v) ? v.map((f) => f?.name ?? (f?.why ? `(not read: ${f.why})` : "?")) : v;
+    else if (k === "links") out.links = Array.isArray(v) ? v.length : v;
+    else out[k] = typeof v === "string" ? v.slice(0, 300) : v;
+  }
+  return out;
 }
 
 async function runStep(tabId, step, ctx) {
@@ -363,6 +549,7 @@ async function runStep(tabId, step, ctx) {
     const [answer] = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: mvcPortalStep, args: [step, ctx] });
     if (answer?.result) return answer.result;
   } catch (error) {
+    diag("step: page didn't answer", { error: String(error?.message ?? error) });
     // The click opened another page before the answer came back
     if (!step.url) return { error: String(error?.message ?? error) };
   }
@@ -377,6 +564,7 @@ const literal = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Requests made by the extension itself come "from outside", and the portal
 // refuses those (access denied), so files and pages are never asked for that way.
 async function openFromPage(tabId, urls, newTab) {
+  diag("extension opens links from the page (script)", { urls: urls.map(address), newTab: !!newTab });
   const [answer] = await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
@@ -570,6 +758,7 @@ async function fetchFile(message, run) {
     token: run.runId,
   };
   await chrome.alarms.clear(IDLE_LOGOUT);
+  diag("file asked", { kind, month, label: String(label ?? "") });
   run = await setRun({ ...run, doing: String(label ?? kind), doingAt: Date.now(), at: Date.now() });
   const tabId = run.portalTabId;
   // Chrome stops an idle extension worker after about 30 seconds; a call
@@ -577,6 +766,7 @@ async function fetchFile(message, run) {
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => undefined), 15000);
   const done = async (answer) => {
     clearInterval(keepAlive);
+    diag("file answer", summary(answer));
     // Which extension said it, so a computer not yet updated shows at once
     if (answer.message && ["error", "access-denied", "session-expired"].includes(answer.result)) {
       answer = { ...answer, message: `${answer.message} [extension ${chrome.runtime.getManifest().version}]` };
@@ -592,6 +782,7 @@ async function fetchFile(message, run) {
   let first = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     let answer;
+    diag("attempt", { attempt });
     try {
       answer = await attemptFile(tabId, s, recipe, ctx, () => (reachedGenerate = true));
     } catch (error) {
@@ -634,6 +825,7 @@ async function toDashboard(tabId, s, ctx) {
     let tab = await chrome.tabs.get(tabId);
     if (tab.status !== "complete") tab = await settle(tabId, null, 30000);
     const url = tab.url ?? "";
+    diag("to the dashboard: the tab is at", { at: address(url), backs });
     if (dashboard.test(url)) return tab;
     // On the login page: the run reports it
     if (url.startsWith(s.urls.login)) return tab;
@@ -654,9 +846,11 @@ async function toDashboard(tabId, s, ctx) {
 // The browser's Back in the portal tab; false if there is nothing to go back to
 async function goBack(tabId) {
   const before = (await chrome.tabs.get(tabId)).url;
+  diag("extension presses Back", { from: address(before) });
   try {
     await chrome.tabs.goBack(tabId);
-  } catch {
+  } catch (error) {
+    diag("Back: nothing to go back to", { error: String(error?.message ?? error) });
     return false;
   }
   // Back within a page (Angular) only changes the address; otherwise a page loads

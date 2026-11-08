@@ -657,6 +657,26 @@ refuses its logged-in pages without a GST Referer like the real portal.
 (`GST_TEST_HEADED=1` for a visible window); it passes in Chrome for Testing
 156.0.8078.80, the version staff use.
 
+Fourth net-export log (0.4.1, computer A, files ticked before login): the
+dashboard was still refused, about 1.5 s after the welcome page loaded, and
+its request looked exactly like an address the extension opens itself
+(initiator `chrome-extension://…`, no Referer, `Sec-Fetch-Site: cross-site`,
+no `Sec-Fetch-User`). Chrome's "started debugging this browser" bar never
+showed and no orange banner either, so the real click had not run; the
+"Remind me later" pop-up only closes itself. The code alone doesn't explain
+it, so **0.4.2 adds diagnostics** (nothing else changes): for the run's tabs
+it records what the extension did (each step, real-click attach / press /
+failure, Back, addresses it opens), what portal.js saw (the button pressed,
+with its HTML and click handler; a covered button; the real-click answer;
+script clicks), every click in the page (`trusted` or not, from relay.js),
+each page load (referrer, Navigation Timing type), page-started navigations
+(Navigation API) and, from `webNavigation` / `webRequest`, each page request
+with its initiator, Referer and `Sec-Fetch-*`, the answer or redirect, and
+Chrome's transition type. Addresses lose their query; no passwords,
+cookies or typed text. Kept in session storage until the next login; the
+app's **Save diagnostics** (next to the extension version) saves it as a
+text file and copies it. New permissions: `webNavigation`, `webRequest`.
+
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
 address matches `services.gst.gov.in/services/auth/`, and that the logout

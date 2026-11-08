@@ -5,7 +5,7 @@
 
 document.documentElement.setAttribute("data-mvc-gst", chrome.runtime.getManifest().version);
 
-const REQUESTS = ["gst-status", "gst-login", "gst-logout", "gst-show", "gst-fetch"];
+const REQUESTS = ["gst-status", "gst-login", "gst-logout", "gst-show", "gst-fetch", "gst-diag"];
 const reply = (data) => window.postMessage({ source: "mvc-gst-ext", ...data }, location.origin);
 
 window.addEventListener("message", (event) => {
