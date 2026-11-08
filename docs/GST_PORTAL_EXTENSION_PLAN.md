@@ -676,6 +676,14 @@ Chrome's transition type. Addresses lose their query; no passwords,
 cookies or typed text. Kept in session storage until the next login; the
 app's **Save diagnostics** (next to the extension version) saves it as a
 text file and copies it. New permissions: `webNavigation`, `webRequest`.
+On computer B, 0.4.2's Save diagnostics only got "The GST extension didn't
+answer": each entry re-read and re-wrote the whole record in storage, and the
+answer waited behind that queue, past the app's 15 s. **0.4.3** keeps the
+record in the worker's memory and copies it to session storage half a second
+after the last entry; Save diagnostics answers from memory (45 s wait). A part
+of Chrome the record listens to that Chrome refuses is listed in the record's
+header instead of stopping the worker, and the app page's bridge says "reload
+this page" when an update or reload has cut it off, instead of no answer.
 
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in

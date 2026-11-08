@@ -52,10 +52,25 @@ async function setRun(run) {
 // the page, every click there, and every page change in the portal tab with
 // how Chrome classed it (who started it, its Referer, a link or an address
 // opened). Addresses without their query; no passwords, cookies or typed
-// text. Kept in session storage (memory only) until the next login.
+// text. Kept in the worker's memory and copied to session storage (memory
+// only, survives the worker sleeping) half a second after the last entry,
+// until the next login.
 
 const DIAG_MAX = 800;
-let diagChain = Promise.resolve();
+// This worker's entries, after the stored ones once those are read
+let diagList = [];
+let diagCleared = false;
+const diagReady = chrome.storage.session
+  .get("diag")
+  .then((stored) => {
+    if (!diagCleared) diagList = [...(stored.diag ?? []), ...diagList].slice(-DIAG_MAX);
+  })
+  .catch(() => undefined);
+let diagTimer = null;
+const diagSave = () => {
+  diagTimer = null;
+  diagReady.then(() => chrome.storage.session.set({ diag: diagList })).catch(() => undefined);
+};
 
 const address = (u) => {
   try {
@@ -68,19 +83,15 @@ const address = (u) => {
 };
 
 function diag(event, data = {}) {
-  const entry = { t: Date.now(), event, ...data };
-  diagChain = diagChain
-    .then(async () => {
-      const list = (await chrome.storage.session.get("diag")).diag ?? [];
-      list.push(entry);
-      if (list.length > DIAG_MAX) list.splice(0, list.length - DIAG_MAX);
-      await chrome.storage.session.set({ diag: list });
-    })
-    .catch(() => undefined);
+  diagList.push({ t: Date.now(), event, ...data });
+  if (diagList.length > DIAG_MAX) diagList.splice(0, diagList.length - DIAG_MAX);
+  if (!diagTimer) diagTimer = setTimeout(diagSave, 500);
 }
 
 function resetDiag() {
-  diagChain = diagChain.then(() => chrome.storage.session.set({ diag: [] })).catch(() => undefined);
+  diagCleared = true;
+  diagList = [];
+  diagSave();
 }
 
 // Tabs of the run: the portal tab and tabs opened from it
@@ -92,9 +103,10 @@ async function runTab(tabId) {
 const openedFromPortal = new Set();
 
 async function diagnostics() {
-  await diagChain;
-  const run = await getRun();
-  const list = (await chrome.storage.session.get("diag")).diag ?? [];
+  // Never waits long: what is in memory is enough
+  await Promise.race([diagReady, new Promise((r) => setTimeout(r, 2000))]);
+  const run = await getRun().catch(() => null);
+  const list = diagList.slice();
   const time = (t) => {
     const d = new Date(t);
     return `${d.toLocaleTimeString("en-GB", { hour12: false })}.${String(d.getMilliseconds()).padStart(3, "0")}`;
@@ -105,6 +117,7 @@ async function diagnostics() {
     `Extension ${chrome.runtime.getManifest().version} · ${navigator.userAgent}`,
     `Saved ${new Date().toString()}`,
     `Run: ${run ? JSON.stringify(publicRun(run)) : "none"}`,
+    `Chrome refused: ${diagRefused.length ? diagRefused.join(" · ") : "nothing"}`,
     `${list.length} entries${list.length >= DIAG_MAX ? " (the oldest were dropped)" : ""}`,
     "",
     ...list.map(({ t, event, ...rest }) => `${time(t)} +${((t - start) / 1000).toFixed(1)}s ${event} ${Object.keys(rest).length ? JSON.stringify(rest) : ""}`),
@@ -112,76 +125,107 @@ async function diagnostics() {
   return { ok: true, text: lines.join("\n"), entries: list.length };
 }
 
+// Chrome's parts the record listens to; one Chrome refuses is noted in the
+// record and the extension works on without it
+function listen(part, register) {
+  try {
+    register();
+  } catch (error) {
+    diagRefused.push(`${part}: ${String(error?.message ?? error)}`);
+  }
+}
+const diagRefused = [];
+
 // Page changes in the run's tabs, as Chrome sees them
-chrome.webNavigation.onBeforeNavigate.addListener((d) => {
-  if (d.frameId !== 0) return;
-  runTab(d.tabId).then((mine) => mine && diag("tab: going to", { tab: d.tabId, to: address(d.url) }));
-});
-chrome.webNavigation.onCommitted.addListener((d) => {
-  if (d.frameId !== 0) return;
-  runTab(d.tabId).then((mine) => mine && diag("tab: arrived", { tab: d.tabId, at: address(d.url), transition: d.transitionType, qualifiers: d.transitionQualifiers }));
-});
-chrome.webNavigation.onHistoryStateUpdated.addListener((d) => {
-  if (d.frameId !== 0) return;
-  runTab(d.tabId).then((mine) => mine && diag("tab: in-page address change", { tab: d.tabId, at: address(d.url), transition: d.transitionType, qualifiers: d.transitionQualifiers }));
-});
-chrome.webNavigation.onReferenceFragmentUpdated.addListener((d) => {
-  if (d.frameId !== 0) return;
-  runTab(d.tabId).then((mine) => mine && diag("tab: # changed", { tab: d.tabId, at: address(d.url), transition: d.transitionType, qualifiers: d.transitionQualifiers }));
-});
-chrome.webNavigation.onErrorOccurred.addListener((d) => {
-  if (d.frameId !== 0) return;
-  runTab(d.tabId).then((mine) => mine && diag("tab: page failed", { tab: d.tabId, at: address(d.url), error: d.error }));
-});
-chrome.webNavigation.onCreatedNavigationTarget.addListener((d) => {
-  runTab(d.sourceTabId).then((mine) => {
-    if (!mine) return;
-    openedFromPortal.add(d.tabId);
-    diag("tab: new tab opened from the portal tab", { tab: d.tabId, to: address(d.url) });
-  });
-});
+listen("webNavigation.onBeforeNavigate", () =>
+  chrome.webNavigation.onBeforeNavigate.addListener((d) => {
+    if (d.frameId !== 0) return;
+    runTab(d.tabId).then((mine) => mine && diag("tab: going to", { tab: d.tabId, to: address(d.url) }));
+  })
+);
+listen("webNavigation.onCommitted", () =>
+  chrome.webNavigation.onCommitted.addListener((d) => {
+    if (d.frameId !== 0) return;
+    runTab(d.tabId).then((mine) => mine && diag("tab: arrived", { tab: d.tabId, at: address(d.url), transition: d.transitionType, qualifiers: d.transitionQualifiers }));
+  })
+);
+listen("webNavigation.onHistoryStateUpdated", () =>
+  chrome.webNavigation.onHistoryStateUpdated.addListener((d) => {
+    if (d.frameId !== 0) return;
+    runTab(d.tabId).then((mine) => mine && diag("tab: in-page address change", { tab: d.tabId, at: address(d.url), transition: d.transitionType, qualifiers: d.transitionQualifiers }));
+  })
+);
+listen("webNavigation.onReferenceFragmentUpdated", () =>
+  chrome.webNavigation.onReferenceFragmentUpdated.addListener((d) => {
+    if (d.frameId !== 0) return;
+    runTab(d.tabId).then((mine) => mine && diag("tab: # changed", { tab: d.tabId, at: address(d.url), transition: d.transitionType, qualifiers: d.transitionQualifiers }));
+  })
+);
+listen("webNavigation.onErrorOccurred", () =>
+  chrome.webNavigation.onErrorOccurred.addListener((d) => {
+    if (d.frameId !== 0) return;
+    runTab(d.tabId).then((mine) => mine && diag("tab: page failed", { tab: d.tabId, at: address(d.url), error: d.error }));
+  })
+);
+listen("webNavigation.onCreatedNavigationTarget", () =>
+  chrome.webNavigation.onCreatedNavigationTarget.addListener((d) => {
+    runTab(d.sourceTabId).then((mine) => {
+      if (!mine) return;
+      openedFromPortal.add(d.tabId);
+      diag("tab: new tab opened from the portal tab", { tab: d.tabId, to: address(d.url) });
+    });
+  })
+);
 
 // The requests for pages in those tabs: who Chrome says started each, and
 // the headers the portal judges it by (Referer, Sec-Fetch-*)
 const PAGE_REQUESTS = { urls: ["https://*.gst.gov.in/*"], types: ["main_frame", "sub_frame"] };
-chrome.webRequest.onSendHeaders.addListener(
-  (d) => {
-    runTab(d.tabId).then((mine) => {
-      if (!mine) return;
-      const header = (name) => d.requestHeaders?.find((h) => h.name.toLowerCase() === name)?.value;
-      const referer = header("referer");
-      diag("request", {
-        tab: d.tabId,
-        type: d.type,
-        method: d.method,
-        url: address(d.url),
-        initiator: d.initiator ?? "(none)",
-        referer: referer ? address(referer) : "(none)",
-        secFetchSite: header("sec-fetch-site"),
-        secFetchUser: header("sec-fetch-user"),
+listen("webRequest.onSendHeaders", () =>
+  chrome.webRequest.onSendHeaders.addListener(
+    (d) => {
+      runTab(d.tabId).then((mine) => {
+        if (!mine) return;
+        const header = (name) => d.requestHeaders?.find((h) => h.name.toLowerCase() === name)?.value;
+        const referer = header("referer");
+        diag("request", {
+          tab: d.tabId,
+          type: d.type,
+          method: d.method,
+          url: address(d.url),
+          initiator: d.initiator ?? "(none)",
+          referer: referer ? address(referer) : "(none)",
+          secFetchSite: header("sec-fetch-site"),
+          secFetchUser: header("sec-fetch-user"),
+        });
       });
-    });
-  },
-  PAGE_REQUESTS,
-  ["requestHeaders", "extraHeaders"]
+    },
+    PAGE_REQUESTS,
+    ["requestHeaders", "extraHeaders"]
+  )
 );
-chrome.webRequest.onBeforeRedirect.addListener(
-  (d) => {
-    runTab(d.tabId).then((mine) => mine && diag("answer: redirect", { tab: d.tabId, url: address(d.url), status: d.statusCode, to: address(d.redirectUrl) }));
-  },
-  PAGE_REQUESTS
+listen("webRequest.onBeforeRedirect", () =>
+  chrome.webRequest.onBeforeRedirect.addListener(
+    (d) => {
+      runTab(d.tabId).then((mine) => mine && diag("answer: redirect", { tab: d.tabId, url: address(d.url), status: d.statusCode, to: address(d.redirectUrl) }));
+    },
+    PAGE_REQUESTS
+  )
 );
-chrome.webRequest.onCompleted.addListener(
-  (d) => {
-    runTab(d.tabId).then((mine) => mine && diag("answer", { tab: d.tabId, url: address(d.url), status: d.statusCode }));
-  },
-  PAGE_REQUESTS
+listen("webRequest.onCompleted", () =>
+  chrome.webRequest.onCompleted.addListener(
+    (d) => {
+      runTab(d.tabId).then((mine) => mine && diag("answer", { tab: d.tabId, url: address(d.url), status: d.statusCode }));
+    },
+    PAGE_REQUESTS
+  )
 );
-chrome.webRequest.onErrorOccurred.addListener(
-  (d) => {
-    runTab(d.tabId).then((mine) => mine && diag("answer: failed", { tab: d.tabId, url: address(d.url), error: d.error }));
-  },
-  PAGE_REQUESTS
+listen("webRequest.onErrorOccurred", () =>
+  chrome.webRequest.onErrorOccurred.addListener(
+    (d) => {
+      runTab(d.tabId).then((mine) => mine && diag("answer: failed", { tab: d.tabId, url: address(d.url), error: d.error }));
+    },
+    PAGE_REQUESTS
+  )
 );
 
 const tabExists = (tabId) => (tabId == null ? Promise.resolve(false) : chrome.tabs.get(tabId).then(() => true, () => false));

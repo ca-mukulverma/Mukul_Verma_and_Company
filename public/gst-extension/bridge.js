@@ -12,10 +12,20 @@ window.addEventListener("message", (event) => {
   if (event.source !== window || event.origin !== location.origin) return;
   const data = event.data;
   if (data?.source !== "mvc-app-gst" || !REQUESTS.includes(data.message?.type)) return;
-  chrome.runtime
-    .sendMessage(data.message)
-    .then((answer) => reply({ type: "answer", id: data.id, answer }))
-    .catch((error) => reply({ type: "answer", id: data.id, answer: { ok: false, error: String(error?.message ?? error) } }));
+  const failed = (error) => {
+    const why = String(error?.message ?? error);
+    // This page's copy of the extension was cut off by an update or reload
+    const stale = /context invalidated|receiving end does not exist|could not establish connection/i.test(why);
+    reply({ type: "answer", id: data.id, answer: { ok: false, error: stale ? `The GST extension was updated or reloaded since this page opened: reload this page (${why})` : why } });
+  };
+  try {
+    chrome.runtime
+      .sendMessage(data.message)
+      .then((answer) => reply({ type: "answer", id: data.id, answer }))
+      .catch(failed);
+  } catch (error) {
+    failed(error);
+  }
 });
 
 chrome.runtime.onMessage.addListener((message, sender) => {
