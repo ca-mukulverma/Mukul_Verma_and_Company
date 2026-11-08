@@ -35,6 +35,28 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "work-done",
+    date: "2026-11-09",
+    audience: "everyone",
+    title: { en: "Work done: one list of finished work, and who did it", hi: "किया गया काम: पूरे हुए काम की एक सूची, और किसने किया" },
+    steps: {
+      en: [
+        "Work done in the menu lists completed tasks, logged work and compliance returns filed, with the date, client and firm.",
+        "You see your own work and how much you did this month. Admin, and the partners Admin allows, see everyone's, with a By staff count.",
+        "Choose dates, firm or kind of work, search by client, and download it as Excel.",
+      ],
+      hi: [
+        "मेन्यू में Work done में पूरे हुए टास्क, लॉग किया गया काम और फ़ाइल हुए कंप्लायंस रिटर्न दिखते हैं, तारीख, क्लाइंट और फ़र्म के साथ।",
+        "आपको अपना काम और इस महीने कितना काम किया, दिखता है। एडमिन और जिन पार्टनर्स को एडमिन अनुमति दे, वे सबका काम और By staff गिनती देखते हैं।",
+        "तारीख, फ़र्म या काम का प्रकार चुनें, क्लाइंट से खोजें, और Excel डाउनलोड करें।",
+      ],
+    },
+    push: {
+      title: "New in the app: Work done",
+      body: "One list of finished tasks, logged work and compliance, with who did each one. Open Work done in the menu.",
+    },
+  },
+  {
     id: "gst-portal-excel",
     date: "2026-11-08",
     audience: "everyone",

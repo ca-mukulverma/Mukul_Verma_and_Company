@@ -110,6 +110,18 @@ const SECTIONS: Section[] = [
     link: { href: "/dashboard/billing", label: "Open Billing" },
   },
   {
+    id: "work-done",
+    title: "Work done",
+    steps: [
+      "One list of finished work: completed tasks, work logged for billing, and compliance returns filed or completed. Fees are not shown.",
+      "Done by: for a task, the people it is assigned to (and who marked it completed, if someone else); for logged work, the person who logged it; for compliance, who filed it (and who checked it).",
+      "Pick the dates (This month / Last month), a staff member, the firm, the kind of work, or search by work or client name. Click a row to open the task or compliance sheet.",
+      "By staff shows how much work each person did in those dates; click a name to see their work. Excel downloads the list with the same filters, plus a By staff sheet.",
+      "Everyone sees their own work here. Admin sees everyone's, and so do the partners Admin turns Work Done on for (Settings → Permissions).",
+    ],
+    link: { href: "/dashboard/work-done", label: "Open Work done" },
+  },
+  {
     id: "clients",
     title: "Clients",
     steps: [

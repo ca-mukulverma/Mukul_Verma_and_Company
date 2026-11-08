@@ -5,6 +5,7 @@ import {
   Fingerprint,
   HelpCircle,
   LayoutDashboard,
+  ListChecks,
   ListTodo,
   Receipt,
   Settings,
@@ -61,6 +62,8 @@ export function navGroups(role: string): NavGroup[] {
       title: "Office",
       items: [
         { title: "Billing", href: "/dashboard/billing", icon: Receipt, roles: STAFF_ROLES, shortcut: "b" },
+        // Everyone sees their own work; Admin and the partners allowed see everyone's
+        { title: "Work done", href: "/dashboard/work-done", icon: ListChecks, roles: STAFF_ROLES, shortcut: "k" },
         { title: "Dashboard", href: roleDashboardPath(role), icon: LayoutDashboard, roles: STAFF_ROLES, shortcut: "d" },
       ],
     },

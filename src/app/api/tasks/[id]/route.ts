@@ -106,7 +106,12 @@ export async function GET(
       currentUser.role === "ADMIN" || // Admin can view any task
       task.assignedById === currentUser.id || // Creator can view their tasks
       task.lastStatusUpdatedById === currentUser.id || // Last updater can view
-      task.assignees.some(a => a.userId === currentUser.id); // Assignee can view
+      task.assignees.some(a => a.userId === currentUser.id) || // Assignee can view
+      // Partners who see everyone's Work Done can open the completed tasks listed there
+      (currentUser.role === "PARTNER" &&
+        task.status === "completed" &&
+        !!(await prisma.user.findUnique({ where: { id: currentUser.id }, select: { canViewWorkDone: true } }))
+          ?.canViewWorkDone);
 
     if (!canViewTask) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
