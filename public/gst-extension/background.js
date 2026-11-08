@@ -8,6 +8,10 @@
 // never stored.
 
 const APP_ORIGIN = "__APP_ORIGIN__";
+// This file's version: must equal the manifest's (and the stamps in
+// portal.js, bridge.js, relay.js). A folder mixing files of two versions (an
+// old file left by a cached download or a wrong extract) is caught with it.
+const CODE_VERSION = "0.4.4";
 // Every portal address must be on the GST portal
 const PORTAL = /^https:\/\/([a-z0-9-]+\.)*gst\.gov\.in\//i;
 const ENDED = ["logged-out", "closed", "timed-out", "failed"];
@@ -115,6 +119,7 @@ async function diagnostics() {
   const lines = [
     "MV Company GST extension diagnostics",
     `Extension ${chrome.runtime.getManifest().version} · ${navigator.userAgent}`,
+    `Files: ${JSON.stringify(fileVersions())} (relay.js: see "page loaded")`,
     `Saved ${new Date().toString()}`,
     `Run: ${run ? JSON.stringify(publicRun(run)) : "none"}`,
     `Chrome refused: ${diagRefused.length ? diagRefused.join(" · ") : "nothing"}`,
@@ -260,11 +265,18 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   return true;
 });
 
+// The version stamp of each file of the extension as Chrome loaded it
+// (bridge.js and relay.js report theirs from the pages they run in)
+function fileVersions() {
+  // MVC_PORTAL_CODE: portal.js, loaded with importScripts
+  return { "background.js": CODE_VERSION, "portal.js": typeof MVC_PORTAL_CODE === "string" ? MVC_PORTAL_CODE : null };
+}
+
 async function handle(message, sender) {
   const run = await getRun();
   switch (message?.type) {
     case "gst-status":
-      return { ok: true, run: publicRun(run), version: chrome.runtime.getManifest().version };
+      return { ok: true, run: publicRun(run), version: chrome.runtime.getManifest().version, stamps: fileVersions() };
     case "gst-login":
       return startLogin(message, sender, run);
     case "gst-logout":

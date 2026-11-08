@@ -14,6 +14,9 @@ window.addEventListener("message", (event) => {
     .catch(() => reply({ ok: false }));
 });
 
+// This file's version: must equal the manifest's (see background.js)
+const RELAY_CODE = "0.4.4";
+
 // ─── Diagnostics ────────────────────────────────────────────────────────────
 // What happens in the portal tab, for the app's "Save diagnostics": each page
 // as it loads (the referrer Chrome gave it and how it was reached), each click
@@ -42,7 +45,7 @@ const label = (el) => (el?.innerText ?? el?.value ?? "").replace(/\s+/g, " ").tr
 
 document.addEventListener("DOMContentLoaded", () => {
   const nav = performance.getEntriesByType?.("navigation")?.[0];
-  diag("page loaded", { page: address(location.href), referrer: document.referrer ? address(document.referrer) : "(none)", how: nav?.type ?? "?" });
+  diag("page loaded", { relay: RELAY_CODE, page: address(location.href), referrer: document.referrer ? address(document.referrer) : "(none)", how: nav?.type ?? "?" });
 });
 
 document.addEventListener(

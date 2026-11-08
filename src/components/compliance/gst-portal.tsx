@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { fileKey, PORTAL_RETURNS, PortalFile, PortalFileRow, PortalFileState, PortalReturn, RETURN_LABELS, RETURN_OF, STATE_LABELS } from "@/lib/gst-portal";
 import type { ClientPortalFiles, RoundPortalFiles } from "@/lib/gst-portal-files";
 import type { PortalSettings } from "@/lib/gst-portal-settings";
-import { canFetch, compareVersions, DIAG_VERSION, downloadGstExtension, ENDED, FetchedFile, gstExtensionVersion, isOpen, latestGstExtension, onPortalStatus, PortalRun, portalFetch, portalDiagnostics, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
+import { canFetch, compareVersions, DIAG_VERSION, downloadGstExtension, ENDED, mixedExtensionFiles, FetchedFile, gstExtensionVersion, isOpen, latestGstExtension, onPortalStatus, PortalRun, portalFetch, portalDiagnostics, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
 import { sendPortalFiles } from "./portal-files";
 import { GstGuideButton } from "./gst-guide";
 import { FyStepper, fyOf, previousMonth } from "./gst-working";
@@ -287,13 +287,19 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
 
   // The version this app ships, to offer an update
   const [latest, setLatest] = useState<string | null>(null);
+  // The extension's files on this computer are of different versions
+  const [mixed, setMixed] = useState<string | null>(null);
 
   useEffect(() => {
     const installed = gstExtensionVersion();
     setVersion(installed);
     latestGstExtension().then(setLatest);
     if (!installed) return;
-    portalStatus().then((a) => a.ok && setRun(a.run ?? null));
+    portalStatus().then((a) => {
+      if (!a.ok) return;
+      setRun(a.run ?? null);
+      setMixed(mixedExtensionFiles(a.version ?? installed, a.stamps));
+    });
     return onPortalStatus(setRun);
   }, []);
 
@@ -455,6 +461,12 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
         const running = status.version ?? gstExtensionVersion();
         if (newest) setLatest(newest);
         if (running) setVersion(running);
+        const odd = status.ok ? mixedExtensionFiles(running, status.stamps) : null;
+        setMixed(odd);
+        if (odd) {
+          setInstalling(true);
+          return { ok: false, error: `The GST extension on this computer mixes files of different versions (${odd}): reinstall it as the guide says, then reload this page.` };
+        }
         if (running && newest && compareVersions(running, newest) < 0) {
           setInstalling(true);
           return { ok: false, error: `This computer runs GST extension ${running}; update it to ${newest} first (Update the GST extension), then reload this page.` };
@@ -581,6 +593,17 @@ function PortalLogin({ clientId, clientName, gstin, files, onSaved }: { clientId
           </span>
         </div>
       )}
+      {mixed && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <span>
+            The GST extension on this computer mixes files of different versions ({mixed}). Delete everything in its mvc-gst folder, download it again, extract it into the folder that holds
+            mvc-gst (so the five files sit directly in mvc-gst), click reload on chrome://extensions, then reload this page.
+          </span>
+          <Button size="sm" variant="outline" className="h-7" onClick={() => setInstalling(true)}>
+            <RefreshCw className="mr-1 h-3.5 w-3.5" /> Reinstall the GST extension
+          </Button>
+        </div>
+      )}
       <ExtensionVersion installed={version} latest={latest} needed={!fetching} busy={working || !!mine} onUpdate={() => setInstalling(true)} />
       {installing && <InstallDialog update={version} latest={latest} onClose={() => setInstalling(false)} />}
     </div>
@@ -633,7 +656,9 @@ function DiagnosticsButton({ installed }: { installed: string }) {
     try {
       const answer = await portalDiagnostics();
       if (!answer.ok || !answer.text) {
-        toast.error(answer.error ?? "The GST extension gave no diagnostics: update it and reload this page");
+        // An old background.js next to a newer manifest doesn't know the request
+        const old = answer.error === "Unknown request" ? "The GST extension on this computer has old files in its folder: reinstall it (delete the mvc-gst folder's files first), then reload this page" : null;
+        toast.error(old ?? answer.error ?? "The GST extension gave no diagnostics: update it and reload this page");
         return;
       }
       const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
@@ -690,8 +715,12 @@ function InstallDialog({ onClose, update = null, latest = null }: { onClose: () 
               </Button>
             </li>
             <li>
-              Right-click the ZIP → <span className="font-medium">Extract all</span>, and extract it over the existing <span className="font-mono">mvc-gst</span>{" "}
-              folder (choose <span className="font-medium">Replace the files</span> if asked).
+              Open your <span className="font-mono">mvc-gst</span> folder and delete everything inside it (keep the empty folder).
+            </li>
+            <li>
+              Right-click the ZIP → <span className="font-medium">Extract all</span>, and as the folder choose the one that <span className="font-medium">holds</span>{" "}
+              <span className="font-mono">mvc-gst</span> (for example Documents), not <span className="font-mono">mvc-gst</span> itself. Choose{" "}
+              <span className="font-medium">Replace the files</span> if asked. The five files must sit directly in <span className="font-mono">mvc-gst</span>.
             </li>
             <li>
               Open <span className="font-mono">chrome://extensions</span> (Edge: <span className="font-mono">edge://extensions</span>) and click the{" "}
