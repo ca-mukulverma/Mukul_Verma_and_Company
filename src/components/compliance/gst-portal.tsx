@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Check, ChevronLeft, ChevronRight, CircleDashed, Clock, Download, ExternalLink, KeyRound, LogIn, LogOut, Loader2, PanelTop, Puzzle, RefreshCw, UserCheck } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CircleDashed, Clock, Download, ExternalLink, FileText, KeyRound, LogIn, LogOut, Loader2, PanelTop, Puzzle, RefreshCw, UserCheck } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { fileKey, PORTAL_RETURNS, PortalFile, PortalFileRow, PortalFileState, PortalReturn, RETURN_LABELS, RETURN_OF, STATE_LABELS } from "@/lib/gst-portal";
 import type { ClientPortalFiles, RoundPortalFiles } from "@/lib/gst-portal-files";
 import type { PortalSettings } from "@/lib/gst-portal-settings";
-import { canFetch, compareVersions, downloadGstExtension, ENDED, FetchedFile, gstExtensionVersion, isOpen, latestGstExtension, onPortalStatus, PortalRun, portalFetch, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
+import { canFetch, compareVersions, DIAG_VERSION, downloadGstExtension, ENDED, FetchedFile, gstExtensionVersion, isOpen, latestGstExtension, onPortalStatus, PortalRun, portalFetch, portalDiagnostics, portalLogin, portalLogout, portalStatus, showPortal } from "./gst-extension";
 import { sendPortalFiles } from "./portal-files";
 import { GstGuideButton } from "./gst-guide";
 import { FyStepper, fyOf, previousMonth } from "./gst-working";
@@ -602,6 +602,7 @@ function ExtensionVersion({ installed, latest, needed, busy, onUpdate }: { insta
           </button>
         </span>
         <GstGuideButton variant="ghost" className="h-7 px-2 text-xs" label="Step-by-step guide · English / हिंदी / Hinglish" />
+        <DiagnosticsButton installed={installed} />
       </div>
     );
   }
@@ -617,7 +618,44 @@ function ExtensionVersion({ installed, latest, needed, busy, onUpdate }: { insta
         <RefreshCw className="mr-1 h-3.5 w-3.5" /> Update the GST extension{latest ? ` to ${latest}` : ""}
       </Button>
       <GstGuideButton variant="ghost" className="h-7 px-2 text-xs" label="Step-by-step guide · English / हिंदी / Hinglish" />
+      <DiagnosticsButton installed={installed} />
     </div>
+  );
+}
+
+// Saves the extension's record of the last GST portal login as a text file
+// (and copies it), to send to the admin when the portal refuses a page
+function DiagnosticsButton({ installed }: { installed: string }) {
+  const [saving, setSaving] = useState(false);
+  if (compareVersions(installed, DIAG_VERSION) < 0) return null;
+  const save = async () => {
+    setSaving(true);
+    try {
+      const answer = await portalDiagnostics();
+      if (!answer.ok || !answer.text) {
+        toast.error(answer.error ?? "The GST extension gave no diagnostics: update it and reload this page");
+        return;
+      }
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
+      const url = URL.createObjectURL(new Blob([answer.text], { type: "text/plain" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gst-diagnostics-${stamp}.txt`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      const copied = await navigator.clipboard?.writeText(answer.text).then(
+        () => true,
+        () => false
+      );
+      toast.success(`Diagnostics saved to Downloads${copied ? " and copied" : ""}: send the file to the admin`);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={saving} onClick={save} title="The extension's record of the last GST portal login, for the admin">
+      {saving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1 h-3.5 w-3.5" />} Save diagnostics
+    </Button>
   );
 }
 

@@ -45,7 +45,10 @@ async function mvcPortalStep(step, ctx) {
   const dismiss = () => {
     for (const d of ctx.dismiss ?? []) {
       const el = find(document, { text: d });
-      if (el && !blocked(el)) el.click();
+      if (el && !blocked(el)) {
+        note("pop-up closed by script click", { el: describe(el) });
+        el.click();
+      }
     }
   };
   const expired = () => first(ctx.sessionExpired);
@@ -75,21 +78,51 @@ async function mvcPortalStep(step, ctx) {
   // step waits for their click; other clicks are made by script.
   async function press(el, opensPage) {
     if (blocked(el)) throw new Error(`Refused to click "${text(el)}": it may file or change the return`);
+    note("press", { el: describe(el), opensPage, clicks: ctx.clicks ?? "real", page: location.href });
     el.scrollIntoView({ block: "center" });
     await sleep(200);
     if (ctx.clicks !== "assisted") {
       const at = await clearSpot(el);
+      note(at ? "real click asked for" : "button stayed covered: no real click", { at, covering: at ? null : describe(coverOf(el)) });
       if (at) {
         const answer = await toWorker({ type: "real-click", x: at.x, y: at.y });
+        note("real click answer", { answer, page: location.href });
         if (answer?.ok) return;
         if (answer?.assisted) ctx.clicks = "assisted";
       }
     }
     if (!opensPage) {
+      note("script click", { el: describe(el) });
       el.click();
       return;
     }
+    note("waiting for the person's click", { el: describe(el) });
     await personClicks(el);
+  }
+
+  // Diagnostics (the app's "Save diagnostics"): what this step saw and did,
+  // sent to the worker without waiting for an answer
+  function note(what, data) {
+    try {
+      window.postMessage({ source: "mvc-portal-page", id: `note-${Date.now()}-${Math.random()}`, token: ctx.token, type: "diag", note: JSON.stringify({ what, ...data }).slice(0, 3000) }, location.origin);
+    } catch {
+      // Never stops a step
+    }
+  }
+  // An element as the log shows it: tag, text, and what a click on it does
+  function describe(el) {
+    if (!el) return null;
+    const attrs = {};
+    for (const a of ["id", "class", "href", "target", "type", "onclick", "ng-click", "data-ng-click", "ui-sref", "role"]) {
+      const v = el.getAttribute?.(a);
+      if (v) attrs[a] = v.slice(0, 200);
+    }
+    return { tag: el.tagName?.toLowerCase(), text: text(el).slice(0, 80), ...attrs, html: (el.outerHTML ?? "").slice(0, 400) };
+  }
+  // What sits on top of the element's middle
+  function coverOf(el) {
+    const r = el.getBoundingClientRect();
+    return document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
   }
 
   // The middle of the element, once nothing covers it (the portal's "please
