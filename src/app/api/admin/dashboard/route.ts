@@ -144,6 +144,7 @@ export async function GET(request: NextRequest) {
         canEnterBillAmounts: true,
         canViewBillingList: true,
         billingListTypes: true,
+        canViewWorkDone: true,
       },
     });
 
@@ -315,7 +316,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Array of { id, canApproveBilling, canManageBedgeBilling?, canEnterBillAmounts?, canViewBillingList?,
-  // billingListTypes? } – billingListTypes: the Billing Lists that partner sees, [] = all
+  // billingListTypes?, canViewWorkDone? } – billingListTypes: the Billing Lists that partner sees, [] = all
   const { updates } = await request.json() as {
     updates: {
       id: string;
@@ -324,6 +325,7 @@ export async function POST(request: NextRequest) {
       canEnterBillAmounts?: boolean;
       canViewBillingList?: boolean;
       billingListTypes?: BillType[];
+      canViewWorkDone?: boolean;
     }[];
   };
   if (updates.some((u) => u.billingListTypes?.some((t) => !(BILL_TYPES as string[]).includes(t)))) {
@@ -340,6 +342,7 @@ export async function POST(request: NextRequest) {
           canEnterBillAmounts: true,
           canViewBillingList: true,
           billingListTypes: true,
+          canViewWorkDone: true,
         },
       });
       const updatedUser = await prisma.user.update({
@@ -357,6 +360,9 @@ export async function POST(request: NextRequest) {
           }),
           ...(update.billingListTypes !== undefined && {
             billingListTypes: [...new Set(update.billingListTypes)],
+          }),
+          ...(update.canViewWorkDone !== undefined && {
+            canViewWorkDone: update.canViewWorkDone,
           }),
         },
       });
@@ -402,6 +408,9 @@ export async function POST(request: NextRequest) {
         [...newTypes].sort().join() !== [...(before?.billingListTypes ?? [])].sort().join()
       ) {
         granted.push(`Your Billing List now shows: ${lists(newTypes)}.`);
+      }
+      if (update.canViewWorkDone && !before?.canViewWorkDone) {
+        granted.push("You can now see everyone's Work Done list: finished tasks, logged work and compliance, with who did each one.");
       }
       for (const content of granted) {
         const notification = await prisma.notification.create({

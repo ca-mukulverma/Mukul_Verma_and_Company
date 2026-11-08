@@ -151,6 +151,9 @@ model User {
   // (admins always do)
   attendanceAlerts        Boolean        @default(false)
   attendances             Attendance[]
+  // Sees everyone's Work Done list (admins always do; staff see their own)
+  canViewWorkDone         Boolean        @default(false)
+  tasksCompleted          Task[]         @relation("TaskCompletedBy")
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -250,6 +253,13 @@ model Task {
   lastStatusUpdatedById String?   @db.Char(36)
   lastStatusUpdatedBy   User?     @relation("LastStatusUpdater", fields: [lastStatusUpdatedById], references: [id])
   lastStatusUpdatedAt   DateTime?
+
+  // Who marked the task completed, and when. Kept by a database trigger from
+  // lastStatusUpdatedById when the status becomes completed (cleared when it
+  // is reopened), so every way of completing a task records it.
+  completedById String?   @db.Char(36)
+  completedBy   User?     @relation("TaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  completedAt   DateTime?
   
   // DEPRECATED: Legacy assignment fields - use assignees instead
   // These fields are kept for backward compatibility but should not be used for new code
@@ -275,6 +285,7 @@ model Task {
   @@index([clientId])
   @@index([billingStatus])
   @@index([createdAt])
+  @@index([completedAt])
 }
 
 // New join table for many-to-many task assignments
@@ -503,6 +514,7 @@ model Bill {
   @@index([createdById])
   @@index([clientId])
   @@index([connectorId])
+  @@index([workDate])
 }
 
 // History of everything done to a bill
@@ -817,6 +829,8 @@ model ComplianceItem {
   @@unique([clientId, workTypeId, periodStart])
   @@index([workTypeId, periodEnd])
   @@index([status, dueDate])
+  @@index([filedAt])
+  @@index([completedAt])
 }
 
 model ComplianceEvent {

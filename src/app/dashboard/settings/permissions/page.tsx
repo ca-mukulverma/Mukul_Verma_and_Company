@@ -25,6 +25,8 @@ export default function PermissionsPage() {
     canViewBillingList: boolean;
     // The Billing Lists the partner sees when Billing List is on
     billingListTypes: BillTypeValue[];
+    // Sees everyone's Work Done list
+    canViewWorkDone: boolean;
   }
 
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -55,6 +57,7 @@ export default function PermissionsPage() {
           canViewBillingList: user.canViewBillingList || false,
           // Saved as [] for "all"
           billingListTypes: user.billingListTypes?.length ? user.billingListTypes : [...BILL_TYPES],
+          canViewWorkDone: user.canViewWorkDone || false,
         }))
       );
       setLoading(false);
@@ -68,7 +71,7 @@ export default function PermissionsPage() {
   // Toggle a billing permission for a partner
   const handleToggle = (
     id: string,
-    permission: "canApproveBilling" | "canManageBedgeBilling" | "canEnterBillAmounts" | "canViewBillingList"
+    permission: "canApproveBilling" | "canManageBedgeBilling" | "canEnterBillAmounts" | "canViewBillingList" | "canViewWorkDone"
   ) => {
     setPartners((prev) =>
       prev.map((partner) =>
@@ -105,7 +108,7 @@ export default function PermissionsPage() {
     try {
       setError(null);
       const updates = partners.map(
-        ({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts, canViewBillingList, billingListTypes }) => ({
+        ({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts, canViewBillingList, billingListTypes, canViewWorkDone }) => ({
           id,
           canApproveBilling,
           canManageBedgeBilling,
@@ -113,6 +116,7 @@ export default function PermissionsPage() {
           canViewBillingList,
           // All ticked is saved as "all", so a new bill type is included too
           billingListTypes: billingListTypes.length === BILL_TYPES.length ? [] : billingListTypes,
+          canViewWorkDone,
         })
       );
       await axios.post("/api/admin/dashboard", { updates });
@@ -132,7 +136,7 @@ export default function PermissionsPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl font-bold">Billing Permissions for Partners</CardTitle>
+          <CardTitle className="text-2xl font-bold">Permissions for Partners</CardTitle>
           <p className="text-sm text-muted-foreground">
             MVC billing managers handle MVC bills (GST and Non-GST); B Edge billing managers handle B Edge bills.
             They see amounts, choose the bill type and send bills for the amount. Bills can only be sent for the amount to
@@ -140,6 +144,10 @@ export default function PermissionsPage() {
             (MVC &amp; Company GST, each Non-GST name, B Edge), download those bills and email them to clients, but
             can&apos;t change bills. A billing manager always sees the whole list of their company. Other partners see billing like any other staff.
             Admins can always do all of these.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Partners with Work Done on see everyone&apos;s finished tasks, logged work and compliance on the Work done page,
+            with who did each one (no fees). Everyone else sees only their own work there; Admins see everyone&apos;s.
           </p>
         </CardHeader>
         <CardContent>
@@ -159,6 +167,7 @@ export default function PermissionsPage() {
                         <TableHead className="text-center">B Edge Billing Manager</TableHead>
                         <TableHead className="text-center">Can Enter Amounts</TableHead>
                         <TableHead className="text-center">Billing List</TableHead>
+                        <TableHead className="text-center">Work Done</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -200,10 +209,17 @@ export default function PermissionsPage() {
                               aria-label={`${partner.name}: sees the Billing List and emails bills`}
                             />
                           </TableCell>
+                          <TableCell className="text-center">
+                            <Switch
+                              checked={partner.canViewWorkDone}
+                              onCheckedChange={() => handleToggle(partner.id, "canViewWorkDone")}
+                              aria-label={`${partner.name}: sees everyone's Work Done list`}
+                            />
+                          </TableCell>
                         </TableRow>
                         {partner.canViewBillingList && (
                           <TableRow>
-                            <TableCell colSpan={6} className="pt-0">
+                            <TableCell colSpan={7} className="pt-0">
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
                                 <span className="font-medium">{partner.name} sees:</span>
                                 {BILL_TYPES.map((type) => (
