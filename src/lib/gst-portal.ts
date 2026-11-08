@@ -1,4 +1,4 @@
-import type { FileCheck, ItemInfo, PortalFile } from "@/lib/gst-read/working";
+import type { FileCheck, FileDoc, ItemInfo, PortalFile } from "@/lib/gst-read/working";
 
 // GST portal downloads with the browser extension
 // (docs/GST_PORTAL_EXTENSION_PLAN.md): which of a period's return files are
@@ -18,6 +18,8 @@ export interface PortalFileRow {
   label: string;
   state: PortalFileState;
   docId: string | null;
+  // Every saved document of the file, newest first (a 2B's summary and parts)
+  docs: FileDoc[];
 }
 
 export interface PortalPeriod {

@@ -107,11 +107,23 @@ export interface Issue {
 export const PORTAL_FILES = ["GSTR1_JSON", "GSTR1_PDF", "GSTR1A_PDF", "GSTR3B_PDF", "GSTR2B_JSON"] as const;
 export type PortalFile = (typeof PORTAL_FILES)[number];
 
+// One saved document behind a file (a GSTR-2B summary and its parts, every
+// GSTR-1 JSON part or re-download), newest first
+export interface FileDoc {
+  id: string;
+  fileName: string;
+  createdAt: string;
+  // GSTR-2B: "whole" (one file), "summary" or "part" with its number
+  part: "whole" | "summary" | "part" | null;
+  partNo: number | null;
+}
+
 export interface FileCheck {
   label: string;
   // "optional": not needed if that return wasn't filed (IFF, GSTR-1A)
   state: "ok" | "missing" | "optional";
   docId: string | null;
+  docs: FileDoc[];
   kind: PortalFile;
   // The return period on the portal ("2026-06"); a quarterly 3B/2B: the quarter's last month
   month: string;
@@ -206,8 +218,24 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
   const last = months[months.length - 1];
   const issues: Issue[] = [];
   const files: FileCheck[] = [];
-  const file = (label: string, kind: PortalFile, month: string, found: { doc: DocRead } | null, optional = false) =>
-    files.push({ label, kind, month, state: found ? "ok" : optional ? "optional" : "missing", docId: found?.doc.id ?? null });
+  const toFileDoc = (d: DocRead): FileDoc => ({
+    id: d.id,
+    fileName: d.fileName,
+    createdAt: d.createdAt,
+    part: d.read.form === "GSTR2B" ? d.read.part : null,
+    partNo: d.read.form === "GSTR2B" ? d.read.partNo : null,
+  });
+  const newestFirst = (list: DocRead[]) => [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // all: every saved document of the file (default: the one found)
+  const file = (label: string, kind: PortalFile, month: string, found: { doc: DocRead } | null, optional = false, all?: DocRead[]) =>
+    files.push({
+      label,
+      kind,
+      month,
+      state: found ? "ok" : optional ? "optional" : "missing",
+      docId: found?.doc.id ?? null,
+      docs: found ? newestFirst(all ?? [found.doc]).map(toFileDoc) : [],
+    });
 
   // ── GSTR-1 (and IFF): the JSON for every row, the PDF for amendments ──
   let sales: SalesRows | null = null;
@@ -217,7 +245,8 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
     const name = iff ? "IFF" : "GSTR-1";
     const json = latest(docs, isSales(["GSTR1", "IFF"], "JSON", month));
     const pdf = latest(docs, isSales(["GSTR1", "IFF"], "PDF", month));
-    file(`${name} JSON${quarterly || months.length > 1 ? ` ${short(month)}` : ""}`, "GSTR1_JSON", month, json, iff);
+    // Every JSON of the month: a big GSTR-1 comes in several files
+    file(`${name} JSON${quarterly || months.length > 1 ? ` ${short(month)}` : ""}`, "GSTR1_JSON", month, json, iff, docs.filter((d) => isSales(["GSTR1", "IFF"], "JSON", month)(d.read)));
     file(`${name} PDF${quarterly || months.length > 1 ? ` ${short(month)}` : ""}`, "GSTR1_PDF", month, pdf, iff);
     if (!json && !pdf) {
       if (!iff) issues.push({ severity: "missing", text: `${name} for ${monthLabel(month)} not uploaded` });
@@ -284,7 +313,9 @@ export function buildPeriod(input: PeriodInput): PeriodResult {
   const quarter2b = quarterly ? latest(docs, (r): r is Gstr2bRead => r.form === "GSTR2B" && r.quarterly && r.month === last && r.part !== "part") : null;
   for (const month of quarter2b ? [last] : months) {
     const summary = quarter2b ?? latest(docs, (r): r is Gstr2bRead => r.form === "GSTR2B" && r.month === month && r.part !== "part" && r.quarterly === false);
-    file(`GSTR-2B${!quarter2b && months.length > 1 ? ` ${short(month)}` : ""}`, "GSTR2B_JSON", month, summary);
+    // The summary with its part files (a big 2B), or the one file
+    const twoBDocs = summary ? docs.filter((d) => d.read.form === "GSTR2B" && d.read.month === summary.read.month && d.read.quarterly === summary.read.quarterly) : [];
+    file(`GSTR-2B${!quarter2b && months.length > 1 ? ` ${short(month)}` : ""}`, "GSTR2B_JSON", month, summary, false, twoBDocs);
     if (!summary) {
       twoBMissing = true;
       const parts = docs.filter((d) => d.read.form === "GSTR2B" && d.read.month === month);

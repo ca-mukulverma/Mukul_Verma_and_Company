@@ -15,7 +15,7 @@ function toPortal(p: PeriodResult, today: string): PortalPeriod {
     start: p.start,
     title: periodTitle(p),
     quarterly: p.quarterly,
-    files: p.files.map((f) => ({ kind: f.kind, month: f.month, label: f.label, state: portalState(f, p, today), docId: f.docId })),
+    files: p.files.map((f) => ({ kind: f.kind, month: f.month, label: f.label, state: portalState(f, p, today), docId: f.docId, docs: f.docs })),
   };
 }
 
