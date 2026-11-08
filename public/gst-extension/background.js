@@ -11,7 +11,7 @@ const APP_ORIGIN = "__APP_ORIGIN__";
 // This file's version: must equal the manifest's (and the stamps in
 // portal.js, bridge.js, relay.js). A folder mixing files of two versions (an
 // old file left by a cached download or a wrong extract) is caught with it.
-const CODE_VERSION = "0.4.4";
+const CODE_VERSION = "0.4.5";
 // Every portal address must be on the GST portal
 const PORTAL = /^https:\/\/([a-z0-9-]+\.)*gst\.gov\.in\//i;
 const ENDED = ["logged-out", "closed", "timed-out", "failed"];
@@ -921,6 +921,24 @@ async function goBack(tabId) {
   return true;
 }
 
+// The files behind each of the page's n links, one click at a time
+async function eachLink(tabId, target, n, ctx) {
+  const files = [];
+  const saved = [];
+  for (let i = 0; i < n; i++) {
+    await pause();
+    const one = await fileStep(tabId, { kind: "file", scope: "page", target, index: i, waitSeconds: 15 }, ctx);
+    if (one.file) files.push(one.file);
+    else if (one.result === "downloaded") saved.push(i + 1);
+    else if (one.error) return { error: `Part ${i + 1} of ${n}: ${one.error}` };
+    else if (one.result) return one;
+  }
+  if (saved.length) {
+    return { result: "downloaded", files, message: `Part${saved.length === 1 ? "" : "s"} ${saved.join(", ")} of ${n} saved to this computer's Downloads folder instead: upload ${saved.length === 1 ? "it" : "them"} with Upload documents.` };
+  }
+  return { files };
+}
+
 // One try at a file: dashboard, period, the return's box, then its steps
 async function attemptFile(tabId, s, recipe, ctx, onGenerate) {
   const where = (u) => {
@@ -943,6 +961,9 @@ async function attemptFile(tabId, s, recipe, ctx, onGenerate) {
     let answer = st.kind === "file" ? await fileStep(tabId, st, ctx) : await step(tabId, st, ctx);
     // A click step whose page shows the file's button instead (NIL GSTR-1)
     if (answer.fileInstead) answer = await fileStep(tabId, { kind: "file", scope: st.scope, target: st.orFile, waitSeconds: 10 }, ctx);
+    // A file step whose page listed the file's parts as links instead
+    // (GSTR-2B Summary, Details - Part 1 …): each link clicked in turn
+    if (typeof answer.links === "number" && st.orLinks) answer = await eachLink(tabId, st.orLinks, answer.links, ctx);
     if (answer.error) {
       // The page left for the portal's error or login page during the step:
       // let the new page arrive, then look where the tab is

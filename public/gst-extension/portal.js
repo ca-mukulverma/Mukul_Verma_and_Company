@@ -10,7 +10,7 @@
 // "session-expired", message } · { error }
 // This file's version: must equal the manifest's (see background.js)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- read by background.js
-const MVC_PORTAL_CODE = "0.4.4";
+const MVC_PORTAL_CODE = "0.4.5";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- called by background.js
 async function mvcPortalStep(step, ctx) {
@@ -361,7 +361,12 @@ async function mvcPortalStep(step, ctx) {
       case "file": {
         const root = step.scope === "tile" ? await waitFor(findTile, 15000) : document;
         if (!root) return { error: `The ${ctx.returnLabel} box went away` };
-        const el = await waitFor(() => find(root, step.target), (step.waitSeconds ?? 20) * 1000);
+        // Links the page may list instead of sending the file (GSTR-2B in
+        // parts: "Download here" for the summary and each part of the details)
+        const listed = () => (step.orLinks ? findAll(document, step.orLinks) : []);
+        if (listed().length) return { links: listed().length };
+        // step.index: the nth of those links (the worker asks for each in turn)
+        const el = await waitFor(() => (step.index != null ? findAll(root, step.target)[step.index] : find(root, step.target)), (step.waitSeconds ?? 20) * 1000);
         if (!el) {
           const why = first(ctx.notAvailable);
           if (why) return { result: "not-available", message: why.toLowerCase() };
@@ -374,11 +379,26 @@ async function mvcPortalStep(step, ctx) {
         const before = counts(ctx.notAvailable);
         await press(el, false);
         let why = null;
+        let seen = 0;
+        let seenAt = 0;
         const got = await waitFor(() => {
           why = newMessage(ctx.notAvailable, before) ?? (expired() ? "session" : null);
-          return capture.got[0] ?? why;
+          if (capture.got[0] || why) return capture.got[0] ?? why;
+          // The page listed links instead: once their number holds for a moment
+          const n = listed().length;
+          if (n !== seen) {
+            seen = n;
+            seenAt = Date.now();
+          } else if (n && Date.now() - seenAt > 1500) {
+            return { links: n };
+          }
+          return null;
         }, 120000);
         capture.armed = false;
+        if (got?.links) {
+          note("the page listed links instead of a file", { links: got.links, texts: listed().map((a) => text(a.closest("tr") ?? a).slice(0, 80)) });
+          return { links: got.links };
+        }
         if (!got) {
           // What the page did instead, so the next fix is exact
           const said = alerts()

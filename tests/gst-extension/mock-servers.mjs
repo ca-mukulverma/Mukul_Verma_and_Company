@@ -50,7 +50,7 @@ const guarded = (host, path) =>
   (host === "gstr2b.gst.gov.in" && path.startsWith("/gstr2b/auth/"));
 
 export async function startPortal() {
-  const state = { events: [], typed: {}, clicks: [], jsonAsked: 0, reminded: false, denied: 0, denyAll: false, refused: [] };
+  const state = { events: [], typed: {}, clicks: [], jsonAsked: 0, twoBParts: false, reminded: false, denied: 0, denyAll: false, refused: [] };
   const options = { key: readFileSync(new URL("test-key.pem", CERTS)), cert: readFileSync(new URL("test-cert.pem", CERTS)) };
   const server = createHttpsServer(options, async (req, res) => {
     const host = (req.headers.host ?? "").split(":")[0];
@@ -350,7 +350,23 @@ function returnsPage(path, url, state) {
         // file goes to Chrome as a normal download, unseen by the page hooks
         const create = URL.createObjectURL.bind(URL);
         const click = HTMLAnchorElement.prototype.click;
+        // A bigger GSTR-2B: the portal lists its parts, each with "Download here"
+        const parts = ${JSON.stringify(state.twoBParts)};
+        function save(name, body) {
+          const a = document.createElement("a");
+          a.download = name;
+          a.href = create(new Blob([JSON.stringify(body)], { type: "application/json" }));
+          click.call(a);
+        }
         function dl() {
+          if (parts) {
+            setTimeout(() => {
+              document.querySelector("app-root").insertAdjacentHTML("beforeend",
+                '<table><tr><td>GSTR-2B Summary</td><td><a href="javascript:void(0)" onclick="save(\\'092026_23AAFFC2640H1ZX_GSTR2B_summary.json\\', { part: \\'summary\\' })">Download here</a></td></tr>' +
+                '<tr><td>GSTR-2B Details - Part 1</td><td><a href="javascript:void(0)" onclick="save(\\'092026_23AAFFC2640H1ZX_GSTR2B_1.json\\', { part: \\'details 1\\' })">Download here</a></td></tr></table>');
+            }, 400);
+            return;
+          }
           // Its data comes from the portal first, the button waits meanwhile
           setTimeout(() => {
             const a = document.createElement("a");

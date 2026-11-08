@@ -41,6 +41,9 @@ export interface PortalStep {
   // click: if the page shows this instead, it is the file's button (a NIL
   // GSTR-1 has DOWNLOAD FILED (PDF) where others have VIEW SUMMARY)
   orFile?: PortalTarget;
+  // file: links the page may list instead of sending the file (GSTR-2B in
+  // parts); each is clicked in turn and its file caught
+  orLinks?: PortalTarget;
   // How long the target may take to appear (default 20 s)
   waitSeconds?: number;
 }
@@ -183,13 +186,21 @@ export const BUILT_IN_SETTINGS: PortalSettings = {
         },
       ],
     },
-    // Box: DOWNLOAD → GENERATE JSON FILE TO DOWNLOAD on gstr2b.gst.gov.in
+    // Box: DOWNLOAD → GENERATE JSON FILE TO DOWNLOAD on gstr2b.gst.gov.in.
+    // A small one downloads at once; a bigger one is listed in parts, each
+    // with "Download here" (GSTR-2B Summary, GSTR-2B Details - Part 1 …):
+    // every part is fetched
     GSTR2B_JSON: {
       tile: "GSTR2B",
       filed: false,
       steps: [
         { kind: "click", scope: "tile", target: { text: anyLabel("download") }, url: "^https://gstr2b\\.gst\\.gov\\.in/gstr2b/auth/" },
-        { kind: "file", scope: "page", target: { text: anyLabel("generate\\s*json\\s*file\\s*to\\s*download") } },
+        {
+          kind: "file",
+          scope: "page",
+          target: { text: anyLabel("generate\\s*json\\s*file\\s*to\\s*download") },
+          orLinks: { text: anyLabel("download\\s*here") },
+        },
       ],
     },
   },

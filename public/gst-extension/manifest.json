@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MV Company GST portal",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Opens the GST portal for a client from the MV Company app with the login filled in and downloads the return files staff tick. Staff type the captcha and OTP.",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "scripting", "alarms", "downloads", "debugger", "webNavigation", "webRequest"],

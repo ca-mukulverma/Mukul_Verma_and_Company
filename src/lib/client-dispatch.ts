@@ -1,6 +1,6 @@
 import { Company, ComplianceFrequency, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { DOC_KIND_LABELS, partyName } from "@/lib/compliance";
+import { DOC_KIND_LABELS, OWN_NAME_DOC_KINDS, partyName } from "@/lib/compliance";
 import { addMonths, formatDay, monthKey, periodLabel, todayIST, utcDate } from "@/lib/compliance-periods";
 import { BillingAccess } from "@/lib/billing";
 import { formatIndianDate, formatRupees } from "@/lib/billing-constants";
@@ -164,6 +164,7 @@ function worksMatch(works: string[], workType: { name: string; kind: string }) {
 }
 
 export function documentLabel(doc: DocWithItem) {
+  if (doc.item && OWN_NAME_DOC_KINDS.includes(doc.kind)) return `${DOC_KIND_LABELS[doc.kind]} ${periodLabel(doc.item.frequency, doc.item.periodStart)}`;
   if (doc.item) return `${doc.item.workType.name} ${periodLabel(doc.item.frequency, doc.item.periodStart)} – ${DOC_KIND_LABELS[doc.kind]}`;
   if (doc.docType) return clientDocLabel(doc);
   return doc.fileName;
