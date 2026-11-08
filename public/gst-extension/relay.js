@@ -15,7 +15,7 @@ window.addEventListener("message", (event) => {
 });
 
 // This file's version: must equal the manifest's (see background.js)
-const RELAY_CODE = "0.4.4";
+const RELAY_CODE = "0.4.5";
 
 // ─── Diagnostics ────────────────────────────────────────────────────────────
 // What happens in the portal tab, for the app's "Save diagnostics": each page

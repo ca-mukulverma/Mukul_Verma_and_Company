@@ -698,6 +698,18 @@ differ. The guide's update step now empties `mvc-gst` and extracts into the
 folder that holds it. The extension test checks every stamp against the
 manifest.
 
+With 0.4.4 the Returns Dashboard opened. On GSTR-2B a bigger return doesn't
+download on GENERATE JSON FILE TO DOWNLOAD: the page lists **GSTR-2B Summary**
+and **GSTR-2B Details - Part 1** (and more parts), each with "Download here",
+and 0.4.4 waited 2 minutes for a file that never came. **0.4.5**: a `file`
+step may name `orLinks`; when the page lists those links instead of sending
+the file, the worker clicks each in turn (`index`) and catches its file
+(in-page or as a Chrome download), so every part is saved. The mock portal's
+GSTR-2B page can list parts (`state.twoBParts`). Also: files of their own kept
+with another work's period (GSTR-2B and GSTR-1A) are labelled by themselves
+("GSTR-2B JSON", not "GSTR-3B · GSTR-2B JSON") in the client's files, in
+messages to the client and in the email subject.
+
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
 address matches `services.gst.gov.in/services/auth/`, and that the logout

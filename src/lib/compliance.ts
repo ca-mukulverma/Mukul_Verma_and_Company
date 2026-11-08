@@ -110,6 +110,11 @@ export const DOC_KIND_LABELS: Record<ComplianceDocKind, string> = {
   OTHER: "Other",
 };
 
+// Files that are a return of their own, kept with another work's period
+// (GSTR-2B and GSTR-1A with GSTR-3B / GSTR-1): named by themselves, never as
+// "GSTR-3B · GSTR-2B JSON"
+export const OWN_NAME_DOC_KINDS = ["GSTR1A_PDF", "GSTR1A_JSON", "GSTR2B_JSON"];
+
 export const STATUS_LABELS: Record<ComplianceStatus, string> = {
   pending: "Pending",
   data_received: "Data received",

@@ -17,6 +17,7 @@ import {
   apiError,
   currentMonthKey,
   DOC_KIND_LABELS,
+  OWN_NAME_DOC_KINDS,
   formatBytes,
   longDate,
   RCM_CATEGORIES,
@@ -1087,7 +1088,7 @@ function Documents({ data, onChanged }: { data: ClientDetail; onChanged: () => v
             <li key={d.id} className="flex items-center gap-2">
               <Checkbox checked={selected.includes(d.id)} onCheckedChange={(c) => setSelected((s) => (c === true ? [...s, d.id] : s.filter((id) => id !== d.id)))} />
               <span className="flex-1 truncate">
-                <span className="text-muted-foreground">{d.work ? `${d.work} · ` : ""}{DOC_KIND_LABELS[d.kind]}:</span> {d.fileName}
+                <span className="text-muted-foreground">{d.work && !OWN_NAME_DOC_KINDS.includes(d.kind) ? `${d.work} · ` : ""}{DOC_KIND_LABELS[d.kind]}:</span> {d.fileName}
                 <span className="text-xs text-muted-foreground"> ({formatBytes(d.size)}, {longDate(d.createdAt)})</span>
               </span>
               <Button asChild size="sm" variant="ghost">

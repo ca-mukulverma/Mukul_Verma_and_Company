@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { gunzipSync } from "zlib";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { canWorkOn, completeIfReady, logEvent, partyName } from "@/lib/compliance";
+import { canWorkOn, completeIfReady, DOC_KIND_LABELS, logEvent, OWN_NAME_DOC_KINDS, partyName } from "@/lib/compliance";
 import { loadSheetItem } from "@/lib/compliance-sheet";
 import { periodLabel } from "@/lib/compliance-periods";
 import { sendComplianceEmails } from "@/lib/compliance-email";
@@ -84,7 +84,11 @@ export async function POST(request: NextRequest) {
 
   const what = certItem
     ? `${certItem.workType.name === "TDS Return 24Q" ? "Form 16" : "Form 16A"} for ${certItem.workType.name}, ${periodLabel(certItem.frequency, certItem.periodStart)}`
-    : [...new Set(docs.map((d) => (d.item ? `${d.item.workType.name} ${periodLabel(d.item.frequency, d.item.periodStart)}` : d.fileName)))].join(", ");
+    : [...new Set(docs.map((d) =>
+          d.item
+            ? `${OWN_NAME_DOC_KINDS.includes(d.kind) ? DOC_KIND_LABELS[d.kind] : d.item.workType.name} ${periodLabel(d.item.frequency, d.item.periodStart)}`
+            : d.fileName
+        ))].join(", ");
   const filings = await filingLines([...new Set(docs.map((d) => d.itemId).filter((id): id is string => !!id))]);
   const { html, text } = await composeEmail(company, {
     greetingName: docs[0].client.contactPerson,
