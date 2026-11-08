@@ -69,6 +69,23 @@ export async function latestGstExtension(): Promise<string | null> {
   }
 }
 
+// Every file of the extension carries its version (0.4.4 and newer). A
+// folder mixing two versions (an old file left behind) breaks in odd ways:
+// named here, or null when all files match. Only for the version the page
+// reports, from 0.4.4 on (older files have no stamps).
+export const STAMPED_VERSION = "0.4.4";
+export function mixedExtensionFiles(version: string | null | undefined, files: Record<string, string | null> | undefined): string | null {
+  // files: gst-status's stamps
+  if (!version || compareVersions(version, STAMPED_VERSION) < 0) return null;
+  const stamps: Record<string, string | null | undefined> = {
+    "background.js": files?.["background.js"],
+    "portal.js": files?.["portal.js"],
+    "bridge.js": document.documentElement.getAttribute("data-mvc-gst-bridge"),
+  };
+  const off = Object.entries(stamps).filter(([, v]) => v !== version);
+  return off.length ? off.map(([name, v]) => `${name} is ${v ?? "older"}`).join(", ") : null;
+}
+
 export const ENDED: PortalRunStatus[] = ["logged-out", "closed", "timed-out", "failed"];
 export const isOpen = (run: PortalRun | null): run is PortalRun => !!run && !ENDED.includes(run.status);
 
@@ -82,6 +99,8 @@ interface Answer {
   message?: string | null;
   // gst-diag: the record of the last login, as text
   text?: string;
+  // gst-status (0.4.4 and newer): each file's version stamp as Chrome loaded it
+  stamps?: Record<string, string | null>;
 }
 
 // The installed version, or null
@@ -150,9 +169,17 @@ export function onPortalStatus(handler: (run: PortalRun) => void) {
 // The extension as a ZIP to load unpacked, set up for this app's address
 export async function downloadGstExtension() {
   const { origin, protocol, hostname } = window.location;
+  let version = "";
   await downloadExtensionZip("gst-extension", ["manifest.json", "background.js", "bridge.js", "portal.js", "relay.js"], { root: "mvc-gst", fileName: "mvc-gst-extension.zip" }, (name, text) => {
     // Match patterns can't hold a port; the worker checks the full origin
-    if (name === "manifest.json") return text.replace("__APP_MATCH__", `${protocol}//${hostname}/*`);
+    if (name === "manifest.json") {
+      version = (JSON.parse(text) as { version?: string }).version ?? "";
+      return text.replace("__APP_MATCH__", `${protocol}//${hostname}/*`);
+    }
+    // Each file's stamp must name the manifest's version (0.4.4 and newer)
+    if (compareVersions(version, STAMPED_VERSION) >= 0 && !text.includes(`"${version}"`)) {
+      throw new Error(`The downloaded ${name} isn't version ${version}: reload this page and download again`);
+    }
     if (name === "background.js") return text.replace("__APP_ORIGIN__", origin);
     return text;
   });

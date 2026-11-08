@@ -8,6 +8,10 @@
 // Answers: { next: true } · { file: {...} } · { files: [...] } · { links: [] }
 // · { result: "not-filed" | "not-available" | "requested" | "pending" |
 // "session-expired", message } · { error }
+// This file's version: must equal the manifest's (see background.js)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- read by background.js
+const MVC_PORTAL_CODE = "0.4.4";
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- called by background.js
 async function mvcPortalStep(step, ctx) {
   // The extension's own list, on top of the one in the portal settings

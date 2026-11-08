@@ -684,6 +684,19 @@ after the last entry; Save diagnostics answers from memory (45 s wait). A part
 of Chrome the record listens to that Chrome refuses is listed in the record's
 header instead of stopping the worker, and the app page's bridge says "reload
 this page" when an update or reload has cut it off, instead of no answer.
+Computer B then showed manifest 0.4.3 running a `background.js` without
+`diagnostics`: the folder mixed files of two versions. Two ways in: the app
+built the ZIP with plain `fetch`, which may hand back a copy the browser kept,
+and the guide said to extract the ZIP *into* `mvc-gst`, which (the ZIP holds
+an `mvc-gst` folder) makes `mvc-gst\mvc-gst` and leaves the old files where
+Chrome loads them. **0.4.4**: the ZIP's files are fetched with `no-store` and a
+fresh query; every file carries the manifest's version (`CODE_VERSION`,
+`MVC_PORTAL_CODE`, `data-mvc-gst-bridge`, `RELAY_CODE`), the ZIP builder
+refuses files that don't match, `gst-status` reports the stamps and the app
+shows "mixes files of different versions" (and won't start a run) when they
+differ. The guide's update step now empties `mvc-gst` and extracts into the
+folder that holds it. The extension test checks every stamp against the
+manifest.
 
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in

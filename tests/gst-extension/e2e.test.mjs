@@ -73,10 +73,18 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.4.3");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.4.4");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
+  // Every file carries the manifest's version, and Chrome loaded them all
+  const { version } = JSON.parse(await readFile(path.join(root, "public/gst-extension/manifest.json"), "utf8"));
+  assert.deepEqual(answer.stamps, { "background.js": version, "portal.js": version });
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst-bridge")), version);
+  for (const name of ["background.js", "portal.js", "bridge.js", "relay.js"]) {
+    const text = await readFile(path.join(root, "public/gst-extension", name), "utf8");
+    assert.ok(text.includes(`"${version}"`), `${name} is stamped ${version}: bump its stamp with the manifest`);
+  }
 });
 
 test("login filled, captcha and OTP typed by staff, logged in, logged out", async () => {
@@ -170,7 +178,7 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   const err = await fetchFile(runId, "GSTR3B_PDF", "2026-08");
   assert.equal(err.result, "error");
   assert.match(err.message, /own error page/);
-  assert.match(err.message, /\[extension 0\.4\.3\]$/, "errors name the extension version");
+  assert.match(err.message, /\[extension 0\.4\.4\]$/, "errors name the extension version");
 
   const r2b = await fetchFile(runId, "GSTR2B_JSON", "2026-09");
   assert.equal(r2b.result, "file", r2b.message);
@@ -262,7 +270,7 @@ test("GSTR-1 JSON then GSTR-3B in one login: back to the dashboard without being
   const lines = diag.text.split("\n");
   // Every pattern on one line, in any order
   const has = (patterns, what) => assert.ok(lines.some((l) => patterns.every((p) => p.test(l))), `diagnostics show ${what}`);
-  has([/^Extension 0\.4\.3 · Mozilla/], "the extension and Chrome versions");
+  has([/^Extension 0\.4\.4 · Mozilla/], "the extension and Chrome versions");
   has([/^Chrome refused: nothing$/], "every part of Chrome the record listens to");
   has([/extension opens the login page/], "the login page opened by the extension");
   has([/ page: press /, /RETURN DASHBOARD/], "portal.js pressing RETURN DASHBOARD");
@@ -270,7 +278,8 @@ test("GSTR-1 JSON then GSTR-3B in one login: back to the dashboard without being
   has([/ page: click /, /"trusted":true/, /RETURN DASHBOARD/], "the click arriving in the page as a trusted one");
   has([/ request /, /"url":"https:\/\/return\.gst\.gov\.in\/returns\/auth\/dashboard"/, /"referer":"https:\/\/services\.gst\.gov\.in/, /"initiator":"https:\/\/services\.gst\.gov\.in"/], "the dashboard request with who started it and its Referer");
   has([/ tab: arrived /, /returns\/auth\/dashboard/, /"transition":"link"/], "Chrome classing it as a link");
-  has([/ page: page loaded /, /"how":"navigate"/, /"referrer":"https:/], "pages loading with their referrer");
+  has([/ page: page loaded /, /"how":"navigate"/, /"referrer":"https:/, /"relay":"0\.4\.4"/], "pages loading with their referrer and relay.js's version");
+  has([/^Files: \{"background.js":"0\.4\.4","portal.js":"0\.4\.4"\}/], "the files' versions");
   has([/extension presses Back/], "Back to the dashboard");
   assert.ok(!/LOGIN_PASSWORD|password":"/i.test(diag.text) && !diag.text.includes(LOGIN.password), "no password in the diagnostics");
 

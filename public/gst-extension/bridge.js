@@ -4,6 +4,8 @@
 // docs/GST_PORTAL_EXTENSION_PLAN.md §5.
 
 document.documentElement.setAttribute("data-mvc-gst", chrome.runtime.getManifest().version);
+// This file's version: must equal the manifest's (see background.js)
+document.documentElement.setAttribute("data-mvc-gst-bridge", "0.4.4");
 
 const REQUESTS = ["gst-status", "gst-login", "gst-logout", "gst-show", "gst-fetch", "gst-diag"];
 const reply = (data) => window.postMessage({ source: "mvc-gst-ext", ...data }, location.origin);

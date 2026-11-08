@@ -60,7 +60,9 @@ const GUIDE: Record<GuideLanguage, { title: string; description: string; section
         intro: "When a new version is out, the GST portal box shows an amber note with the button Update the GST extension.",
         steps: [
           "Click Update the GST extension, then Download the new extension.",
-          "Right-click the new ZIP in Downloads → Extract all. As the folder, choose your existing mvc-gst folder and click Extract. If Windows asks, choose Replace the files in the destination.",
+          "Open your mvc-gst folder (for example in Documents) and delete everything inside it, including any mvc-gst folder inside it. Keep the empty mvc-gst folder itself.",
+          "Right-click the new ZIP in Downloads → Extract all. As the folder, choose the folder that holds mvc-gst (for example Documents), not mvc-gst itself, and click Extract. If Windows asks, choose Replace the files in the destination.",
+          "Open mvc-gst again: manifest.json, background.js, bridge.js, portal.js and relay.js must be directly inside it (not in another folder inside it).",
           "Open chrome://extensions (Edge: edge://extensions) and click the round reload arrow on MV Company GST portal. If it asks for a new permission (for example Manage your downloads), click Allow.",
           "Check the version number shown is the new one, then reload the app page (F5). The amber note goes away.",
         ],
@@ -166,7 +168,9 @@ const GUIDE: Record<GuideLanguage, { title: string; description: string; section
         intro: "नया वर्ज़न आने पर GST portal बॉक्स में पीले रंग का नोट और Update the GST extension बटन दिखता है।",
         steps: [
           "Update the GST extension पर क्लिक करें, फिर Download the new extension पर।",
-          "Downloads में नई ZIP पर राइट-क्लिक → Extract all। फ़ोल्डर के रूप में अपना पुराना mvc-gst फ़ोल्डर चुनें और Extract दबाएँ। Windows पूछे तो Replace the files in the destination चुनें।",
+          "अपना mvc-gst फ़ोल्डर खोलें (जैसे Documents में) और उसके अंदर का सब कुछ डिलीट करें, अंदर कोई mvc-gst फ़ोल्डर हो तो वह भी। खाली mvc-gst फ़ोल्डर रहने दें।",
+          "Downloads में नई ZIP पर राइट-क्लिक → Extract all। फ़ोल्डर के रूप में वह फ़ोल्डर चुनें जिसमें mvc-gst है (जैसे Documents), mvc-gst खुद नहीं, और Extract दबाएँ। Windows पूछे तो Replace the files in the destination चुनें।",
+          "mvc-gst फिर खोलें: manifest.json, background.js, bridge.js, portal.js और relay.js सीधे उसी के अंदर होने चाहिए (अंदर किसी और फ़ोल्डर में नहीं)।",
           "chrome://extensions (Edge: edge://extensions) खोलें और MV Company GST portal पर गोल रीलोड तीर पर क्लिक करें। नई अनुमति माँगे (जैसे Manage your downloads) तो Allow दबाएँ।",
           "देखें कि नया वर्ज़न नंबर दिख रहा है, फिर ऐप का पेज रीलोड करें (F5)। पीला नोट हट जाएगा।",
         ],
@@ -272,7 +276,9 @@ const GUIDE: Record<GuideLanguage, { title: string; description: string; section
         intro: "Naya version aane par GST portal box mein peela note aur Update the GST extension button dikhta hai.",
         steps: [
           "Update the GST extension par click kariye, phir Download the new extension par.",
-          "Downloads mein nayi ZIP par right-click → Extract all. Folder mein apna purana mvc-gst folder chuniye aur Extract dabaiye. Windows pooche to Replace the files in the destination chuniye.",
+          "Apna mvc-gst folder kholiye (jaise Documents mein) aur uske andar ka sab kuch delete kariye, andar koi mvc-gst folder ho to woh bhi. Khaali mvc-gst folder rehne dijiye.",
+          "Downloads mein nayi ZIP par right-click → Extract all. Folder mein woh folder chuniye jismein mvc-gst hai (jaise Documents), mvc-gst khud nahi, aur Extract dabaiye. Windows pooche to Replace the files in the destination chuniye.",
+          "mvc-gst phir kholiye: manifest.json, background.js, bridge.js, portal.js aur relay.js seedhe usi ke andar hone chahiye (andar kisi aur folder mein nahi).",
           "chrome://extensions (Edge: edge://extensions) kholiye aur MV Company GST portal par gol reload arrow par click kariye. Nayi permission maange (jaise Manage your downloads) to Allow dabaiye.",
           "Dekhiye ki naya version number dikh raha hai, phir app ka page reload kariye (F5). Peela note hat jaayega.",
         ],
