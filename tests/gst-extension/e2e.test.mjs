@@ -73,7 +73,7 @@ async function until(check, what, ms = 15000) {
 }
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.4.2");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-gst")), "0.4.3");
   const answer = await ask({ type: "gst-status" });
   assert.equal(answer.ok, true);
   assert.equal(answer.run, null);
@@ -170,7 +170,7 @@ test("filed returns are fetched by the taught steps; unfiled ones are reported, 
   const err = await fetchFile(runId, "GSTR3B_PDF", "2026-08");
   assert.equal(err.result, "error");
   assert.match(err.message, /own error page/);
-  assert.match(err.message, /\[extension 0\.4\.2\]$/, "errors name the extension version");
+  assert.match(err.message, /\[extension 0\.4\.3\]$/, "errors name the extension version");
 
   const r2b = await fetchFile(runId, "GSTR2B_JSON", "2026-09");
   assert.equal(r2b.result, "file", r2b.message);
@@ -262,7 +262,8 @@ test("GSTR-1 JSON then GSTR-3B in one login: back to the dashboard without being
   const lines = diag.text.split("\n");
   // Every pattern on one line, in any order
   const has = (patterns, what) => assert.ok(lines.some((l) => patterns.every((p) => p.test(l))), `diagnostics show ${what}`);
-  has([/^Extension 0\.4\.2 · Mozilla/], "the extension and Chrome versions");
+  has([/^Extension 0\.4\.3 · Mozilla/], "the extension and Chrome versions");
+  has([/^Chrome refused: nothing$/], "every part of Chrome the record listens to");
   has([/extension opens the login page/], "the login page opened by the extension");
   has([/ page: press /, /RETURN DASHBOARD/], "portal.js pressing RETURN DASHBOARD");
   has([/real click: mouse pressed and released/], "Chrome's real click");

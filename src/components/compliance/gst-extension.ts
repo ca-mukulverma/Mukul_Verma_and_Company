@@ -89,7 +89,7 @@ export const gstExtensionVersion = () => document.documentElement.getAttribute("
 
 let counter = 0;
 
-function ask(message: Record<string, unknown>, timeoutMs = 15_000): Promise<Answer> {
+function ask(message: Record<string, unknown>, timeoutMs = 15_000, late = "The GST extension didn't answer. Reload the page; if it still fails, reinstall the extension."): Promise<Answer> {
   const id = `${Date.now()}-${++counter}`;
   return new Promise((resolve) => {
     const done = (answer: Answer) => {
@@ -102,7 +102,7 @@ function ask(message: Record<string, unknown>, timeoutMs = 15_000): Promise<Answ
         done(event.data.answer ?? { ok: false, error: "No answer from the extension" });
       }
     };
-    const timer = setTimeout(() => done({ ok: false, error: "The GST extension didn't answer. Reload the page; if it still fails, reinstall the extension." }), timeoutMs);
+    const timer = setTimeout(() => done({ ok: false, error: late }), timeoutMs);
     window.addEventListener("message", listener);
     window.postMessage({ source: "mvc-app-gst", id, message }, window.location.origin);
   });
@@ -130,7 +130,12 @@ export const showPortal = (runId: string) => ask({ type: "gst-show", runId });
 // it did, every click in the portal tab and how Chrome classed each page
 // change, to find out why the portal refuses a page
 export const DIAG_VERSION = "0.4.2";
-export const portalDiagnostics = () => ask({ type: "gst-diag" });
+export const portalDiagnostics = () =>
+  ask(
+    { type: "gst-diag" },
+    45_000,
+    "The GST extension's background part didn't answer. Open chrome://extensions, click Errors on MV Company GST portal (if shown) and send a photo of it and of the card to the admin."
+  );
 
 export function onPortalStatus(handler: (run: PortalRun) => void) {
   const listener = (event: MessageEvent) => {
