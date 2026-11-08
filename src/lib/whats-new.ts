@@ -35,6 +35,28 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "gst-portal-excel",
+    date: "2026-11-08",
+    audience: "everyone",
+    title: { en: "GST portal box: tick a month, open saved files, Excel of GSTR-1 and GSTR-2B", hi: "GST पोर्टल बॉक्स: पूरा महीना टिक करें, सेव फ़ाइल खोलें, GSTR-1 और GSTR-2B का Excel" },
+    steps: {
+      en: [
+        "In a client's GST portal box, the box before a month ticks every file of that month; \"Tick for the year\" ticks one return for all months.",
+        "Click a green (saved) file to download it. A GSTR-2B in parts lists each part, with Download all.",
+        "On a green GSTR-1 JSON or GSTR-2B, choose Excel: a sheet per section, as on the portal. The buttons at the top make one Excel for the whole year.",
+      ],
+      hi: [
+        "क्लाइंट के GST पोर्टल बॉक्स में महीने के आगे वाला बॉक्स उस महीने की सारी फ़ाइलें टिक करता है; \"Tick for the year\" एक रिटर्न को सभी महीनों के लिए टिक करता है।",
+        "हरी (सेव) फ़ाइल पर क्लिक करके उसे डाउनलोड करें। हिस्सों वाले GSTR-2B में हर हिस्सा दिखता है, साथ में Download all।",
+        "हरे GSTR-1 JSON या GSTR-2B पर Excel चुनें: पोर्टल की तरह हर सेक्शन की अलग शीट। ऊपर के बटन पूरे साल का एक Excel बनाते हैं।",
+      ],
+    },
+    push: {
+      title: "New in the app: GST files as Excel",
+      body: "In a client's GST portal box: tick a whole month, click a saved file to download it, and get GSTR-1 / GSTR-2B as Excel.",
+    },
+  },
+  {
     id: "office-time",
     date: "2026-11-04",
     audience: "attendance",

@@ -710,6 +710,27 @@ with another work's period (GSTR-2B and GSTR-1A) are labelled by themselves
 ("GSTR-2B JSON", not "GSTR-3B · GSTR-2B JSON") in the client's files, in
 messages to the client and in the email subject.
 
+**The GST portal box, more ways in (no extension change):** a box before each
+month ticks every file of it not saved yet; "Tick for the year" ticks one
+kind for every month. A green (saved) chip opens its file: a click downloads
+it, or, with several files (a GSTR-2B summary and parts, GSTR-1 JSON parts or
+re-downloads) or for GSTR-1 / GSTR-2B JSON, a menu lists each file, "Download
+all" (one ZIP made in the browser) and **Excel**. Each `FileCheck` now carries
+`docs`, every saved document behind it, newest first. The Excel
+(`lib/gst-excel.ts`, written by `components/compliance/gst-excel-file.ts`) is
+made in the browser from the saved JSON: GSTR-1 a sheet per section as the
+offline tool's template (b2b, sez, de · b2ba · b2cl · b2cla · b2cs · b2csa ·
+cdnr · cdnra · cdnur · cdnura · exp · expa · at · ata · atadj · atadja ·
+exemp · hsn · docs), a row per rate, places of supply named; GSTR-2B as the
+portal's own Excel (B2B, B2BA, B2B-CDNR, B2B-CDNRA, ISD, ISDA, IMPG, IMPGSEZ,
+other tables as they come; rejected documents in their own sheets) with the
+2B's summary. A month's several files are read together, rows repeated by a
+re-download kept once; a 2B uses its newest whole file, else its newest
+summary and the newest of each part. "GSTR-1 / GSTR-2B Excel for FY …" puts
+the year's saved months in one workbook, the month first on every row.
+Nothing is stored and the server only hands out the files, so it costs
+nothing. Tested in `tests/gst-excel/`.
+
 **Still to check on the real portal (stage 0 / first pilot login):** the
 login field ids (`#username`, `#user_pass`, `#captcha`), that the logged-in
 address matches `services.gst.gov.in/services/auth/`, and that the logout
