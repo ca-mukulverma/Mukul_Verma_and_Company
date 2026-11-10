@@ -71,11 +71,10 @@ const GUIDE: Record<GuideLanguage, { title: string; description: string; section
       {
         title: "4. Save the client's GST login (once per client)",
         steps: [
-          "Open the client (Clients → the client) and go to the Credentials tab.",
-          "Click Add Credential.",
-          "Title: write GST Portal (the title must contain the word GST, and must not be for e-way bill or e-invoice).",
-          "Username/Email: the client's GST portal username. Password: the GST portal password.",
-          "Click Save Credential.",
+          "Open the client in Compliance → Clients and find the Logins box (or Clients → the client → Credentials tab).",
+          "On the GST row, click Add.",
+          "GST username: the client's GST portal username. Password: the GST portal password.",
+          "Click Add login.",
           "Also make sure the client's GSTIN is saved in the client's details.",
         ],
         note: "Without a saved login, the portal still opens, but you type the username and password yourself.",
@@ -179,11 +178,10 @@ const GUIDE: Record<GuideLanguage, { title: string; description: string; section
       {
         title: "4. क्लाइंट का GST लॉगिन सेव करें (हर क्लाइंट के लिए एक बार)",
         steps: [
-          "क्लाइंट खोलें (Clients → क्लाइंट) और Credentials टैब में जाएँ।",
-          "Add Credential पर क्लिक करें।",
-          "Title में GST Portal लिखें (टाइटल में GST शब्द होना ज़रूरी है, और यह e-way bill या e-invoice का न हो)।",
-          "Username/Email में क्लाइंट का GST पोर्टल यूज़रनेम, और Password में GST पोर्टल पासवर्ड डालें।",
-          "Save Credential पर क्लिक करें।",
+          "Compliance → Clients में क्लाइंट खोलें और Logins बॉक्स देखें (या Clients → क्लाइंट → Credentials टैब)।",
+          "GST वाली लाइन पर Add पर क्लिक करें।",
+          "GST username में क्लाइंट का GST पोर्टल यूज़रनेम, और Password में GST पोर्टल पासवर्ड डालें।",
+          "Add login पर क्लिक करें।",
           "यह भी देख लें कि क्लाइंट की डिटेल में GSTIN सेव है।",
         ],
         note: "लॉगिन सेव न हो तब भी पोर्टल खुलेगा, पर यूज़रनेम और पासवर्ड आपको खुद लिखना होगा।",
@@ -287,11 +285,10 @@ const GUIDE: Record<GuideLanguage, { title: string; description: string; section
       {
         title: "4. Client ka GST login save karein (har client ke liye ek baar)",
         steps: [
-          "Client kholiye (Clients → client) aur Credentials tab mein jaaiye.",
-          "Add Credential par click kariye.",
-          "Title mein GST Portal likhiye (title mein GST shabd hona zaroori hai, aur yeh e-way bill ya e-invoice ka na ho).",
-          "Username/Email mein client ka GST portal username, aur Password mein GST portal password daaliye.",
-          "Save Credential par click kariye.",
+          "Compliance → Clients mein client kholiye aur Logins box dekhiye (ya Clients → client → Credentials tab).",
+          "GST wali line par Add par click kariye.",
+          "GST username mein client ka GST portal username, aur Password mein GST portal password daaliye.",
+          "Add login par click kariye.",
           "Yeh bhi check kar lijiye ki client ki details mein GSTIN saved hai.",
         ],
         note: "Login save na ho tab bhi portal khulega, par username aur password aapko khud likhna hoga.",

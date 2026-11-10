@@ -358,7 +358,7 @@ export function ClientGstPortal({ clientId, refresh }: { clientId: string; refre
       <Legend />
       {!data.client.hasLogin && (
         <p className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
-          <KeyRound className="h-3.5 w-3.5" /> No GST login saved (Clients → Credentials, with “GST” in the title): staff type the username and password on the portal.
+          <KeyRound className="h-3.5 w-3.5" /> No GST login saved (add it under Logins on the client in Compliance → Clients): staff type the username and password on the portal.
         </p>
       )}
       <PortalLogin

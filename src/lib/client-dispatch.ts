@@ -6,11 +6,13 @@ import { BillingAccess } from "@/lib/billing";
 import { formatIndianDate, formatRupees } from "@/lib/billing-constants";
 import { loadBillDocuments } from "@/lib/bill-document";
 import { clientDocLabel, clientDocType, fyLabel } from "@/lib/client-documents";
+import type { CredentialKind } from "@/lib/credential-kinds";
 import type { EmailContent, EmailSection } from "@/lib/email-layout";
 import {
   BUILT_IN_REQUESTS,
   DETAIL_FIELDS,
   DetailField,
+  Portal,
   PORTALS,
   RETURN_WORKS,
   RangeOption,
@@ -24,6 +26,18 @@ import {
 // Send to Client, on the server: which of a client's files, details, logins
 // and bills a request picks (the preview staff see before sending), and the
 // email text (see docs/CLIENT_REQUESTS.md).
+
+// The portal a request asks for, from the section a login is saved under
+// (the TAN login on the Income tax site isn't the client's Income Tax portal)
+const KIND_PORTAL: Record<Exclude<CredentialKind, "OTHER">, Portal | null> = {
+  GST: "GST",
+  INCOME_TAX: "INCOME_TAX",
+  TDS_TRACES: "TRACES",
+  TDS_INCOME_TAX: null,
+  PF: "EPFO",
+  ESIC: "ESIC",
+  MCA: "MCA",
+};
 
 // ─── Request types ──────────────────────────────────────────────────────────
 
@@ -293,7 +307,7 @@ export async function buildPreview(options: {
   if (isAdmin) {
     const credentials = await prisma.credential.findMany({ where: { clientId: client.id }, orderBy: { title: "asc" } });
     logins = credentials.map((cr) => {
-      const portal = portalOf(cr.title);
+      const portal = cr.kind === "OTHER" ? portalOf(cr.title) : KIND_PORTAL[cr.kind];
       return { id: cr.id, title: cr.title, username: cr.username, portal: portal ? PORTALS[portal].label : null, selected: !!portal && config.logins.includes(portal) };
     });
     const unsaved = config.logins.filter((portal) => !logins!.some((l) => l.portal === PORTALS[portal].label));

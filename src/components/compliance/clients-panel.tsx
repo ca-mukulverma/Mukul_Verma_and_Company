@@ -31,6 +31,8 @@ import { OldPeriods } from "./old-periods";
 import { ClientRef, ReturnUpload } from "./return-upload";
 import { ClientGstWorking } from "./gst-working";
 import { ClientGstPortal } from "./gst-portal";
+import { CredentialSections } from "@/components/clients/credential-sections";
+import { useSession } from "next-auth/react";
 import { EditClientDialog } from "./edit-client-dialog";
 import { GSTIN_PATTERN, gstState } from "@/lib/gst-states";
 import { matchesSearch } from "@/lib/search-text";
@@ -413,6 +415,9 @@ function ClientDetailView({
   const [addingGstin, setAddingGstin] = useState(false);
   // Bumped after an upload so the GST working reads the new files
   const [uploads, setUploads] = useState(0);
+  // Bumped after a login changes, so the GST portal box sees a GST login
+  const [logins, setLogins] = useState(0);
+  const { data: session } = useSession();
 
   const load = useCallback(async () => {
     try {
@@ -511,9 +516,17 @@ function ClientDetailView({
       )}
       {hasGst && (
         <Box title={`GST portal${several ? ` · ${data.client.state}` : ""}`}>
-          <ClientGstPortal clientId={data.client.id} refresh={uploads} />
+          <ClientGstPortal clientId={data.client.id} refresh={uploads + logins} />
         </Box>
       )}
+      <Box title={`Logins${several ? ` · ${data.client.state}` : ""}`}>
+        <CredentialSections
+          clientId={data.client.id}
+          canEdit={isManager}
+          canDelete={session?.user?.role === "ADMIN"}
+          onChanged={() => setLogins((n) => n + 1)}
+        />
+      </Box>
       <Works data={data} workTypes={workTypes} isManager={isManager} onChanged={reload} />
       <Obligations data={data} onChanged={reload} />
       <YearView data={data} workTypes={workTypes} fy={data.fy} setFy={setFy} />

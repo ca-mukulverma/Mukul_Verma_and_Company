@@ -35,6 +35,28 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "client-logins-by-portal",
+    date: "2026-11-10",
+    audience: "everyone",
+    title: { en: "Client logins by portal, on Compliance → Clients too", hi: "क्लाइंट के लॉगिन पोर्टल के हिसाब से, Compliance → Clients में भी" },
+    steps: {
+      en: [
+        "Open a client in Compliance → Clients: the Logins box has a row for GST, Income tax, TDS – TRACES, TDS – Income tax, PF, ESIC and MCA.",
+        "Admins and Partners click Add on a row to save its username and password, or Add other for any other portal with its own name. The pencil changes a saved login.",
+        "Everyone can see and copy the logins there, and on the client's Credentials tab. The GST portal download uses the GST row.",
+      ],
+      hi: [
+        "Compliance → Clients में क्लाइंट खोलें: Logins बॉक्स में GST, Income tax, TDS – TRACES, TDS – Income tax, PF, ESIC और MCA की अलग लाइन है।",
+        "एडमिन और पार्टनर लाइन पर Add दबाकर यूज़रनेम और पासवर्ड सेव करें, या किसी और पोर्टल के लिए Add other से नाम देकर सेव करें। पेंसिल से सेव लॉगिन बदलें।",
+        "सब लोग वहाँ और क्लाइंट के Credentials टैब में लॉगिन देख और कॉपी कर सकते हैं। GST पोर्टल डाउनलोड GST वाली लाइन का लॉगिन लेता है।",
+      ],
+    },
+    push: {
+      title: "New in the app: client logins by portal",
+      body: "Save a client's GST, Income tax, TDS, PF, ESIC and MCA logins from Compliance → Clients, in the Logins box.",
+    },
+  },
+  {
     id: "gst-portal-download-filed",
     date: "2026-11-10",
     audience: "everyone",

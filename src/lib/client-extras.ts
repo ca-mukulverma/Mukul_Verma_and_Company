@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureItems, subscriptionInclude, SubscriptionWithRefs, appearsOn, addLinesToOpenItems } from "@/lib/compliance";
 import { monthKey, nextPeriodStart, parseMonthKey, periodContaining, todayIST } from "@/lib/compliance-periods";
 import type { ImportRow } from "@/lib/client-import";
+import { guessKind } from "@/lib/credential-kinds";
 
 // The sheets that travel with the "Clients" sheet of a client export: logins
 // (Admin only), compliance setup and monthly TDS/RCM payments. On import they
@@ -319,7 +320,8 @@ export function extrasSummary(extras: ClientExtras) {
 export function extrasWrites(extras: ClientExtras, clientIds: Map<number, string>) {
   const id = (row: number) => clientIds.get(row)!;
   return [
-    prisma.credential.createMany({ data: extras.logins.map((l) => ({ clientId: id(l.clientRow), ...l.value })) }),
+    // The portal section from the login's title (as the app names them on export)
+    prisma.credential.createMany({ data: extras.logins.map((l) => ({ clientId: id(l.clientRow), kind: guessKind(l.value.title), ...l.value })) }),
     prisma.clientCompliance.createMany({
       data: extras.setups.map((s) => ({ clientId: id(s.clientRow), ...s.value, active: true })),
       skipDuplicates: true,

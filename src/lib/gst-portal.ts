@@ -91,6 +91,10 @@ export function isGstPortalLogin(title: string) {
   return /gst/i.test(title) && !/e[\s-]*way|\bewb\b|e[\s-]*invoice|\beinv|\birp\b/i.test(title);
 }
 
+// A login saved under GST in the client's Logins (or an "Other" login named
+// for the GST portal)
+export const isGstLogin = (c: { kind: string; title: string }) => c.kind === "GST" || (c.kind === "OTHER" && isGstPortalLogin(c.title));
+
 export const fileKey = (f: Pick<PortalFileRow, "kind" | "month">) => `${f.kind}:${f.month}`;
 
 // ── A filed GSTR-1 / GSTR-3B item's own files (the item popup and the sheet) ──

@@ -2,101 +2,53 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions, getSessionUser } from "@/lib/auth";
+import { credentialInput, credentialSelect } from "@/lib/credential-input";
+import { PORTAL_KINDS } from "@/lib/credential-kinds";
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// GET /api/clients/[id]/credentials – the client's logins, portals first in
+// their order, then other logins by name
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Passwords: signed-in staff only (the middleware skips /api routes)
   if (!getSessionUser(await getServerSession(authOptions))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const resolvedParams = await params;
-  const clientId = resolvedParams.id;
-
-  if (!clientId) {
-    return NextResponse.json({ error: "Client ID is required" }, { status: 400 });
-  }
+  const { id: clientId } = await params;
+  if (!clientId) return NextResponse.json({ error: "Client ID is required" }, { status: 400 });
 
   try {
-    const credentials = await prisma.credential.findMany({
-      where: { clientId },
-      select: {
-        id: true,
-        title: true,
-        username: true,
-        password: true,
-        createdAt: true,
-        updatedAt: true
-      }
-    });
-
+    const credentials = await prisma.credential.findMany({ where: { clientId }, select: credentialSelect, orderBy: [{ title: "asc" }, { createdAt: "asc" }] });
+    const order = (kind: string) => {
+      const i = (PORTAL_KINDS as readonly string[]).indexOf(kind);
+      return i < 0 ? PORTAL_KINDS.length : i;
+    };
+    credentials.sort((a, b) => order(a.kind) - order(b.kind));
     return NextResponse.json({ credentials });
-  } catch (error: Error | unknown) {
-    // Use type guard for safe access to error properties
-    if (error instanceof Error) {
-      console.error("Error fetching credentials:", error.message);
-    } else {
-      console.error("Unknown error fetching credentials:", error);
-    }
+  } catch (error) {
+    console.error("Error fetching credentials:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Failed to fetch credentials" }, { status: 500 });
   }
 }
 
-// Update the POST handler as well to match the correct params structure
-export async function POST(
-  request: NextRequest, 
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const resolvedParams = await params;
-  const clientId = resolvedParams.id;
+// POST /api/clients/[id]/credentials { kind, title?, username, password } –
+// Admins and Partners; "Other" needs its title
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: clientId } = await params;
   const session = await getServerSession(authOptions);
-
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Allow both ADMIN and PARTNER to add credentials
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!["ADMIN", "PARTNER"].includes(session.user.role)) {
-    return NextResponse.json(
-      { error: "Only administrators and partners can add credentials" },
-      { status: 403 }
-    );
+    return NextResponse.json({ error: "Only administrators and partners can add credentials" }, { status: 403 });
   }
 
-  const body = await request.json();
-  
-  // Only title and password are mandatory
-  if (!body.title || !body.password) {
-    return NextResponse.json({ error: "Title and Password are required" }, { status: 400 });
-  }
+  const parsed = credentialInput.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Check the login" }, { status: 400 });
 
   try {
-    const newCredential = await prisma.credential.create({
-      data: {
-        title: body.title,
-        username: body.username || "",
-        password: body.password,
-        clientId,
-      },
-    });
-
-    return NextResponse.json({
-      id: newCredential.id,
-      title: newCredential.title,
-      username: newCredential.username,
-      password: newCredential.password,
-      createdAt: newCredential.createdAt,
-      updatedAt: newCredential.updatedAt
-    });
-  } catch (error: Error | unknown) {
-    // Use type guard for safe access to error properties
-    if (error instanceof Error) {
-      console.error("Error adding credential:", error.message);
-    } else {
-      console.error("Unknown error adding credential:", error);
-    }
+    const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } });
+    if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    const created = await prisma.credential.create({ data: { ...parsed.data, clientId }, select: credentialSelect });
+    return NextResponse.json(created);
+  } catch (error) {
+    console.error("Error adding credential:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Failed to add credential" }, { status: 500 });
   }
 }

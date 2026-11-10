@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { notFound, parseBody, requireComplianceAccess, badRequest } from "@/lib/compliance-api";
-import { isGstPortalLogin } from "@/lib/gst-portal";
+import { isGstLogin } from "@/lib/gst-portal";
 import { activePortalSettings } from "@/lib/gst-portal-settings";
 import { partyName } from "@/lib/compliance";
 import { gstState } from "@/lib/gst-states";
 
 // POST /api/compliance/gst-portal/login { clientId } – what the GST extension
 // needs to open the portal for a client: the active portal settings and the
-// client's GST login (the first credential with "GST" in its title, not the
-// e-way bill / e-invoice one). Asked for only when staff click, passed
+// client's GST login (the one saved under GST in its Logins, else an "Other"
+// login titled for the GST portal, not the e-way bill / e-invoice one). Asked for only when staff click, passed
 // straight to the extension, which fills the fields and keeps nothing. Also
 // the party's GST registrations (main record first), so the files fetched
 // can be saved to the right GSTIN and period on any page.
@@ -25,11 +25,11 @@ export async function POST(request: NextRequest) {
   if (body.error) return body.error;
   const client = await prisma.client.findUnique({
     where: { id: body.data.clientId },
-    select: { id: true, gstin: true, parentClientId: true, credentials: { orderBy: { createdAt: "asc" }, select: { title: true, username: true, password: true } } },
+    select: { id: true, gstin: true, parentClientId: true, credentials: { orderBy: { createdAt: "asc" }, select: { kind: true, title: true, username: true, password: true } } },
   });
   if (!client) return notFound("Client not found");
   if (!client.gstin?.trim()) return badRequest("Save this client's GSTIN first");
-  const login = client.credentials.find((c) => isGstPortalLogin(c.title));
+  const login = client.credentials.find((c) => c.kind === "GST") ?? client.credentials.find(isGstLogin);
   const mainId = client.parentClientId ?? client.id;
   const party = await prisma.client.findMany({
     where: { OR: [{ id: mainId }, { parentClientId: mainId }] },
