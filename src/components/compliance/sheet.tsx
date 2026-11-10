@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import axios from "axios";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
@@ -95,6 +96,29 @@ function PortalIcon({ item, files, onOpen }: { item: SheetItem | null; files: Po
     <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-sky-700 dark:text-sky-400" title={title} aria-label={title} onClick={() => onOpen(item)}>
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : asked ? <Clock className="h-4 w-4" /> : <CloudDownload className="h-4 w-4" />}
     </Button>
+  );
+}
+
+// The client's name opens the client in Compliance → Clients (works, files,
+// GST working, GST portal, logins…). The sheet's month is kept in this
+// page's address first, so the browser's Back returns to the same month.
+function ClientNameLink({ client, month }: { client: ClientCell; month: string }) {
+  return (
+    <Link
+      href={`/dashboard/compliance?tab=clients&client=${client.id}`}
+      className="block truncate font-medium hover:underline"
+      title={`${client.name}: open the client`}
+      onClick={(e) => {
+        // A new tab or window keeps this page as it is
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+        const here = new URL(window.location.href);
+        here.searchParams.set("month", month);
+        here.searchParams.delete("item");
+        window.history.replaceState(null, "", here);
+      }}
+    >
+      {client.name}
+    </Link>
   );
 }
 
@@ -578,7 +602,7 @@ export function ComplianceSheet({
                       />
                     </td>
                     <td className="sticky left-0 z-[1] max-w-[14rem] bg-background p-2">
-                      <p className="truncate font-medium" title={row.client.name}>{row.client.name}</p>
+                      <ClientNameLink client={row.client} month={month} />
                       {row.client.gstin && <p className="text-[11px] text-muted-foreground">{row.client.gstin}</p>}
                       {row.client.noWhatsapp && (
                         <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
