@@ -11,6 +11,7 @@ import { ComplianceOverview } from "@/components/compliance/overview";
 import { ComplianceSheet } from "@/components/compliance/sheet";
 import { ClientsPanel } from "@/components/compliance/clients-panel";
 import { GstPortalRound } from "@/components/compliance/gst-portal";
+import { GstDownloadProvider } from "@/components/compliance/gst-download-queue";
 import { ComplianceReco } from "@/components/compliance/reco";
 import { ComplianceSetup, WorkType } from "@/components/compliance/setup";
 import { apiError } from "@/components/compliance/types";
@@ -107,64 +108,67 @@ function CompliancePageContent() {
       {!workTypes ? (
         <Loader2 className="mx-auto mt-10 h-6 w-6 animate-spin" />
       ) : (
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="flex h-auto flex-wrap justify-start">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="gst">GST sheet<OverdueBadge count={overdue?.gst} /></TabsTrigger>
-            <TabsTrigger value="tds">TDS sheet<OverdueBadge count={overdue?.tds} /></TabsTrigger>
-            <TabsTrigger value="work">Other work<OverdueBadge count={overdue?.work} /></TabsTrigger>
-            <TabsTrigger value="reco">Reconciliation</TabsTrigger>
-            <TabsTrigger value="clients">Clients</TabsTrigger>
-            <TabsTrigger value="downloads">GST downloads</TabsTrigger>
-            {isManager && <TabsTrigger value="setup">Setup</TabsTrigger>}
-          </TabsList>
-          <TabsContent value="overview" className="mt-4">
-            <ComplianceOverview onOpenSheet={openSheet} />
-          </TabsContent>
-          <TabsContent value="gst" className="mt-4">
-            <ComplianceSheet
-              view="gst"
-              workTypes={workTypes}
-              isManager={isManager}
-              initialMonth={tab === "gst" ? linkMonth : null}
-              initialItemId={tab === "gst" ? linkItem : null}
-            />
-          </TabsContent>
-          <TabsContent value="tds" className="mt-4">
-            <ComplianceSheet
-              view="tds"
-              workTypes={workTypes}
-              isManager={isManager}
-              initialMonth={tab === "tds" ? linkMonth : null}
-              initialItemId={tab === "tds" ? linkItem : null}
-            />
-          </TabsContent>
-          <TabsContent value="work" className="mt-4">
-            <ComplianceSheet
-              key={workSheetType ?? "work"}
-              view="work"
-              workTypes={workTypes}
-              isManager={isManager}
-              initialWorkTypeId={workSheetType}
-              initialMonth={tab === "work" ? linkMonth : null}
-              initialItemId={tab === "work" ? linkItem : null}
-            />
-          </TabsContent>
-          <TabsContent value="reco" className="mt-4">
-            <ComplianceReco isManager={isManager} />
-          </TabsContent>
-          <TabsContent value="clients" className="mt-4">
-            <ClientsPanel workTypes={workTypes} isManager={isManager} initialClientId={params.get("client")} />
-          </TabsContent>
-          <TabsContent value="downloads" className="mt-4">
-            {tab === "downloads" && <GstPortalRound />}
-          </TabsContent>
-          {isManager && (
-            <TabsContent value="setup" className="mt-4">
-              <ComplianceSetup workTypes={workTypes} onChanged={loadWorkTypes} />
+        // GST portal downloads keep running across tabs and popups
+        <GstDownloadProvider workTypes={workTypes}>
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList className="flex h-auto flex-wrap justify-start">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="gst">GST sheet<OverdueBadge count={overdue?.gst} /></TabsTrigger>
+              <TabsTrigger value="tds">TDS sheet<OverdueBadge count={overdue?.tds} /></TabsTrigger>
+              <TabsTrigger value="work">Other work<OverdueBadge count={overdue?.work} /></TabsTrigger>
+              <TabsTrigger value="reco">Reconciliation</TabsTrigger>
+              <TabsTrigger value="clients">Clients</TabsTrigger>
+              <TabsTrigger value="downloads">GST downloads</TabsTrigger>
+              {isManager && <TabsTrigger value="setup">Setup</TabsTrigger>}
+            </TabsList>
+            <TabsContent value="overview" className="mt-4">
+              <ComplianceOverview onOpenSheet={openSheet} />
             </TabsContent>
-          )}
-        </Tabs>
+            <TabsContent value="gst" className="mt-4">
+              <ComplianceSheet
+                view="gst"
+                workTypes={workTypes}
+                isManager={isManager}
+                initialMonth={tab === "gst" ? linkMonth : null}
+                initialItemId={tab === "gst" ? linkItem : null}
+              />
+            </TabsContent>
+            <TabsContent value="tds" className="mt-4">
+              <ComplianceSheet
+                view="tds"
+                workTypes={workTypes}
+                isManager={isManager}
+                initialMonth={tab === "tds" ? linkMonth : null}
+                initialItemId={tab === "tds" ? linkItem : null}
+              />
+            </TabsContent>
+            <TabsContent value="work" className="mt-4">
+              <ComplianceSheet
+                key={workSheetType ?? "work"}
+                view="work"
+                workTypes={workTypes}
+                isManager={isManager}
+                initialWorkTypeId={workSheetType}
+                initialMonth={tab === "work" ? linkMonth : null}
+                initialItemId={tab === "work" ? linkItem : null}
+              />
+            </TabsContent>
+            <TabsContent value="reco" className="mt-4">
+              <ComplianceReco isManager={isManager} />
+            </TabsContent>
+            <TabsContent value="clients" className="mt-4">
+              <ClientsPanel workTypes={workTypes} isManager={isManager} initialClientId={params.get("client")} />
+            </TabsContent>
+            <TabsContent value="downloads" className="mt-4">
+              {tab === "downloads" && <GstPortalRound />}
+            </TabsContent>
+            {isManager && (
+              <TabsContent value="setup" className="mt-4">
+                <ComplianceSetup workTypes={workTypes} onChanged={loadWorkTypes} />
+              </TabsContent>
+            )}
+          </Tabs>
+        </GstDownloadProvider>
       )}
     </div>
   );

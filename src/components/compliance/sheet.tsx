@@ -1,10 +1,10 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
-import { CheckSquare, Loader2, MessageCircle, RefreshCw, Search, UserCheck } from "lucide-react";
+import { CheckSquare, Clock, CloudDownload, Loader2, MessageCircle, RefreshCw, Search, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,10 @@ import {
 import { apiError, ClientCell, longDate, rupees, SheetItem, shortDate } from "./types";
 import { SheetAddWork } from "./clients-panel";
 import type { WorkType } from "./setup";
+import { canDownloadFor, isItemFile, itemMonths, type PortalFileRow } from "@/lib/gst-portal";
+import type { RoundPortalFiles } from "@/lib/gst-portal-files";
+import { jobActive, useGstDownloads, useOnGstSaved } from "./gst-download-queue";
+import { PortalDownloadDialog } from "./portal-download-panel";
 
 type View = "gst" | "tds" | "work";
 
@@ -71,6 +75,27 @@ function normalize(view: View, data: Record<string, unknown>): { rows: Row[]; me
   }
   const rows = (data.rows as { client: ClientCell; item: SheetItem }[]).map((r) => ({ client: r.client, slots: { item: r.item } }));
   return { rows, meta: { period: data.period as string } };
+}
+
+// A filed GSTR-1 / GSTR-3B whose own files are still missing in the app:
+// opens Download from the GST portal (a spinner while they download, a clock
+// while GSTR-1 JSON asked for on the portal waits to be collected)
+function PortalIcon({ item, files, onOpen }: { item: SheetItem | null; files: PortalFileRow[] | undefined; onOpen: (item: SheetItem) => void }) {
+  const downloads = useGstDownloads();
+  if (!item || !downloads || !files || !canDownloadFor(item) || !item.canEdit) return null;
+  const months = itemMonths(item.periodStart, item.frequency);
+  const missing = files.filter((f) => f.state === "missing" && isItemFile(f, item.kind, months));
+  const busy = downloads.jobs.some((j) => jobActive(j) && j.clientId === item.clientId && j.rows.some((r) => isItemFile(r, item.kind, months)));
+  const asked = item.kind === "GSTR1" && downloads.collect.some((c) => c.clientId === item.clientId && months.includes(c.month));
+  if (!missing.length && !busy) return null;
+  const title = busy
+    ? "Downloading from the GST portal: see GST downloads at the bottom of the page"
+    : `${missing.length} file${missing.length === 1 ? "" : "s"} missing: ${missing.map((f) => f.label).join(", ")}${asked ? " · JSON asked for on the portal: collect it from GST downloads" : ""}. Click to download from the GST portal.`;
+  return (
+    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-sky-700 dark:text-sky-400" title={title} aria-label={title} onClick={() => onOpen(item)}>
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : asked ? <Clock className="h-4 w-4" /> : <CloudDownload className="h-4 w-4" />}
+    </Button>
+  );
 }
 
 // The month a sheet opens on: GST returns of a month are filed in the next
@@ -149,6 +174,10 @@ export function ComplianceSheet({
   const [dialog, setDialog] = useState<{ item: SheetItem; client: ClientCell } | null>(null);
   const [reminder, setReminder] = useState<ReminderTarget[] | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
+  // GST sheet: each client's return files saved / missing for the month (the
+  // row icons), and the item whose Download from the GST portal is open
+  const [portalFiles, setPortalFiles] = useState<{ month: string; byClient: Map<string, PortalFileRow[]> } | null>(null);
+  const [portalItem, setPortalItem] = useState<{ item: SheetItem; client: ClientCell } | null>(null);
 
   const effectiveWorkTypeId = view === "work" ? workTypeId || genericTypes[0]?.id || "" : "";
 
@@ -164,26 +193,43 @@ export function ComplianceSheet({
     )
     .map((w) => w.id);
 
-  const load = useCallback(async () => {
-    if (view === "work" && !effectiveWorkTypeId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
+  // Read after the sheet, not waited for: only the row icons need it
+  const loadPortalFiles = useCallback(async (forMonth: string) => {
     try {
-      const { data } = await axios.get("/api/compliance/sheet", {
-        params: { view, month, ...(view === "work" && { workTypeId: effectiveWorkTypeId }) },
-      });
-      const normalized = normalize(view, data);
-      setRows(normalized.rows);
-      setMeta(normalized.meta);
-      setSelected([]);
-    } catch (error) {
-      toast.error(apiError(error, "Could not load the sheet"));
-    } finally {
-      setLoading(false);
+      const { data } = await axios.get<RoundPortalFiles>("/api/compliance/gst-portal/round", { params: { month: forMonth } });
+      setPortalFiles({ month: forMonth, byClient: new Map(data.rows.map((r) => [r.clientId, r.period.files])) });
+    } catch {
+      // No icons: the item popup still offers the download
     }
-  }, [view, month, effectiveWorkTypeId]);
+  }, []);
+
+  // quiet: a refresh after files were saved (keeps the ticked rows)
+  const load = useCallback(
+    async (quiet = false) => {
+      if (view === "work" && !effectiveWorkTypeId) {
+        setLoading(false);
+        return null;
+      }
+      setLoading(true);
+      try {
+        const { data } = await axios.get("/api/compliance/sheet", {
+          params: { view, month, ...(view === "work" && { workTypeId: effectiveWorkTypeId }) },
+        });
+        const normalized = normalize(view, data);
+        setRows(normalized.rows);
+        setMeta(normalized.meta);
+        if (!quiet) setSelected([]);
+        if (view === "gst" && normalized.rows.some((r) => rowItems(r).some((i) => i && canDownloadFor(i)))) loadPortalFiles(month);
+        return normalized.rows;
+      } catch (error) {
+        toast.error(apiError(error, "Could not load the sheet"));
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [view, month, effectiveWorkTypeId, loadPortalFiles]
+  );
 
   useEffect(() => {
     load();
@@ -227,6 +273,21 @@ export function ComplianceSheet({
     updateItems([item]);
     setNeedsRefresh(true);
   };
+  // Files saved from the GST portal: the sheet (and an open item) catch up,
+  // once a burst of saves is over
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useOnGstSaved((clientId) => {
+    if (view !== "gst" || !rows.some((r) => r.client.id === clientId)) return;
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(async () => {
+      const fresh = await load(true);
+      if (fresh) updateItems(fresh.flatMap((r) => rowItems(r)).filter((i): i is SheetItem => !!i));
+    }, 1500);
+  });
+  useEffect(() => () => {
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+  }, []);
+
   const closeDialog = () => {
     setDialog(null);
     if (needsRefresh) {
@@ -303,12 +364,17 @@ export function ComplianceSheet({
     const status = <span className="text-xs">{rowStatus(items)}</span>;
     if (view === "gst") {
       const { gstr1, gstr3b } = row.slots;
+      const portal = portalFiles?.month === month ? portalFiles.byClient.get(row.client.id) : undefined;
+      const openPortal = (item: SheetItem) => setPortalItem({ item, client: row.client });
       const lines = gstr3b?.lines ?? [];
       const resolved = lines.filter((l) => l.status !== "pending").length;
       return [
         reminderCell,
         <DataReceivedCell key="d" items={items} onChange={updateItems} />,
-        <ItemCell key="1" item={gstr1} onOpen={open(row)} />,
+        <div key="1" className="flex items-center gap-0.5">
+          <ItemCell item={gstr1} onOpen={open(row)} />
+          <PortalIcon item={gstr1} files={portal} onOpen={openPortal} />
+        </div>,
         gstr1?.gstr1aFiled ? (
           <button key="1a" className="text-xs underline" onClick={() => open(row)(gstr1)}>Filed {shortDate(gstr1.gstr1aFiledAt)}</button>
         ) : (
@@ -325,7 +391,10 @@ export function ComplianceSheet({
         ) : (
           <span key="rcm" className="text-xs text-muted-foreground">–</span>
         ),
-        <ItemCell key="3" item={gstr3b} onOpen={open(row)} />,
+        <div key="3" className="flex items-center gap-0.5">
+          <ItemCell item={gstr3b} onOpen={open(row)} />
+          <PortalIcon item={gstr3b} files={portal} onOpen={openPortal} />
+        </div>,
         gstr3b ? (
           <button key="t" className="whitespace-nowrap text-xs" onClick={() => open(row)(gstr3b)}>
             {gstr3b.taxPayable !== null ? rupees(gstr3b.taxPayable) : <span className="text-muted-foreground">add</span>}
@@ -400,7 +469,7 @@ export function ComplianceSheet({
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input className="w-56 pl-8" placeholder="Search client or GSTIN" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <Button variant="ghost" size="icon" onClick={load} title="Refresh">
+        <Button variant="ghost" size="icon" onClick={() => load()} title="Refresh">
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </Button>
         <div className="ml-auto flex flex-wrap gap-2">
@@ -408,7 +477,7 @@ export function ComplianceSheet({
             <SheetAddWork
               workTypes={workTypes}
               sheetWorkTypeIds={sheetWorkTypeIds}
-              onDone={load}
+              onDone={() => load()}
             />
           )}
           {selected.length > 0 && view !== "tds" && (
@@ -536,12 +605,13 @@ export function ComplianceSheet({
       {dialog && (
         <ItemDialog item={dialog.item} client={dialog.client} isManager={isManager} onClose={closeDialog} onChange={onItemChange} />
       )}
+      {portalItem && <PortalDownloadDialog item={portalItem.item} client={portalItem.client} onClose={() => setPortalItem(null)} />}
       {reminder && (
         <ReminderDialog
           targets={reminder}
           template={templateFor(rows.flatMap((r) => openItems(rowItems(r))).filter((i) => reminder.some((t) => t.itemIds.includes(i.id))))}
           onClose={() => setReminder(null)}
-          onSent={load}
+          onSent={() => load()}
         />
       )}
     </div>
