@@ -102,6 +102,11 @@ There are three sheets, made to work like the old Excel tracker:
 
 Everything is done **on the sheet**:
 
+- **Click a client's name** (on any sheet) to open that client in
+  Compliance → Clients, with everything for it: upload documents, GST working,
+  GST portal, logins, recurring work, payments, the year and its files. The
+  browser's Back returns to the sheet on the same month or quarter (a click
+  with Ctrl / ⌘ opens the client in a new tab).
 - **Click any cell** to open its small window: mark filed, enter TDS figures,
   confirm RCM / TDS lines, add challans, attach files, do the Form 16/16A
   steps, see history. Nothing else needs to be opened.

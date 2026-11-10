@@ -102,6 +102,10 @@ export function ClientsPanel({ workTypes, isManager, initialClientId }: { workTy
   const [workFilter, setWorkFilter] = useState("all");
   const [checked, setChecked] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initialClientId ?? null);
+  // Opened from a link (a client's name on a sheet) while this tab is open
+  useEffect(() => {
+    if (initialClientId) setSelectedId(initialClientId);
+  }, [initialClientId]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Bumped after an edit so the open client's page shows the new details
