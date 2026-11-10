@@ -1,6 +1,7 @@
-// Files fetched from the GST portal (gst-portal.tsx) go to the client's
-// Upload documents box (return-upload.tsx), so they are read, placed and
-// saved exactly as if staff had dropped them there. Handed over in order:
+// Files fetched from the GST portal (gst-download-queue.tsx) go to the
+// client's Upload documents box (return-upload.tsx) when it is on the page
+// for that party, so any that need a look stay in its table to fix. Without
+// it, the queue saves them itself (return-save.ts). Handed over in order:
 // the next file is read only once the one before is done. The answer says,
 // per file read (a ZIP gives the files inside), whether it was uploaded.
 
@@ -13,22 +14,24 @@ export interface PortalSaved {
 
 type Handler = (files: File[]) => Promise<PortalSaved[]>;
 
-let handler: Handler | null = null;
+let handler: { clientIds: string[]; take: Handler } | null = null;
 let chain: Promise<unknown> = Promise.resolve();
 
-// Upload documents registers itself while it is on the page
-export function onPortalFiles(next: Handler) {
-  handler = next;
+// Upload documents registers itself, with the party's registrations, while
+// it is on the page
+export function onPortalFiles(clientIds: string[], take: Handler) {
+  const mine = { clientIds, take };
+  handler = mine;
   return () => {
-    if (handler === next) handler = null;
+    if (handler === mine) handler = null;
   };
 }
 
-// null: no Upload documents box on this page
-export function sendPortalFiles(files: File[]): Promise<PortalSaved[] | null> {
+// null: no Upload documents box for this client on the page
+export function sendPortalFiles(clientId: string, files: File[]): Promise<PortalSaved[] | null> {
   const to = handler;
-  if (!to) return Promise.resolve(null);
-  const done = chain.then(() => to(files));
+  if (!to || !to.clientIds.includes(clientId)) return Promise.resolve(null);
+  const done = chain.then(() => to.take(files));
   chain = done.catch(() => undefined);
   return done;
 }

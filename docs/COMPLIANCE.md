@@ -443,6 +443,36 @@ What works now:
   and closes the tab by itself**. If the app tab is closed mid-run, the
   extension logs out on its own after 5 quiet minutes. One client at a time
   per browser. With nothing ticked the button only logs in, for work by hand.
+- **Download from portal on a filed return**: a filed (or completed) GSTR-1
+  or GSTR-3B offers **Download from portal** in its popup, and a cloud icon
+  next to the cell on the GST sheet when its own files are still missing in
+  the app (hover lists them; a spinner while they download, a clock while
+  GSTR-1 JSON asked for on the portal waits). Both open one panel, with the
+  return's period already chosen:
+  - **This return**, ticked when missing: GSTR-1 → its JSON and PDF (and a
+    filed GSTR-1A's PDF) for the return month (a quarter's last); GSTR-3B →
+    its PDF and the GSTR-2B JSON of every month of the period (a quarterly
+    filer's three months). Saved files show as saved and download on a click.
+  - **Other files still missing** for the client, unticked: the financial
+    year up to this period, a row per period with select-all, and **Also FY
+    …** for the year before. Ticked ones are fetched in the same login.
+  Files are saved to the app only. Not shown for pending returns (the app
+  can't know they are filed on the portal).
+- **GST downloads bar** (bottom of the Compliance page): every download, from
+  the popup, the sheet icon or the client's GST portal box, goes into one
+  queue, one client at a time (one portal login per browser). The popup can be
+  closed straight away; the bar shows the client, the file being fetched and
+  "n of N", the captcha / OTP prompt, any button staff must click in the
+  portal, **Show the portal tab** and **Stop and log out**; clients waiting;
+  each finished client's results. Files are saved as they arrive and the
+  sheet, an open popup and the client's box catch up. Leaving or reloading
+  the page stops the queue, so the browser asks first while it runs. GSTR-1
+  JSON asked for on the portal is listed with its "ready about" time and a
+  **Collect** button (kept in the browser for 3 hours). Saving: to the
+  client's Upload documents when it is on the page (files that need a look
+  stay in its table), else straight to the period by the same rules
+  (`return-save.ts`); a file that would need a look is then reported, to
+  upload by hand from the client's page.
 - **Step-by-step guide** (button in the GST portal box, the install / update
   dialog and Help → Compliance; `src/components/compliance/gst-guide.tsx`):
   what to install, installing and updating the extension, saving the client's
@@ -669,7 +699,10 @@ which is several years of return PDFs.
 - GST portal: missing files `src/lib/gst-portal.ts` (states, browser-safe) and
   `src/lib/gst-portal-files.ts` (client year, round month; built on the GST
   working's `loadPeriods`), API `src/app/api/compliance/gst-portal/*`, UI
-  `src/components/compliance/gst-portal.tsx`; portal settings
+  `src/components/compliance/gst-portal.tsx`, the queue and bar
+  `gst-download-queue.tsx`, the panel `portal-download-panel.tsx`, extension
+  controls `gst-extension-ui.tsx`, saving without Upload documents
+  `return-save.ts`; portal settings
   `src/lib/gst-portal-settings.ts`; extension `public/gst-extension`
   (`__APP_MATCH__` and `__APP_ORIGIN__` are filled in on download) and the
   app side `src/components/compliance/gst-extension.ts`; test

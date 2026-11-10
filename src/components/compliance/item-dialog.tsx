@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, FileUp, History, Loader2, Lock, Mail, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, CloudDownload, Download, FileUp, History, Loader2, Lock, Mail, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EVENT_LABELS } from "./event-labels";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,6 +29,9 @@ import {
   todayKey,
 } from "./types";
 import { uploadComplianceFile } from "./upload";
+import { canDownloadFor } from "@/lib/gst-portal";
+import { useGstDownloads } from "./gst-download-queue";
+import { PortalDownloadDialog } from "./portal-download-panel";
 
 interface Props {
   item: SheetItem;
@@ -148,6 +151,8 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
   const [showHistory, setShowHistory] = useState(false);
   // Occasional steps (GSTR-1A, the fee) stay folded under "More options"
   const [showMore, setShowMore] = useState(false);
+  const [portal, setPortal] = useState(false);
+  const downloads = useGstDownloads();
 
   useEffect(() => {
     let cancelled = false;
@@ -187,6 +192,7 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+        {portal && <PortalDownloadDialog item={item} client={client} onClose={() => setPortal(false)} />}
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             {item.workTypeName} · {item.period}
@@ -249,6 +255,17 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
 
           {item.needsCertificates && (item.status === "filed" || item.status === "completed") && (
             <Certificates item={item} client={client} disabled={readOnly} busy={busy} run={run} onChange={onChange} />
+          )}
+
+          {downloads && canDownloadFor(item) && !readOnly && client.gstin && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+              <span className="text-muted-foreground">
+                {item.kind === "GSTR1" ? "GSTR-1 PDF and JSON" : `GSTR-3B PDF and GSTR-2B JSON${item.frequency === "QUARTERLY" ? " (all three months)" : ""}`} from the GST portal, and any other missing files of the client.
+              </span>
+              <Button size="sm" variant="outline" onClick={() => setPortal(true)}>
+                <CloudDownload className="mr-1 h-4 w-4" /> Download from portal
+              </Button>
+            </div>
           )}
 
           <Files item={item} client={client} disabled={readOnly} onChange={onChange} />

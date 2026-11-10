@@ -35,6 +35,28 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "gst-portal-download-filed",
+    date: "2026-11-10",
+    audience: "everyone",
+    title: { en: "Download a filed GSTR-1 or GSTR-3B from the GST portal", hi: "फ़ाइल हुए GSTR-1 या GSTR-3B को GST पोर्टल से डाउनलोड करें" },
+    steps: {
+      en: [
+        "On the GST sheet, a filed GSTR-1 or GSTR-3B with files missing shows a cloud icon next to it; its popup has Download from portal.",
+        "The month is already chosen and this return's files are ticked: GSTR-1 PDF and JSON, or GSTR-3B PDF and GSTR-2B JSON (all three months for a quarter). Tick any other missing file of the client to get it in the same login.",
+        "Close the popup and keep working: GST downloads at the bottom of the page shows the progress, one client at a time. Don't reload the page until it finishes.",
+      ],
+      hi: [
+        "GST शीट पर, जिस फ़ाइल हुए GSTR-1 या GSTR-3B की फ़ाइलें नहीं हैं, उसके पास बादल वाला आइकन दिखता है; उसके पॉपअप में Download from portal है।",
+        "महीना पहले से चुना होता है और इस रिटर्न की फ़ाइलें टिक होती हैं: GSTR-1 PDF और JSON, या GSTR-3B PDF और GSTR-2B JSON (तिमाही में तीनों महीने)। क्लाइंट की कोई और छूटी फ़ाइल भी टिक करें, वह उसी लॉगिन में आ जाएगी।",
+        "पॉपअप बंद करके काम करते रहें: पेज के नीचे GST downloads में प्रगति दिखती है, एक बार में एक क्लाइंट। पूरा होने तक पेज रीलोड न करें।",
+      ],
+    },
+    push: {
+      title: "New in the app: download filed returns from the GST portal",
+      body: "On the GST sheet, click the cloud icon on a filed GSTR-1 or GSTR-3B to fetch its PDF and JSON (and GSTR-2B) from the portal.",
+    },
+  },
+  {
     id: "work-done",
     date: "2026-11-09",
     audience: "everyone",

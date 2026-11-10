@@ -92,3 +92,32 @@ export function isGstPortalLogin(title: string) {
 }
 
 export const fileKey = (f: Pick<PortalFileRow, "kind" | "month">) => `${f.kind}:${f.month}`;
+
+// ── A filed GSTR-1 / GSTR-3B item's own files (the item popup and the sheet) ──
+
+// "2026-07" → "2026-09"
+function addMonth(month: string, n: number) {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+// The months of an item's period: one, or a quarter's three
+export function itemMonths(periodStart: string, frequency: string): string[] {
+  const first = periodStart.slice(0, 7);
+  return frequency === "QUARTERLY" ? [first, addMonth(first, 1), addMonth(first, 2)] : [first];
+}
+
+// GSTR-1: its JSON and PDF (and a filed GSTR-1A's PDF) for the return month,
+// a quarter's last (the first two months' IFF are files of their own);
+// GSTR-3B: its PDF and every month's GSTR-2B of the period
+export function isItemFile(file: Pick<PortalFileRow, "kind" | "month">, kind: string, months: string[]): boolean {
+  if (kind === "GSTR1") return RETURN_OF[file.kind] === "GSTR1" && file.month === months[months.length - 1];
+  if (kind === "GSTR3B") return (file.kind === "GSTR3B_PDF" || file.kind === "GSTR2B_JSON") && months.includes(file.month);
+  return false;
+}
+
+// Offered from a GSTR-1 / GSTR-3B item once it is filed in the app (a
+// pending one may not be filed on the portal yet)
+export const canDownloadFor = (item: { kind: string; status: string }) =>
+  (item.kind === "GSTR1" || item.kind === "GSTR3B") && (item.status === "filed" || item.status === "completed");
