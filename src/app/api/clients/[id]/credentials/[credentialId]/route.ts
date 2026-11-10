@@ -1,35 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession as nextAuthGetServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth"; 
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { credentialInput, credentialSelect } from "@/lib/credential-input";
 
-// DELETE a specific credential
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string; credentialId: string }> }
-) {
-  const resolvedParams = await params;
-  const credentialId = resolvedParams.credentialId;
-  // If you need clientId, use it from resolvedParams
-  // const clientId = resolvedParams.id;
-  
-  const session = await nextAuthGetServerSession(authOptions);
-  
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+type Params = { params: Promise<{ id: string; credentialId: string }> };
+
+// PATCH /api/clients/[id]/credentials/[credentialId] – change a login (its
+// portal, name, username or password): Admins and Partners, as adding
+export async function PATCH(request: NextRequest, { params }: Params) {
+  const { id: clientId, credentialId } = await params;
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!["ADMIN", "PARTNER"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Only administrators and partners can change credentials" }, { status: 403 });
   }
-  
-  // Allow only ADMIN to delete credentials
+  const parsed = credentialInput.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Check the login" }, { status: 400 });
+
+  const existing = await prisma.credential.findFirst({ where: { id: credentialId, clientId }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: "Login not found" }, { status: 404 });
+  const updated = await prisma.credential.update({ where: { id: credentialId }, data: parsed.data, select: credentialSelect });
+  return NextResponse.json(updated);
+}
+
+// DELETE a specific credential (Admins only)
+export async function DELETE(_request: NextRequest, { params }: Params) {
+  const { id: clientId, credentialId } = await params;
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (session.user.role !== "ADMIN") {
-    return NextResponse.json(
-      { error: "Only administrators can delete credentials" }, 
-      { status: 403 }
-    );
+    return NextResponse.json({ error: "Only administrators can delete credentials" }, { status: 403 });
   }
-  
-  await prisma.credential.delete({
-    where: { id: credentialId }
-  });
-  
+  const { count } = await prisma.credential.deleteMany({ where: { id: credentialId, clientId } });
+  if (!count) return NextResponse.json({ error: "Login not found" }, { status: 404 });
   return NextResponse.json({ message: "Credential deleted successfully" });
 }

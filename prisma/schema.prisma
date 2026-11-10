@@ -409,8 +409,22 @@ model ClientHistory {
   @@index([taskId])
 }
 
+// Which portal a client's login is for (src/lib/credential-kinds.ts); OTHER
+// is named by its title
+enum CredentialKind {
+  GST
+  INCOME_TAX
+  TDS_TRACES
+  TDS_INCOME_TAX
+  PF
+  ESIC
+  MCA
+  OTHER
+}
+
 model Credential {
   id        String   @id @default(uuid()) @db.Char(36)
+  kind      CredentialKind @default(OTHER)
   title     String   @db.VarChar(75) // Reduced from 100
   username  String   @db.VarChar(75) // Reduced from 100
   password  String   @db.VarChar(100) // Keep 100 for secure hashes

@@ -97,10 +97,12 @@ The client form now also has **PAN, TAN, CIN/LLPIN, Udyam number and IEC**
 
 ## Portal logins
 
-Logins are the ones under the client's **Credentials** tab. A login is
-matched to a portal by its title, so name them clearly: "GST portal",
-"Income Tax", "TRACES", "MCA", "EPFO", "ESIC". Admin can tick any login,
-matched or not. Passwords go in the email body, only to the client's own
+Logins are the client's **Credentials** (also the **Logins** box on
+Compliance → Clients), saved under a portal: GST, Income tax, TDS – TRACES,
+TDS – Income tax (the TAN login), PF, ESIC, MCA, or Other with its own name.
+A request's portals match the sections (PF is EPFO; TDS – Income tax is not
+the client's Income Tax portal); an Other login is matched by its name.
+Admin can tick any login, matched or not. Passwords go in the email body, only to the client's own
 email address; the app refuses to send them anywhere else and asks Admin to
 confirm before sending.
 

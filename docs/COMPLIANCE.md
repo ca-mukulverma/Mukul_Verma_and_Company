@@ -303,6 +303,22 @@ separate fee.
   download links valid for 7 days instead.
 - A file can't be removed from a completed period; reopen it first (past periods excepted).
 
+## Client logins
+
+Each client on Compliance → Clients has a **Logins** box (the same as the
+Credentials tab on the client's own page), so a login can be filled in where
+the work is done. A row per portal: **GST**, **Income tax** (the PAN login),
+**TDS – TRACES**, **TDS – Income tax** (the TAN login), **PF** (EPFO),
+**ESIC**, **MCA**, then **Other logins**, each named by staff (professional
+tax, e-way bill, a bank…). Each saved login shows its username and password
+(hidden until the eye is clicked) with copy buttons. Admins and Partners add
+and change logins (**Add** on an empty row, the pencil on a saved one, where
+the portal can also be changed); only Admins delete them; all staff can see
+and copy them. A party with GSTINs in several states keeps logins per GSTIN.
+The GST portal downloads use the GST row. Logins saved before the rows
+existed were sorted into them by their titles (anything not recognised is
+under Other with its title), and so are logins imported from Excel.
+
 ## Parties with GSTINs in several states
 
 A party registered for GST in more than one state has one GSTIN per state,
@@ -435,8 +451,8 @@ What works now:
   install steps; once installed, the box shows the extension's version and an
   **Update the GST extension** button whenever the app ships a newer one): a
   portal tab opens next to the app with the client's saved
-  GST login filled in (the first credential with "GST" in its title, not the
-  e-way bill / e-invoice one) and the cursor in the captcha. Staff type the
+  GST login filled in (the one under GST in the client's Logins; else an
+  Other login named for the GST portal, not the e-way bill / e-invoice one) and the cursor in the captcha. Staff type the
   captcha and OTP. The extension then fetches each ticked file (GSTR-1 JSON
   first, then oldest first), hands it to **Upload documents** (read, placed
   and saved exactly as a dropped file) and, when the list is done, **logs out

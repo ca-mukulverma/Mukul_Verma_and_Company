@@ -3,7 +3,7 @@ import { partyName } from "@/lib/compliance";
 import { addMonths, dateKey, monthKey, parseMonthKey, periodContaining, todayIST, utcDate } from "@/lib/compliance-periods";
 import { loadPeriods, periodTitle } from "@/lib/gst-working";
 import type { PeriodResult } from "@/lib/gst-read/working";
-import { isGstPortalLogin, PortalPeriod, portalState } from "@/lib/gst-portal";
+import { isGstLogin, PortalPeriod, portalState } from "@/lib/gst-portal";
 
 // Which GST return files are saved and which are missing, per client and
 // period, for the GST portal box on the client's page and the download round
@@ -19,7 +19,7 @@ function toPortal(p: PeriodResult, today: string): PortalPeriod {
   };
 }
 
-const loginTitles = { credentials: { select: { title: true } } } as const;
+const loginTitles = { credentials: { select: { kind: true, title: true } } } as const;
 
 // One client's financial year (2026 = FY 2026-27), up to the current month
 export async function clientPortalFiles(clientId: string, fy: number) {
@@ -37,7 +37,7 @@ export async function clientPortalFiles(clientId: string, fy: number) {
       id: client.id,
       name: partyName(client),
       gstin: client.gstin,
-      hasLogin: client.credentials.some((c) => isGstPortalLogin(c.title)),
+      hasLogin: client.credentials.some(isGstLogin),
     },
     fy,
     periods: periods.filter((p) => p.start <= current).map((p) => toPortal(p, dateKey(today))),
@@ -78,7 +78,7 @@ export async function roundPortalFiles(month: string) {
         name: partyName(c),
         gstin: c.gstin,
         managerId: c.managerId,
-        hasLogin: c.credentials.some((cr) => isGstPortalLogin(cr.title)),
+        hasLogin: c.credentials.some(isGstLogin),
         period: toPortal(period, today),
       },
     ];

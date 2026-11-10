@@ -551,9 +551,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
 
         {/* Placeholder for Documents Tab - will be implemented in detail separately */}
         <TabsContent value="credentials" className="space-y-4">
-          <CredentialsTab 
-          clientId={client.id}
-          isAdmin={hasWriteAccess} />
+          <CredentialsTab clientId={client.id} />
         </TabsContent>
       </Tabs>
     </div>
