@@ -61,7 +61,7 @@ const taskFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
   description: z.string().optional(),
   priority: z.enum(["low", "medium", "high"]),
-  status: z.enum(["pending", "in_progress", "review", "completed", "cancelled"]),
+  status: z.enum(["pending", "in_progress", "review", "completed"]),
   dueDate: z.date().optional().nullable(),
   // Only use assignedToIds array
   assignedToIds: z.array(z.string()).optional().default([]),
@@ -420,10 +420,6 @@ const onSubmit = async (data: TaskFormValues) => {
                           <SelectItem value="completed" className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-green-500"></span>
                             <span>Completed</span>
-                          </SelectItem>
-                          <SelectItem value="cancelled" className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-red-500"></span>
-                            <span>Cancelled</span>
                           </SelectItem>
                         </SelectContent>
                       </Select>

@@ -154,6 +154,15 @@ model User {
   // Sees everyone's Work Done list (admins always do; staff see their own)
   canViewWorkDone         Boolean        @default(false)
   tasksCompleted          Task[]         @relation("TaskCompletedBy")
+  // Partner who follows up tasks from the task cards (last comments and
+  // one-click comments); Admins always do. Only the tasks they are on or created.
+  canFollowUpTasks        Boolean        @default(false)
+  credentialsUpdated      Credential[]   @relation("CredentialUpdatedBy")
+  taskDeletionsRequested  TaskDeletionRequest[] @relation("TaskDeletionRequestedBy")
+  taskDeletionsDecided    TaskDeletionRequest[] @relation("TaskDeletionDecidedBy")
+  replyRequestsOwed       TaskReplyRequest[]    @relation("TaskReplyOwedBy")
+  replyRequestsAsked      TaskReplyRequest[]    @relation("TaskReplyAskedBy")
+  taskDigests             TaskDigest[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
@@ -273,7 +282,8 @@ model Task {
   client         Client?   @relation(fields: [clientId], references: [id])
   clientId       String?   @db.Char(36)
   comments       TaskComment[]
-  // Any other existing fields/relations
+  deletionRequests TaskDeletionRequest[]
+  replyRequests  TaskReplyRequest[]
   
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -379,9 +389,73 @@ model TaskComment {
   attachments Json?     // Add this field to store attachment metadata
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  replyRequests TaskReplyRequest[]
 
   @@index([taskId])
   @@index([userId])
+}
+
+enum TaskDeletionStatus {
+  pending
+  approved
+  rejected
+}
+
+// A request to delete a task, with its reason; Admin approves or rejects it.
+// An Admin's own deletion is kept here too (approved at once), so a deleted
+// task can always be traced: the title and client stay after the task is gone.
+// One pending request per task (a partial unique index in the migration).
+model TaskDeletionRequest {
+  id            String             @id @default(uuid()) @db.Char(36)
+  taskId        String?            @db.Char(36)
+  task          Task?              @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskTitle     String             @db.VarChar(150)
+  clientName    String?            @db.VarChar(150)
+  reason        String?            @db.Text
+  status        TaskDeletionStatus @default(pending)
+  requestedById String             @db.Char(36)
+  requestedBy   User               @relation("TaskDeletionRequestedBy", fields: [requestedById], references: [id])
+  decidedById   String?            @db.Char(36)
+  decidedBy     User?              @relation("TaskDeletionDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  decisionNote  String?            @db.Text
+  createdAt     DateTime           @default(now())
+  decidedAt     DateTime?
+
+  @@index([status, createdAt])
+  @@index([taskId])
+}
+
+// A comment that asks the people on a task for a reply (from an Admin or a
+// partner who follows up tasks). Open until that person comments on the task.
+model TaskReplyRequest {
+  id            String      @id @default(uuid()) @db.Char(36)
+  taskId        String      @db.Char(36)
+  task          Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  commentId     String      @db.Char(36)
+  comment       TaskComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId        String      @db.Char(36)
+  user          User        @relation("TaskReplyOwedBy", fields: [userId], references: [id], onDelete: Cascade)
+  requestedById String      @db.Char(36)
+  requestedBy   User        @relation("TaskReplyAskedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  resolvedAt    DateTime?
+
+  @@unique([commentId, userId])
+  @@index([userId, resolvedAt])
+  @@index([taskId, resolvedAt])
+}
+
+// A short summary of a person's task discussions, written once a day by a
+// scheduled Claude task (docs/TASKS.md) and shown on their Today page
+model TaskDigest {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String   @db.Char(36)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String   @db.Text
+  source    String   @default("claude") @db.VarChar(20)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model ClientHistory {
@@ -430,6 +504,9 @@ model Credential {
   password  String   @db.VarChar(100) // Keep 100 for secure hashes
   clientId  String   @db.Char(36)
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // Who last added or changed the login (any staff member can)
+  updatedById String? @db.Char(36)
+  updatedBy   User?   @relation("CredentialUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

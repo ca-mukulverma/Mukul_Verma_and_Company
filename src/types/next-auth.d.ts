@@ -7,6 +7,7 @@ declare module "next-auth" {
     role: UserRole;
     avatar: string | null
     canApproveBilling?: boolean 
+    canFollowUpTasks?: boolean
     roleVersion: number
   }
 
@@ -16,6 +17,8 @@ declare module "next-auth" {
       role: UserRole
       avatar: string | null
       roleVersion: number
+      // Admins, and partners switched on to follow up tasks (docs/TASKS.md)
+      canFollowUpTasks?: boolean
     } & DefaultSession["user"]
   }
 }

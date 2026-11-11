@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import axios from "axios";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { useSession } from "next-auth/react";
 import {
   AlertTriangle,
@@ -17,6 +17,8 @@ import {
   Play,
   Plus,
   Receipt,
+  MessageSquareReply,
+  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,9 +28,13 @@ import { cn } from "@/lib/utils";
 import { CompanyBadge } from "@/components/billing/company-select";
 import { HelpLink } from "@/components/help/help-link";
 import { useLanguage } from "@/components/language-provider";
-import type { DueState, MyComplianceItem, MyTask, MyWork } from "@/lib/my-work";
+import type { DueState, MyComplianceItem, MyReplyNeeded, MyTask, MyWork } from "@/lib/my-work";
 import type { AttendanceToday } from "@/lib/attendance";
 import { AttendanceCard } from "@/components/attendance/attendance-card";
+import { QuickReply } from "@/components/tasks/quick-reply";
+import { useNotifications } from "@/components/notifications/notification-system";
+import { followsUpTasks } from "@/lib/task-views";
+
 
 const DUE_STYLES: Record<DueState, string> = {
   overdue: "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
@@ -114,7 +120,7 @@ export default function MyWorkPage() {
             label: t("Undo"),
             onClick: async () => {
               try {
-                await axios.patch(`/api/tasks/${task.id}/status`, { status: task.status });
+                await axios.patch(`/api/tasks/${task.id}/status`, { status: task.status, undo: true });
                 toast.success("Undone");
               } catch {
                 toast.error("Could not undo. Open the task to change its status.");
@@ -134,7 +140,7 @@ export default function MyWorkPage() {
 
   const counts = work?.counts;
   const nothingWaiting =
-    work && work.tasks.length === 0 && work.compliance.length === 0 && work.billing.length === 0;
+    work && work.replies.length === 0 && work.tasks.length === 0 && work.compliance.length === 0 && work.billing.length === 0;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -197,6 +203,12 @@ export default function MyWorkPage() {
               <Tile label={`${t("Compliance")}: ${t("Due soon")}`} value={counts.complianceDueSoon} tone="border-l-sky-500" icon={CalendarCheck} />
               <Tile label={t("Billing waiting for me")} value={counts.billing} tone="border-l-violet-500" icon={Receipt} />
             </div>
+
+            {work?.digest && <DigestCard digest={work.digest} />}
+
+            {work && work.replies.length > 0 && (
+              <RepliesSection replies={work.replies} canAskReply={followsUpTasks(session?.user)} onReplied={load} />
+            )}
 
             {nothingWaiting && (
               <Card>
@@ -362,6 +374,85 @@ function ComplianceSection({ items, waitingFiles }: { items: MyComplianceItem[];
                 </Link>
               </Button>
             </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Claude's summary of the person's task discussions, written by the daily
+// scheduled run (docs/TASKS.md)
+function DigestCard({ digest }: { digest: { body: string; createdAt: string } }) {
+  return (
+    <Card className="border-violet-200 dark:border-violet-900">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Sparkles className="h-5 w-5 text-violet-500" />
+          Your task discussions in short
+        </CardTitle>
+        <CardDescription>Summarised by Claude {formatDistanceToNow(new Date(digest.createdAt), { addSuffix: true })}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p className="whitespace-pre-line text-sm">{digest.body}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Comments that wait for this person's reply: they stay until answered
+function RepliesSection({
+  replies,
+  canAskReply,
+  onReplied,
+}: {
+  replies: MyReplyNeeded[];
+  canAskReply: boolean;
+  onReplied: () => void;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
+  const { markTaskAsRead } = useNotifications();
+  return (
+    <Card className="border-amber-300 dark:border-amber-800">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <MessageSquareReply className="h-5 w-5 text-amber-600" />
+          Reply needed ({replies.length})
+        </CardTitle>
+        <CardDescription>These stay here until you reply on the task.</CardDescription>
+      </CardHeader>
+      <CardContent className="divide-y p-0">
+        {replies.map((r) => (
+          <div key={r.taskId} className="space-y-2 px-6 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <Link href={`/dashboard/tasks/${r.taskId}`} className="font-medium hover:underline">
+                  {r.taskTitle}
+                </Link>
+                {r.client && <span className="ml-1 text-xs text-muted-foreground">· {r.client}</span>}
+                <p className="text-sm">
+                  <span className="font-medium">{r.askedBy}:</span> {r.comment || "(attachment)"}
+                </p>
+                <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(r.askedAt), { addSuffix: true })}</p>
+              </div>
+              {open !== r.taskId && (
+                <Button size="sm" variant="outline" onClick={() => setOpen(r.taskId)}>
+                  <MessageSquareReply className="mr-1 h-4 w-4" /> Reply
+                </Button>
+              )}
+            </div>
+            {open === r.taskId && (
+              <QuickReply
+                taskId={r.taskId}
+                canAskReply={canAskReply}
+                autoFocus
+                onSent={() => {
+                  setOpen(null);
+                  markTaskAsRead(r.taskId);
+                  onReplied();
+                }}
+              />
+            )}
           </div>
         ))}
       </CardContent>

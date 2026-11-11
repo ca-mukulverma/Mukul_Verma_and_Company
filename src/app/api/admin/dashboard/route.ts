@@ -145,6 +145,7 @@ export async function GET(request: NextRequest) {
         canViewBillingList: true,
         billingListTypes: true,
         canViewWorkDone: true,
+        canFollowUpTasks: true,
       },
     });
 
@@ -326,6 +327,7 @@ export async function POST(request: NextRequest) {
       canViewBillingList?: boolean;
       billingListTypes?: BillType[];
       canViewWorkDone?: boolean;
+      canFollowUpTasks?: boolean;
     }[];
   };
   if (updates.some((u) => u.billingListTypes?.some((t) => !(BILL_TYPES as string[]).includes(t)))) {
@@ -343,6 +345,7 @@ export async function POST(request: NextRequest) {
           canViewBillingList: true,
           billingListTypes: true,
           canViewWorkDone: true,
+          canFollowUpTasks: true,
         },
       });
       const updatedUser = await prisma.user.update({
@@ -363,6 +366,9 @@ export async function POST(request: NextRequest) {
           }),
           ...(update.canViewWorkDone !== undefined && {
             canViewWorkDone: update.canViewWorkDone,
+          }),
+          ...(update.canFollowUpTasks !== undefined && {
+            canFollowUpTasks: update.canFollowUpTasks,
           }),
         },
       });
@@ -408,6 +414,9 @@ export async function POST(request: NextRequest) {
         [...newTypes].sort().join() !== [...(before?.billingListTypes ?? [])].sort().join()
       ) {
         granted.push(`Your Billing List now shows: ${lists(newTypes)}.`);
+      }
+      if (update.canFollowUpTasks && !before?.canFollowUpTasks) {
+        granted.push("You can now follow up tasks from the task cards: the last comments and one-click comments on each task you created or are on. Your comments ask the others on the task for a reply.");
       }
       if (update.canViewWorkDone && !before?.canViewWorkDone) {
         granted.push("You can now see everyone's Work Done list: finished tasks, logged work and compliance, with who did each one.");

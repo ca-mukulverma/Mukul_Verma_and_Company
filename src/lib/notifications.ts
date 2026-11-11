@@ -300,79 +300,6 @@ export async function sendTaskReassignedNotification(
   }
 }
 
-export async function sendTaskStatusUpdateNotification(
-  taskId: string,
-  taskTitle: string,
-  updaterUserId: string,
-  creatorUserId: string,
-  oldStatus: string,
-  newStatus: string
-) {
-  try {
-    // Skip notification if updater is also the creator
-    if (updaterUserId === creatorUserId) {
-      return;
-    }
-
-    // Get user details
-    const [updater, creator] = await Promise.all([
-      prisma.user.findUnique({ where: { id: updaterUserId } }),
-      prisma.user.findUnique({ where: { id: creatorUserId } }),
-    ]);
-
-    if (!updater || !creator) {
-      throw new Error("User not found");
-    }
-
-    // Create notification
-    const notificationTitle = "Task Status Updated";
-    const notificationContent = `${updater.name} changed task "${taskTitle}" status from ${oldStatus} to ${newStatus} [taskId: ${taskId}]`;
-
-    // Email HTML
-    const emailHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2>Task Status Updated</h2>
-        <p><strong>Task:</strong> ${taskTitle}</p>
-        <p><strong>Status change:</strong> ${oldStatus} → ${newStatus}</p>
-        <p><strong>Updated by:</strong> ${updater.name}</p>
-        <p>Log in to the system to view task details.</p>
-        <p>Thank you,<br>Office Management Team</p>
-      </div>
-    `;
-
-    await createNotification({
-      title: notificationTitle,
-      content: notificationContent,
-      sentById: updaterUserId,
-      sentToId: creatorUserId,
-      taskId,
-      sendEmail: true,
-      emailSubject: `Task Status Update: ${taskTitle}`,
-      emailHtml,
-      sendWhatsApp: !!creator.phone,
-    });
-
-    // Log activity
-    await prisma.activity.create({
-      data: {
-        type: "task",
-        action: "status_changed",
-        target: taskTitle,
-        details: {
-          taskId,
-          oldStatus,
-          newStatus,
-        },
-        userId: updaterUserId,
-      },
-    });
-  } catch (error) {
-    console.error("Failed to send task status update notification:", error);
-  }
-}
-
-
-
 // When a task is allotted to someone else: tells everyone concerned in one
 // go – the new assignees, the ones taken off, those still on it, the person
 // who created the task and the Admins. The person allotting it is skipped.
@@ -451,10 +378,13 @@ export async function sendTaskAllotmentNotifications({
 
 // Add this function after the other notification functions only for admins
 
+// Admins already told otherwise (an Admin assigned to the new task gets
+// "New Task Assigned") are passed in excludeIds, so nobody is told twice
 export async function sendTaskCreatedNotificationToAdmins(
   taskId: string,
   taskTitle: string,
-  creatorUserId: string
+  creatorUserId: string,
+  excludeIds: string[] = []
 ) {
   try {
     // Get creator details
@@ -470,9 +400,8 @@ export async function sendTaskCreatedNotificationToAdmins(
     const adminUsers = await prisma.user.findMany({
       where: {
         role: "ADMIN",
-        NOT: {
-          id: creatorUserId
-        }
+        isActive: true,
+        id: { notIn: [creatorUserId, ...excludeIds] },
       }
     });
 
@@ -503,68 +432,7 @@ export async function sendTaskCreatedNotificationToAdmins(
   }
 }
 
-// Add this new function after your other notification functions only for admins
-
-export async function sendTaskCommentNotificationToAdmins(
-  taskId: string,
-  taskTitle: string,
-  commenterId: string,
-  taskCreatorId: string,
-  comment: { content: string }
-) {
-  try {
-    // Get commenter details
-    const commenter = await prisma.user.findUnique({
-      where: { id: commenterId }
-    });
-
-    if (!commenter) {
-      throw new Error("Commenter user not found");
-    }
-
-    // Find all admin users except the task creator (if they're an admin)
-    const adminUsers = await prisma.user.findMany({
-      where: {
-        role: "ADMIN",
-        NOT: {
-          // Exclude both the commenter and the task creator
-          OR: [
-            { id: taskCreatorId },
-            { id: commenterId }
-          ]
-        }
-      }
-    });
-
-    // Notify all admins at the same time
-    await notifyEach(adminUsers, (admin) =>
-      createNotification({
-        title: "New Comment on Task",
-        content: `${commenter.name} commented on task: ${taskTitle} - "${comment.content}"  [taskId: ${taskId}]`,
-        sentById: commenterId,
-        sentToId: admin.id,
-        taskId,
-        sendEmail: true,
-        emailSubject: `New Comment on Task: ${taskTitle}`,
-        emailHtml: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <h2>New Comment on Task</h2>
-            <p><strong>Task:</strong> ${taskTitle}</p>
-            <p><strong>Comment by:</strong> ${commenter.name}</p>
-            <p><strong>Comment:</strong> ${comment.content}</p>
-            <p>Log in to the system to view the comment and task details.</p>
-            <p>Thank you,<br>Office Management Team</p>
-          </div>
-        `,
-        sendWhatsApp: !!admin.phone,
-      })
-    );
-  } catch (error) {
-    console.error("Failed to send comment notification to admins:", error);
-  }
-}
-
-// Add this function after your other notification functions for adming
+// Any other edit of a task (title, description, due date …): the Admins
 
 export async function sendTaskUpdatedNotificationToAdmins(
   taskId: string,

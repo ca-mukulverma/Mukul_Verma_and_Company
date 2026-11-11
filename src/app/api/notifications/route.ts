@@ -53,8 +53,8 @@ export async function GET(request: NextRequest) {
       ...(unreadOnly ? { isRead: false } : {}),
     };
 
-    // Fetch notifications
-    const notifications = await prisma.notification.findMany({
+    // The page, its total and the unread count together
+    const [notifications, totalCount, unreadCount] = await Promise.all([prisma.notification.findMany({
       where: whereCondition,
       orderBy: {
         createdAt: "desc",
@@ -69,20 +69,10 @@ export async function GET(request: NextRequest) {
       },
       skip,
       take: limit,
-    });
-
-    // Count total notifications for pagination
-    const totalCount = await prisma.notification.count({
-      where: whereCondition,
-    });
-
-    // Count unread notifications
-    const unreadCount = await prisma.notification.count({
-      where: {
-        sentToId: currentUser.id,
-        isRead: false,
-      },
-    });
+    }),
+      prisma.notification.count({ where: whereCondition }),
+      prisma.notification.count({ where: { sentToId: currentUser.id, isRead: false } }),
+    ]);
 
     // Format response based on requested format
     if (format === "dashboard") {
@@ -138,8 +128,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Mark all notifications as read
-export async function PATCH() {
+// Mark notifications as read: all of them, or with { taskId } all those about
+// one task (clicking one in the bell clears the task's others too)
+export async function PATCH(request: NextRequest) {
   try {
     // Get authenticated user
     const session = await getServerSession(authOptions);
@@ -154,11 +145,14 @@ export async function PATCH() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Mark all notifications as read
+    const body = (await request.json().catch(() => null)) as { taskId?: unknown } | null;
+    const taskId = typeof body?.taskId === "string" ? body.taskId : undefined;
+
     const updated = await prisma.notification.updateMany({
       where: {
         sentToId: currentUser.id,
         isRead: false,
+        ...(taskId && { taskId }),
       },
       data: {
         isRead: true,

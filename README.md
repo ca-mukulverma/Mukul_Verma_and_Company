@@ -61,6 +61,9 @@ Access the live demo: [https://mvcompany.vercel.app/](https://mvcompany.vercel.a
 - Status updates with change history
 - Deadline management with overdue detection
 - Billing status tracking for completed tasks
+- Views: Active, Done – awaiting bill, Closed; side panel; follow-up cards with
+  the last comments and one-click comments; replies needed on Today; deletion
+  with Admin approval – see [docs/TASKS.md](docs/TASKS.md)
 
 ### 💬 Communication System
 - Real-time notifications (bell with unread count, phone push) and one daily digest per person
@@ -407,12 +410,15 @@ MV Company provides a comprehensive REST API via Next.js API routes:
 - `GET /api/users/me` - Get current user profile
 
 ### Tasks
-- `GET /api/tasks` - List tasks (with filtering)
+- `GET /api/tasks?view=active|awaiting_bill|closed|deletion&filter=` - List tasks
 - `POST /api/tasks` - Create new task
 - `GET /api/tasks/:id` - Get task details
-- `PUT /api/tasks/:id` - Update task
-- `DELETE /api/tasks/:id` - Delete task
-- `PUT /api/tasks/:id/status` - Update task status
+- `PATCH /api/tasks/:id` - Update task
+- `DELETE /api/tasks/:id` - Delete task (Admin)
+- `POST /api/tasks/:id/deletion-request` - Ask Admin to delete a task, with a reason
+- `PATCH /api/tasks/deletion-requests/:requestId` - Admin approves or rejects
+- `PATCH /api/tasks/:id/status` - Update task status
+- `GET|PUT /api/tasks/quick-comments` - The one-click comments
 - `POST /api/tasks/:id/comments` - Add comment to task
 - `GET /api/tasks/:id/comments` - Get task comments
 

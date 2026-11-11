@@ -25,8 +25,8 @@ import { CREDENTIAL_KINDS, CredentialKind, credentialName, KIND_INFO, PORTAL_KIN
 // A client's logins, a section per portal (GST, Income tax, TDS – TRACES,
 // TDS – Income tax, PF, ESIC, MCA) and any other login named by its title.
 // On the client's page (Credentials) and on Compliance → Clients, so a login
-// can be filled in where the work is done. Admins and Partners add and
-// change logins; only Admins delete them; all staff can see and copy them.
+// can be filled in where the work is done. All staff add, change, see and
+// copy logins (who changed one last is shown); only Admins delete them.
 
 export interface Credential {
   id: string;
@@ -36,6 +36,7 @@ export interface Credential {
   password: string;
   createdAt: string;
   updatedAt: string;
+  updatedBy?: { name: string } | null;
 }
 
 interface Props {
@@ -156,7 +157,6 @@ export function CredentialSections({ clientId, canEdit, canDelete, onChanged }: 
           )}
         </li>
       </ul>
-      {!canEdit && <p className="text-xs text-muted-foreground">Admins and Partners add and change logins.</p>}
 
       {editing && (
         <LoginDialog
@@ -217,6 +217,11 @@ function LoginRow({ credential: c, shown, onToggle, onEdit, onDelete }: { creden
           <Copy className="h-3.5 w-3.5" />
         </Button>
       </span>
+      {c.updatedBy && (
+        <span className="text-[11px] text-muted-foreground" title={`Last changed ${new Date(c.updatedAt).toLocaleString("en-IN")}`}>
+          by {c.updatedBy.name}, {new Date(c.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+        </span>
+      )}
       {(onEdit || onDelete) && (
         <span className="ml-auto flex items-center gap-1">
           {onEdit && (

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -80,6 +81,10 @@ interface TaskCommentsProps {
     avatar?: string;
   };
   maxHeight?: string;
+  // Admins and partners who follow up tasks: their comment asks the others
+  // on the task for a reply, unless "No reply needed" is ticked
+  canAskReply?: boolean;
+  onCommented?: () => void;
 }
 
 export function TaskComments({
@@ -87,8 +92,11 @@ export function TaskComments({
   comments: initialComments,
   currentUser,
   maxHeight = "500px",
+  canAskReply = false,
+  onCommented,
 }: TaskCommentsProps) {
   const [comments, setComments] = useState<Comment[]>(initialComments);
+  const [noReplyNeeded, setNoReplyNeeded] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -165,10 +173,13 @@ export function TaskComments({
       const response = await axios.post(`/api/tasks/${taskId}/comments`, {
         content,
         attachments: sentAttachments.length > 0 ? sentAttachments : undefined,
+        ...(canAskReply && noReplyNeeded ? { noReplyNeeded: true } : {}),
       });
       setComments((prev) =>
         prev.map((c) => (c.id === tempId ? response.data : c))
       );
+      if (response.data?.replyRequested) toast.success("Posted – the others on the task are asked to reply");
+      onCommented?.();
     } catch (error) {
       console.error("Error adding comment:", error);
       // Take the comment back out and restore what was typed, so nothing is lost
@@ -573,11 +584,19 @@ export function TaskComments({
               </div>
             )}
 
-            <div className="flex justify-between items-center">
-              <CloudinaryUpload
-                taskId={taskId}
-                onUploadComplete={handleAttachmentComplete}
-              />
+            <div className="flex flex-wrap justify-between items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <CloudinaryUpload
+                  taskId={taskId}
+                  onUploadComplete={handleAttachmentComplete}
+                />
+                {canAskReply && (
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                    <Checkbox checked={noReplyNeeded} onCheckedChange={(v) => setNoReplyNeeded(v === true)} />
+                    No reply needed
+                  </label>
+                )}
+              </div>
 
               <Button
                 onClick={handleAddComment}

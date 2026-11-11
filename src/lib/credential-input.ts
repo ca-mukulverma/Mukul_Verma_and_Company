@@ -19,4 +19,13 @@ export const credentialInput = z
     return { kind, title, username: v.username, password: v.password };
   });
 
-export const credentialSelect = { id: true, kind: true, title: true, username: true, password: true, createdAt: true, updatedAt: true } as const;
+export const credentialSelect = {
+  id: true,
+  kind: true,
+  title: true,
+  username: true,
+  password: true,
+  createdAt: true,
+  updatedAt: true,
+  updatedBy: { select: { name: true } },
+} as const;

@@ -316,10 +316,10 @@ the work is done. A row per portal: **GST**, **Income tax** (the PAN login),
 **TDS – TRACES**, **TDS – Income tax** (the TAN login), **PF** (EPFO),
 **ESIC**, **MCA**, then **Other logins**, each named by staff (professional
 tax, e-way bill, a bank…). Each saved login shows its username and password
-(hidden until the eye is clicked) with copy buttons. Admins and Partners add
-and change logins (**Add** on an empty row, the pencil on a saved one, where
-the portal can also be changed); only Admins delete them; all staff can see
-and copy them. A party with GSTINs in several states keeps logins per GSTIN.
+(hidden until the eye is clicked) with copy buttons. **All staff** add and
+change logins (**Add** on an empty row, the pencil on a saved one, where the
+portal can also be changed), and each login shows who changed it last and
+when; only Admins delete them; all staff can see and copy them. A party with GSTINs in several states keeps logins per GSTIN.
 The GST portal downloads use the GST row. Logins saved before the rows
 existed were sorted into them by their titles (anything not recognised is
 under Other with its title), and so are logins imported from Excel.

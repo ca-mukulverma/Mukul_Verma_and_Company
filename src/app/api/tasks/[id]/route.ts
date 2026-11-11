@@ -2,26 +2,21 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { sendTaskStatusUpdateNotification, sendTaskAllotmentNotifications, sendTaskUpdatedNotificationToAdmins } from "@/lib/notifications";
-import { v2 as cloudinary } from "cloudinary";
+import { sendTaskAllotmentNotifications, sendTaskUpdatedNotificationToAdmins } from "@/lib/notifications";
 import { z } from "zod";
 import { syncTaskAssignments } from "@/lib/task-assignment";
 import { dashboardCache, taskCache, clientCache } from "@/lib/cache";
 import { ensureDraftBillForTask, removeUntouchedDraftBillForTask, syncBillCompanyForTask } from "@/lib/billing";
-
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+import { markTaskNotificationsRead, notifyTaskStatusChange } from "@/lib/task-notify";
+import { TASK_STATUSES } from "@/lib/task-views";
+import { clientLabel, deleteTaskCompletely, deletionBlockedReason, taskForDeletion } from "@/lib/task-delete";
 
 // Task update schema
 const taskUpdateSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").optional(),
   description: z.string().optional(),
   priority: z.enum(["low", "medium", "high"]).optional(),
-  status: z.enum(["pending", "in_progress", "review", "completed", "cancelled"]).optional(),
+  status: z.enum(TASK_STATUSES).optional(),
   dueDate: z.string().optional().nullable(),
   // Add support for array of assignees
   assignedToIds: z.array(z.string()).optional(),
@@ -94,6 +89,16 @@ export async function GET(
             companyName: true,
           },
         },
+        bill: { select: { status: true } },
+        deletionRequests: {
+          where: { status: "pending" },
+          select: { id: true, reason: true, createdAt: true, requestedBy: { select: { id: true, name: true } } },
+        },
+        // Comments here that wait for this person's reply
+        replyRequests: {
+          where: { userId: currentUser.id, resolvedAt: null },
+          select: { createdAt: true, requestedBy: { select: { name: true } }, comment: { select: { content: true } } },
+        },
       },
     });
 
@@ -120,6 +125,8 @@ export async function GET(
     // The task page asks for the comments in the same request (?include=comments)
     // to save a second round trip; comments use the same permission check as above
     if (request.nextUrl.searchParams.get("include") === "comments") {
+      // Opening the task clears its notifications from the bell
+      after(() => markTaskNotificationsRead(currentUser.id, taskId));
       const comments = await prisma.taskComment.findMany({
         where: { taskId },
         include: {
@@ -183,6 +190,10 @@ export async function PATCH(
 
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+    const pendingDeletion = await prisma.taskDeletionRequest.findFirst({ where: { taskId, status: "pending" }, select: { id: true } });
+    if (pendingDeletion) {
+      return NextResponse.json({ error: "This task is waiting for Admin to approve its deletion" }, { status: 400 });
     }
 
     // Maintain original permission checks
@@ -264,9 +275,10 @@ export async function PATCH(
     });
 
     // Start or withdraw the bill when the task is completed or reopened
+    let billStarted = false;
     if (body.status && body.status !== originalTask.status) {
       if (body.status === "completed") {
-        await ensureDraftBillForTask(taskId, currentUser.id);
+        billStarted = await ensureDraftBillForTask(taskId, currentUser.id);
       } else if (originalTask.status === "completed") {
         await removeUntouchedDraftBillForTask(taskId);
       }
@@ -296,10 +308,11 @@ export async function PATCH(
         previousAssigneeIds.some((id) => !requestedAssigneeIds.includes(id)));
     const statusChanged = body.status && body.status !== originalTask.status;
 
-    // Send notifications after the response so the user isn't kept waiting
+    // Send notifications after the response so the user isn't kept waiting:
+    // a change of assignees and a change of status each tell everyone
+    // concerned once; any other edit tells the Admins
     after(() =>
       Promise.all([
-        // A change of assignees tells the Admins itself, along with everyone concerned
         assigneesChanged
           ? sendTaskAllotmentNotifications({
               taskId: originalTask.id,
@@ -310,16 +323,21 @@ export async function PATCH(
               newAssigneeIds: requestedAssigneeIds,
               note: body.note || undefined,
             })
-          : sendTaskUpdatedNotificationToAdmins(task.id, task.title, currentUser.id),
+          : Promise.resolve(),
         statusChanged
-          ? sendTaskStatusUpdateNotification(
-              originalTask.id,
-              originalTask.title,
-              currentUser.id,
-              originalTask.assignedById,
-              originalTask.status,
-              body.status
-            )
+          ? notifyTaskStatusChange({
+              taskId: originalTask.id,
+              title: originalTask.title,
+              company: (body.company as typeof originalTask.company) || originalTask.company,
+              actor: currentUser,
+              creatorId: originalTask.assignedById,
+              oldStatus: originalTask.status,
+              newStatus: body.status,
+              billStarted,
+            })
+          : Promise.resolve(),
+        !assigneesChanged && !statusChanged
+          ? sendTaskUpdatedNotificationToAdmins(task.id, task.title, currentUser.id)
           : Promise.resolve(),
       ])
     );
@@ -346,94 +364,59 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// DELETE /api/tasks/[id] { reason? } – Admin deletes a task at once. Others
+// ask with POST /api/tasks/[id]/deletion-request. A task with a bill (even a
+// draft) can't be deleted until the bill is dealt with.
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: taskId } = await params;
+  const currentUser = getSessionUser(await getServerSession(authOptions));
+  if (!currentUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (currentUser.role !== "ADMIN") {
+    return NextResponse.json({ error: "Ask Admin to delete this task: use Request deletion with a reason" }, { status: 403 });
+  }
+
+  const body = (await request.json().catch(() => null)) as { reason?: unknown } | null;
+  const reason = typeof body?.reason === "string" && body.reason.trim() ? body.reason.trim().slice(0, 1000) : null;
+
   try {
-    const resolvedParams = await params;
-    const taskId = resolvedParams.id;
+    const task = await prisma.task.findUnique({ where: { id: taskId }, select: taskForDeletion });
+    if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    const blocked = deletionBlockedReason(task);
+    if (blocked) return NextResponse.json({ error: blocked }, { status: 400 });
 
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const currentUser = getSessionUser(session);
-
-    if (!currentUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    // Fetch the task to check permissions
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
+    const now = new Date();
+    // A request waiting for this task is approved by the deletion itself;
+    // otherwise the Admin's own deletion is recorded
+    const updated = await prisma.taskDeletionRequest.updateMany({
+      where: { taskId, status: "pending" },
+      data: { status: "approved", decidedById: currentUser.id, decidedAt: now, ...(reason && { decisionNote: reason }) },
     });
-
-    if (!task) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    if (updated.count === 0) {
+      await prisma.taskDeletionRequest.create({
+        data: {
+          taskId,
+          taskTitle: task.title.slice(0, 150),
+          clientName: clientLabel(task.client),
+          reason,
+          status: "approved",
+          requestedById: currentUser.id,
+          decidedById: currentUser.id,
+          decidedAt: now,
+        },
+      });
     }
+    await deleteTaskCompletely(taskId);
 
-    // Only admin or the partner who created the task can delete it
-    if (currentUser.role !== "ADMIN" && 
-      !(currentUser.role === "PARTNER" && task.assignedById === currentUser.id)) {
-    return NextResponse.json(
-      { error: "You don't have permission to delete this task" },
-      { status: 403 }
+    after(() =>
+      prisma.activity
+        .create({
+          data: { type: "task", action: "deleted", target: task.title, details: { taskId, reason }, userId: currentUser.id },
+        })
+        .catch((error) => console.error("Failed to log task deletion:", error))
     );
-  }
-
-
-
-  // Fetch all comments for the task
-  const comments = await prisma.taskComment.findMany({
-    where: { taskId },
-    select: { attachments: true }, // Assuming `attachments` is stored in comments
-  });
-
-  // Extract public_ids of attachments from comments
-  const publicIds = comments
-    .flatMap((comment) => comment.attachments || [])
-    .map((attachment) => (attachment as { public_id: string })?.public_id)
-    .filter((publicId) => publicId !== undefined);
-
-  // Delete attachments from Cloudinary
-  if (publicIds.length > 0) {
-    await cloudinary.api.delete_resources(publicIds);
-  }
-
-  // Delete comments from Prisma
-  await prisma.taskComment.deleteMany({
-    where: { taskId },
-  });
-
-
-
-
-
-    // Delete the task
-    await prisma.task.delete({
-      where: { id: taskId },
-    });
-
-    // Log the activity
-    await prisma.activity.create({
-      data: {
-        type: "task",
-        action: "deleted",
-        target: task.title,
-        details: { taskId: task.id },
-        userId: currentUser.id,
-      },
-    });
-
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error deleting task:", error);
-    return NextResponse.json(
-      { error: "Failed to delete task" },
-      { status: 500 }
-    );
+    console.error("Error deleting task:", error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: "Failed to delete task" }, { status: 500 });
   }
 }

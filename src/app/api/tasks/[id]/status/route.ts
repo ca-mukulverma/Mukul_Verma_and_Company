@@ -2,173 +2,110 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { TaskStatus, BillingStatus } from "@prisma/client";
+import { BillingStatus } from "@prisma/client";
 import { z } from "zod";
-import { sendTaskStatusUpdateNotification, sendTaskUpdatedNotificationToAdmins } from "@/lib/notifications";
 import { ensureDraftBillForTask, removeUntouchedDraftBillForTask } from "@/lib/billing";
+import { notifyTaskStatusChange } from "@/lib/task-notify";
+import { TASK_STATUSES } from "@/lib/task-views";
 
-// Validation schema
+// "Cancelled" is no longer a status to choose: a task that isn't needed is
+// deleted (by Admin, or on Admin's approval of a request with a reason).
+// `undo` is sent by the toast's Undo button: the change it takes back was
+// never announced, so the undo isn't either.
 const statusUpdateSchema = z.object({
-  status: z.string(),
+  status: z.enum(TASK_STATUSES),
+  undo: z.boolean().optional(),
 });
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// PATCH /api/tasks/[id]/status – by Admin, the task's creator or anyone on it
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: taskId } = await params;
-    console.log(`🔍 PATCH /api/tasks/${taskId}/status - Request received`);
-    
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      console.log("❌ Unauthorized: No session");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const currentUser = getSessionUser(await getServerSession(authOptions));
+    if (!currentUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await request.json();
-    console.log("📝 Request body:", body);
-    
-    const { status } = statusUpdateSchema.parse(body);
-    console.log(`📝 New status: ${status}`);
+    const parsed = statusUpdateSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) return NextResponse.json({ error: "Choose Pending, In progress, Review or Completed" }, { status: 400 });
+    const { status, undo } = parsed.data;
 
-    // Get current user
-    const currentUser = getSessionUser(session);
-
-    if (!currentUser) {
-      console.log("❌ User not found");
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    // Get the task
     const task = await prisma.task.findUnique({
       where: { id: taskId },
-      include: {
-        client: true,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        company: true,
+        assignedById: true,
+        lastStatusUpdatedById: true,
+        assignees: { where: { userId: currentUser.id }, select: { userId: true } },
+        deletionRequests: { where: { status: "pending" }, select: { id: true } },
       },
     });
+    if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
-    if (!task) {
-      console.log(`❌ Task ${taskId} not found`);
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    const allowed =
+      currentUser.role === "ADMIN" ||
+      task.assignedById === currentUser.id ||
+      task.lastStatusUpdatedById === currentUser.id ||
+      task.assignees.length > 0;
+    if (!allowed) return NextResponse.json({ error: "You are not on this task" }, { status: 403 });
+    if (task.deletionRequests.length) {
+      return NextResponse.json({ error: "This task is waiting for Admin to approve its deletion" }, { status: 400 });
     }
+    if (status === task.status) return NextResponse.json({ status: task.status });
 
-    console.log(`📝 Current task state:`, {
-      id: task.id,
-      title: task.title,
-      status: task.status,
-      billingStatus: task.billingStatus
+    const completing = status === "completed";
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        status,
+        ...(completing && { billingStatus: BillingStatus.pending_billing }),
+        lastStatusUpdatedById: currentUser.id,
+        lastStatusUpdatedAt: new Date(),
+      },
+      select: { status: true, billingStatus: true },
     });
 
-    // Critical section: Handle completed status change
-    if (status === "completed" && task.status !== "completed") {
-      console.log(`🚨 Task ${taskId} being marked as completed - should update billingStatus`);
-      // Ensure we set billingStatus whether it has a client or not
-      const updateData = {
-        status: status as TaskStatus,
-        billingStatus: BillingStatus.pending_billing,
-        // Add status update tracking
-        lastStatusUpdatedById: currentUser.id,
-        lastStatusUpdatedAt: new Date()
-      };
-      
-      console.log(`📝 Update data for completed task:`, updateData);
-      
-      // Update the task with billing status
-      const updatedTask = await prisma.task.update({
-        where: { id: taskId },
-        data: updateData
-      });
-      
-      console.log(`✅ Task updated:`, {
-        id: updatedTask.id,
-        status: updatedTask.status,
-        billingStatus: updatedTask.billingStatus,
-        lastStatusUpdatedBy: currentUser.id
-      });
+    // Start the bill for this work (docs/BILLING.md), or withdraw it on reopening
+    let billStarted = false;
+    if (completing) billStarted = await ensureDraftBillForTask(taskId, currentUser.id);
+    else if (task.status === "completed") await removeUntouchedDraftBillForTask(taskId);
 
-      // Start the bill for this work (docs/BILLING.md)
-      await ensureDraftBillForTask(taskId, currentUser.id);
-
-      // Create client history if needed
-      if (task.client && !task.client.isGuest) {
-        console.log(`📝 Creating client history for task ${taskId}`);
-        // Create history record...
-      }
-
-      // Send notifications after the response so the user isn't kept waiting
+    if (!undo) {
       after(() =>
-        Promise.all([
-          sendTaskStatusUpdateNotification(
-            taskId,
-            task.title,
-            currentUser.id,
-            task.assignedById,
-            task.status,
-            status
-          ),
-          sendTaskUpdatedNotificationToAdmins(taskId, task.title, currentUser.id),
-        ])
+        notifyTaskStatusChange({
+          taskId,
+          title: task.title,
+          company: task.company,
+          actor: currentUser,
+          creatorId: task.assignedById,
+          oldStatus: task.status,
+          newStatus: status,
+          billStarted,
+        })
       );
-
-      return NextResponse.json({
-        message: `Task status updated to ${status}`,
-        status: updatedTask.status,
-        billingStatus: updatedTask.billingStatus,
-        lastStatusUpdatedBy: currentUser.name
-      });
-    } else {
-      // Normal status update for non-completed tasks
-      console.log(`📝 Regular status update (not completion) for task ${taskId}`);
-      
-      const updatedTask = await prisma.task.update({
-        where: { id: taskId },
-        data: { 
-          status: status as TaskStatus,
-          // Add status update tracking
-          lastStatusUpdatedById: currentUser.id,
-          lastStatusUpdatedAt: new Date()
-        },
-      });
-      
-      console.log(`✅ Task updated:`, {
-        id: updatedTask.id,
-        status: updatedTask.status,
-        billingStatus: updatedTask.billingStatus,
-        lastStatusUpdatedBy: currentUser.id
-      });
-
-      // A reopened task no longer needs the bill started when it was completed
-      if (task.status === "completed") {
-        await removeUntouchedDraftBillForTask(taskId);
-      }
-
-      // Send notifications after the response so the user isn't kept waiting
-      after(() =>
-        Promise.all([
-          sendTaskStatusUpdateNotification(
-            taskId,
-            task.title,
-            currentUser.id,
-            task.assignedById,
-            task.status,
-            status
-          ),
-          sendTaskUpdatedNotificationToAdmins(taskId, task.title, currentUser.id),
-        ])
-      );
-
-      return NextResponse.json(updatedTask);
     }
-  } catch (error) {
-    console.error("❌ Error updating task status:", error);
-    if (error instanceof Error) {
-      console.error("Error message:", error.message);
-      console.error("Error stack:", error.stack);
-    }
-    return NextResponse.json(
-      { error: "Failed to update task status" },
-      { status: 500 }
+    after(() =>
+      prisma.activity
+        .create({
+          data: {
+            type: "task",
+            action: "status_changed",
+            target: task.title,
+            details: { taskId, oldStatus: task.status, newStatus: status, ...(undo && { undo: true }) },
+            userId: currentUser.id,
+          },
+        })
+        .catch((error) => console.error("Failed to log status change:", error))
     );
+
+    return NextResponse.json({
+      status: updatedTask.status,
+      billingStatus: updatedTask.billingStatus,
+      lastStatusUpdatedBy: currentUser.name,
+    });
+  } catch (error) {
+    console.error("Error updating task status:", error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: "Failed to update task status" }, { status: 500 });
   }
 }
