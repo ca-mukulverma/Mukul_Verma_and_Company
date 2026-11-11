@@ -32,6 +32,17 @@ import { uploadComplianceFile } from "./upload";
 import { canDownloadFor } from "@/lib/gst-portal";
 import { useGstDownloads } from "./gst-download-queue";
 import { PortalDownloadDialog } from "./portal-download-panel";
+import {
+  AddAdjustment,
+  Adjustment,
+  AdjustmentDraft,
+  AdjustmentFields,
+  AdjustmentList,
+  draftReady,
+  emptyDraft,
+  FollowUpBanner,
+  FollowUps,
+} from "./adjustments";
 
 interface Props {
   item: SheetItem;
@@ -44,6 +55,9 @@ interface Props {
 interface Details {
   events: { id: string; action: string; remark: string | null; createdAt: string; user: { name: string } | null }[];
   reminders: { id: string; channel: string; sentTo: string; ok: boolean; error: string | null; sentAt: string; sentBy: { name: string } | null }[];
+  adjustments: Adjustment[];
+  // Last period's adjustments ticked "follow up next period"
+  followUps: FollowUps | null;
   fee?: number | null;
 }
 
@@ -224,6 +238,7 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
             </span>
           </p>
         )}
+        {details?.followUps && <FollowUpBanner followUps={details.followUps} />}
         {signOffText(item) && <p className="text-xs text-muted-foreground">{signOffText(item)}</p>}
         {item.historical && item.filesMissing.length > 0 && (
           <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
@@ -251,6 +266,15 @@ export function ItemDialog({ item, client, isManager, onClose, onChange }: Props
             <TdsPayment item={item} disabled={readOnly} busy={busy} run={run} onChange={onChange} />
           ) : (
             <Filing item={item} disabled={readOnly || (locked && open)} busy={busy} run={run} />
+          )}
+
+          {details && (
+            <Adjustments
+              item={item}
+              adjustments={details.adjustments}
+              readOnly={readOnly}
+              onChanged={(adjustments) => setDetails((d) => d && { ...d, adjustments })}
+            />
           )}
 
           {item.needsCertificates && (item.status === "filed" || item.status === "completed") && (
@@ -546,6 +570,7 @@ function Filing({ item, disabled, busy, run }: { item: SheetItem; disabled: bool
     Object.fromEntries(fields.map((f) => [f.key, item.figures[f.key] !== undefined ? String(item.figures[f.key]) : ""]))
   );
   const [signOff, setSignOff] = useState(() => initialSignOff(item));
+  const [adjustment, setAdjustment] = useState<AdjustmentDraft>(emptyDraft);
   const filed = item.status === "filed" || item.status === "completed";
   const closed = item.status === "completed" || item.status === "not_required";
   const arnLabel = item.kind === "TDS_RETURN" ? "Token / RRR number" : "ARN / acknowledgement number";
@@ -581,13 +606,19 @@ function Filing({ item, disabled, busy, run }: { item: SheetItem; disabled: bool
           <FigureInputs fields={fields} values={values} setValues={setValues} disabled={disabled} />
         </>
       )}
+      {!filed && (
+        <div className="space-y-1">
+          <Label className="text-xs">Adjustments made in this return (optional, kept on the client&apos;s page; not sent to the client)</Label>
+          <AdjustmentFields value={adjustment} onChange={setAdjustment} disabled={disabled} />
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         {!closed && (
           <Button
             size="sm"
-            disabled={disabled || busy !== null || !filedAt}
-            onClick={() =>
-              run(
+            disabled={disabled || busy !== null || !filedAt || (adjustment.body.trim() !== "" && !draftReady(adjustment))}
+            onClick={async () => {
+              const ok = await run(
                 "file",
                 {
                   action: "file",
@@ -596,10 +627,12 @@ function Filing({ item, disabled, busy, run }: { item: SheetItem; disabled: bool
                   isNil,
                   figures: figuresPayload(values),
                   ...(!item.historical && signOffPayload(signOff)),
+                  ...(!filed && draftReady(adjustment) && { adjustment: { body: adjustment.body.trim(), followUp: adjustment.followUp } }),
                 },
                 filed ? "Saved" : "Marked filed"
-              )
-            }
+              );
+              if (ok) setAdjustment(emptyDraft);
+            }}
           >
             {busy === "file" && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             {filed ? "Save filing details" : "Mark filed"}
@@ -616,6 +649,34 @@ function Filing({ item, disabled, busy, run }: { item: SheetItem; disabled: bool
           </Button>
         )}
       </div>
+    </Section>
+  );
+}
+
+// Adjustments noted for this period. While it is still to be filed they are
+// written in "Mark as filed"; after that (and for TDS months) added here.
+function Adjustments({
+  item,
+  adjustments,
+  readOnly,
+  onChanged,
+}: {
+  item: SheetItem;
+  adjustments: Adjustment[];
+  readOnly: boolean;
+  onChanged: (list: Adjustment[]) => void;
+}) {
+  const open = item.status === "pending" || item.status === "data_received";
+  const canAdd = !readOnly && (!open || item.kind === "TDS_PAYMENT");
+  if (adjustments.length === 0 && !canAdd) return null;
+  return (
+    <Section title="Adjustments in this return">
+      {adjustments.length > 0 ? (
+        <AdjustmentList adjustments={adjustments} readOnly={readOnly} onChanged={onChanged} />
+      ) : (
+        <p className="text-xs text-muted-foreground">None noted. Add one if anything was adjusted in this return; it is kept on the client&apos;s page.</p>
+      )}
+      {canAdd && <AddAdjustment key={adjustments.length} itemId={item.id} onAdded={onChanged} />}
     </Section>
   );
 }

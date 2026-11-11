@@ -141,6 +141,8 @@ model User {
   complianceReminders     ComplianceReminder[]
   complianceCompleted     ComplianceItem[]      @relation("ComplianceItemCompletedBy")
   complianceChecked       ComplianceItem[]      @relation("ComplianceItemCheckedBy")
+  complianceAdjustments   ComplianceAdjustment[] @relation("ComplianceAdjustmentCreatedBy")
+  complianceAdjustmentsEdited ComplianceAdjustment[] @relation("ComplianceAdjustmentUpdatedBy")
   gstWorkingChecks        GstWorkingCheck[]     @relation("GstWorkingCheckedBy")
   obligationLinesResolved ComplianceObligationLine[]
   clientDispatches        ClientDispatch[]
@@ -916,6 +918,7 @@ model ComplianceItem {
   reminders ComplianceReminder[]
   events    ComplianceEvent[]
   notes     ComplianceNote[]
+  adjustments ComplianceAdjustment[]
 
   @@unique([clientId, workTypeId, periodStart])
   @@index([workTypeId, periodEnd])
@@ -1041,6 +1044,27 @@ model ComplianceReminder {
 
   @@index([itemId])
   @@index([channel, sentAt])
+}
+
+// Adjustments staff made in a return (an earlier month's invoice added, ITC
+// reversed, ...) in their own words, kept for the client page. Internal only:
+// never sent to the client. The author may change it on the day it was
+// written; Admins and Partners at any time. "followUp": shown again on the
+// next period of the same work. See docs/COMPLIANCE.md.
+model ComplianceAdjustment {
+  id          String         @id @default(uuid()) @db.Char(36)
+  itemId      String         @db.Char(36)
+  item        ComplianceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  body        String         @db.Text
+  followUp    Boolean        @default(false)
+  createdById String?        @db.Char(36)
+  createdBy   User?          @relation("ComplianceAdjustmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById String?        @db.Char(36)
+  updatedBy   User?          @relation("ComplianceAdjustmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now())
+  editedAt    DateTime?
+
+  @@index([itemId, createdAt])
 }
 
 // Short notes written by Claude's nightly review (through a database login that

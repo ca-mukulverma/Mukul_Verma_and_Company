@@ -34,4 +34,7 @@ export const EVENT_LABELS: Record<string, string> = {
   signed_off: "Sign-off",
   completer_changed: "Completed-by changed",
   obligation_stopped: "Monthly payment stopped",
+  adjustment_added: "Adjustment noted",
+  adjustment_edited: "Adjustment changed",
+  adjustment_deleted: "Adjustment deleted",
 };

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { partyName } from "@/lib/compliance";
+import { canWorkOn, partyName } from "@/lib/compliance";
+import { adjustmentSelect, serializeAdjustment } from "@/lib/compliance-adjustments";
 import { dateKey, monthKey, periodLabel, utcDate } from "@/lib/compliance-periods";
 import { notFound, requireComplianceAccess } from "@/lib/compliance-api";
 import { gstState } from "@/lib/gst-states";
@@ -52,11 +53,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           dueDate: true,
           filedAt: true,
           historical: true,
+          _count: { select: { adjustments: true } },
         },
       },
     },
   });
   if (!client) return notFound("Client not found");
+  // Every adjustment noted in this client's returns, newest period first
+  const adjustmentItems = await prisma.complianceItem.findMany({
+    where: { clientId: id, adjustments: { some: {} } },
+    orderBy: [{ periodStart: "desc" }, { workType: { sortOrder: "asc" } }],
+    select: {
+      id: true,
+      workTypeId: true,
+      frequency: true,
+      periodStart: true,
+      workType: { select: { name: true } },
+      adjustments: { orderBy: { createdAt: "asc" }, select: adjustmentSelect },
+    },
+  });
   const mainId = client.parentClientId ?? client.id;
   const party = await prisma.client.findMany({
     where: { OR: [{ id: mainId }, { parentClientId: mainId }] },
@@ -144,6 +159,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       dueDate: dateKey(i.dueDate),
       filedAt: i.filedAt ? dateKey(i.filedAt) : null,
       historical: i.historical,
+      adjustments: i._count.adjustments,
+    })),
+    adjustments: adjustmentItems.map((i) => ({
+      itemId: i.id,
+      workTypeId: i.workTypeId,
+      work: i.workType.name,
+      period: periodLabel(i.frequency, i.periodStart),
+      fy: i.periodStart.getUTCMonth() >= 3 ? i.periodStart.getUTCFullYear() : i.periodStart.getUTCFullYear() - 1,
+      notes: i.adjustments.map((a) => serializeAdjustment(a, access, canWorkOn(access, i.workTypeId))),
     })),
   });
 }

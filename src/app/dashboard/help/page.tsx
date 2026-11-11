@@ -89,6 +89,7 @@ const SECTIONS: Section[] = [
     steps: [
       "GST sheet, TDS sheet and Other work list every client's returns for a period. The red number on a tab is how many are overdue.",
       "Click any cell to open the item: tick Data received, enter the tax payable, mark it filed with the ARN, attach the PDF/JSON. Occasional steps (GSTR-1A, the fee) are under More options.",
+      "Adjustments: if anything was adjusted in the return (an earlier month's invoice added, ITC reversed, a credit note set off …), write it in your own words in the box under Mark as filed. After filing, use Add adjustment in the same window. Tick Follow up in the next period and it is shown at the top of the next period's window. They are kept on the client's page (Compliance → Clients → Return adjustments, and a dot in Year at a glance) and are never sent to the client. You can change or delete your own on the same day; after that, ask an Admin or Partner.",
       "Use the filter buttons above the sheet: My clients (clients you manage), Data not received, To file, Filed – files pending, Overdue, Locked, Completed. Your choice is remembered.",
       "Tick several clients to mark Data received or send reminders to all of them together. Remind all with data pending reminds everyone shown.",
       "The colour key above the sheet explains the colours. A lock means an earlier period or step must be finished first.",
