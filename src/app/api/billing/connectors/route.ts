@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { connectorAccess, connectorLedger, connectorSchema } from "@/lib/connectors";
+import { canSetTallyLedger, connectorAccess, connectorLedger, connectorSchema } from "@/lib/connectors";
 
 // GET /api/billing/connectors – every connector with their clients and bills
 // (numbered bills of their clients, with the total per financial year)
@@ -53,15 +55,32 @@ export async function GET() {
   });
 }
 
-// POST /api/billing/connectors
+// POST /api/billing/connectors – from Billing → Connectors, or from the client
+// form (anyone adding a client may add its connector; only billing managers
+// and Admin set the connector's Tally ledger name)
 export async function POST(request: NextRequest) {
-  const { error } = await connectorAccess();
-  if (error) return error;
+  const user = getSessionUser(await getServerSession(authOptions));
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = connectorSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.errors[0]?.message || "Invalid data" }, { status: 400 });
   const d = parsed.data;
+  const mayLedger = await canSetTallyLedger(user.id);
+
+  const same = await prisma.connector.findFirst({ where: { name: { equals: d.name, mode: "insensitive" } } });
+  if (same) {
+    return NextResponse.json(
+      { error: same.active ? `${same.name} is already a connector` : `${same.name} is a stopped connector; restart them in Billing → Connectors` },
+      { status: 409 }
+    );
+  }
+
   const connector = await prisma.connector.create({
-    data: { name: d.name, phone: d.phone || null, email: d.email || null, tallyLedgerName: d.tallyLedgerName || null },
+    data: {
+      name: d.name,
+      phone: d.phone || null,
+      email: d.email || null,
+      tallyLedgerName: (mayLedger && d.tallyLedgerName) || null,
+    },
   });
-  return NextResponse.json(connector, { status: 201 });
+  return NextResponse.json({ ...connector, ledgerName: connectorLedger(connector) }, { status: 201 });
 }

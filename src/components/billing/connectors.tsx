@@ -101,7 +101,7 @@ export function Connectors() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Choose a client&apos;s connector on the client&apos;s page. Their bills are made out to the client, go to the connector&apos;s ledger in
+          Choose a client&apos;s connector on the client&apos;s page (a new one can be added there too). Their bills are made out to the client, go to the connector&apos;s ledger in
           Tally, and are emailed to the connector. GST bills don&apos;t show the client&apos;s GSTIN (B2C) unless &quot;Show GSTIN&quot; is ticked on the bill.
         </p>
         <Button size="sm" onClick={() => startEdit(null)}><Plus className="mr-1 h-4 w-4" /> Add connector</Button>
