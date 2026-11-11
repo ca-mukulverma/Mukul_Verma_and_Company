@@ -500,7 +500,12 @@ from the connector. Billing managers and Admin add connectors in **Billing →
 Connectors** (name, mobile, email, Tally ledger name; the ledger defaults to
 the name) and see each connector's clients and numbered bills with the fees
 per financial year. A client's connector is chosen on the client form and
-applies to all of the client's bills.
+applies to all of the client's bills. If the connector isn't in the list yet,
+**+ Add a connector…** in the same list opens a popup on the client form:
+anyone adding or editing a client can add the connector there (name, mobile,
+email; the Tally ledger name only for billing managers and Admin), and the new
+connector is chosen for the client at once. A name already used by a
+connector is refused.
 
 - The bill is **made out to the client** as usual.
 - In Tally it goes to the **connector's ledger**, with the client in the

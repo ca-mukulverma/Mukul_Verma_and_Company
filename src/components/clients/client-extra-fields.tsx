@@ -2,9 +2,11 @@
 
 import { useEffect, useId, useState } from "react";
 import axios from "axios";
-import { Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -173,6 +175,9 @@ export interface BillingValue {
 }
 
 const NO_CONNECTOR = "none";
+const ADD_CONNECTOR = "add";
+
+type ConnectorOption = BillingOptions["connectors"][number];
 
 export function ClientBillingFields({
   value,
@@ -186,22 +191,45 @@ export function ClientBillingFields({
   clientName: string;
 }) {
   const listId = useId();
+  // Connectors added from this form, until the options are loaded again
+  const [added, setAdded] = useState<ConnectorOption[]>([]);
+  const [adding, setAdding] = useState(false);
   if (!options) return null;
-  const connector = options.connectors.find((c) => c.id === value.connectorId) ?? null;
+  const connectors = [...options.connectors, ...added.filter((a) => !options.connectors.some((c) => c.id === a.id))].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+  const connector = connectors.find((c) => c.id === value.connectorId) ?? null;
   return (
     <div className="space-y-4 rounded-md border p-3">
       <div className="space-y-1">
         <Label>Connector</Label>
-        <Select value={value.connectorId ?? NO_CONNECTOR} onValueChange={(v) => onChange({ ...value, connectorId: v === NO_CONNECTOR ? null : v })}>
+        <Select
+          value={value.connectorId ?? NO_CONNECTOR}
+          onValueChange={(v) => {
+            if (v === ADD_CONNECTOR) setAdding(true);
+            else onChange({ ...value, connectorId: v === NO_CONNECTOR ? null : v });
+          }}
+        >
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={NO_CONNECTOR}>None (the client pays directly)</SelectItem>
-            {options.connectors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            {connectors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            <SelectItem value={ADD_CONNECTOR} className="font-medium text-primary">+ Add a connector…</SelectItem>
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          A connector&apos;s clients are billed in their own name, but the bills go to the connector&apos;s ledger in Tally. Connectors are added in Billing → Connectors.
+          A connector&apos;s clients are billed in their own name, but the bills go to the connector&apos;s ledger in Tally. Not in the list? Choose
+          &quot;Add a connector&quot; to add them here.
         </p>
+        <AddConnectorDialog
+          open={adding}
+          onOpenChange={setAdding}
+          canSetLedger={options.canSetLedger}
+          onAdded={(c) => {
+            setAdded((list) => [...list, c]);
+            onChange({ ...value, connectorId: c.id });
+          }}
+        />
       </div>
       {options.canSetLedger && (
         <div className="space-y-1">
@@ -227,6 +255,100 @@ export function ClientBillingFields({
         </div>
       )}
     </div>
+  );
+}
+
+// Adds a connector from the client form and picks it for the client
+function AddConnectorDialog({
+  open,
+  onOpenChange,
+  canSetLedger,
+  onAdded,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  canSetLedger: boolean;
+  onAdded: (c: ConnectorOption) => void;
+}) {
+  const id = useId();
+  const empty = { name: "", phone: "", email: "", tallyLedgerName: "" };
+  const [form, setForm] = useState(empty);
+  const [saving, setSaving] = useState(false);
+
+  const close = (o: boolean) => {
+    if (!o) setForm(empty);
+    onOpenChange(o);
+  };
+
+  const save = async (e: React.FormEvent) => {
+    // The dialog sits inside the client form: don't submit that too
+    e.preventDefault();
+    e.stopPropagation();
+    if (form.name.trim().length < 2) return;
+    setSaving(true);
+    try {
+      const { data } = await axios.post<{ id: string; name: string; ledgerName: string }>("/api/billing/connectors", {
+        name: form.name.trim(),
+        phone: form.phone.trim() || null,
+        email: form.email.trim() || null,
+        ...(canSetLedger && { tallyLedgerName: form.tallyLedgerName.trim() || null }),
+      });
+      onAdded({ id: data.id, name: data.name, ledgerName: data.ledgerName });
+      toast.success(`${data.name} added as the connector`);
+      close(false);
+    } catch (error) {
+      const message = axios.isAxiosError(error) ? (error.response?.data as { error?: string } | undefined)?.error : undefined;
+      toast.error(message || "Could not add the connector");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={close}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={save} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Add a connector</DialogTitle>
+            <DialogDescription>They&apos;re added to Billing → Connectors and chosen for this client.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="space-y-1">
+              <Label htmlFor={`${id}-name`}>Name *</Label>
+              <Input id={`${id}-name`} autoFocus maxLength={100} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor={`${id}-phone`}>Mobile</Label>
+                <Input id={`${id}-phone`} inputMode="tel" maxLength={15} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor={`${id}-email`}>Email (bills are sent here)</Label>
+                <Input id={`${id}-email`} type="email" maxLength={75} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              </div>
+            </div>
+            {canSetLedger && (
+              <div className="space-y-1">
+                <Label htmlFor={`${id}-ledger`}>Tally ledger name</Label>
+                <Input
+                  id={`${id}-ledger`}
+                  maxLength={100}
+                  placeholder={form.name || "Same as the name"}
+                  value={form.tallyLedgerName}
+                  onChange={(e) => setForm({ ...form, tallyLedgerName: e.target.value })}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => close(false)}>Cancel</Button>
+            <Button type="submit" disabled={saving || form.name.trim().length < 2}>
+              {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} Add and choose
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
