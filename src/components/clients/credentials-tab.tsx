@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { canEditClient, canModifyClient } from "@/lib/permissions";
+import { canModifyClient } from "@/lib/permissions";
 import { CredentialSections } from "./credential-sections";
 
 // The client's page → Credentials: the client's logins by portal, the same
@@ -16,7 +16,7 @@ export function CredentialsTab({ clientId }: { clientId: string }) {
         <CardDescription>The client&apos;s logins: GST, Income tax, TDS, PF, ESIC, MCA and any other portal</CardDescription>
       </CardHeader>
       <CardContent>
-        <CredentialSections clientId={clientId} canEdit={canEditClient(session)} canDelete={canModifyClient(session)} />
+        <CredentialSections clientId={clientId} canEdit canDelete={canModifyClient(session)} />
       </CardContent>
     </Card>
   );

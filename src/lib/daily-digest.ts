@@ -13,6 +13,8 @@ export function digestLines(work: MyWork, billingText: string | null) {
   const c = work.counts;
   const lines: string[] = [];
 
+  if (c.repliesNeeded) lines.push(`Replies needed: ${c.repliesNeeded} task${c.repliesNeeded === 1 ? "" : "s"} waiting for your reply`);
+
   const tasks = [
     c.tasksOverdue && `${c.tasksOverdue} overdue`,
     c.tasksDueToday && `${c.tasksDueToday} due today`,
@@ -53,6 +55,7 @@ export async function sendDailyDigests(now = new Date()) {
     if (lines.length === 0) continue;
 
     const total =
+      work.counts.repliesNeeded +
       work.counts.tasksOverdue +
       work.counts.tasksDueToday +
       work.counts.complianceOverdue +

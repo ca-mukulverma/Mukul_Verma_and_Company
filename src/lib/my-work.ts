@@ -43,11 +43,25 @@ export interface MyComplianceItem {
   status: string;
 }
 
+// A comment that waits for this person's reply (docs/TASKS.md)
+export interface MyReplyNeeded {
+  taskId: string;
+  taskTitle: string;
+  client: string | null;
+  comment: string;
+  askedBy: string;
+  askedAt: string;
+}
+
 export interface MyWork {
+  replies: MyReplyNeeded[];
+  // Claude's summary of the person's task discussions, from the daily run
+  digest: { body: string; createdAt: string } | null;
   tasks: MyTask[];
   compliance: MyComplianceItem[];
   billing: PendingGroup[];
   counts: {
+    repliesNeeded: number;
     tasksOverdue: number;
     tasksDueToday: number;
     tasksOpen: number;
@@ -71,7 +85,25 @@ function dueState(date: Date | null, today: Date): DueState {
 export async function getMyWork(userId: string, now = new Date()): Promise<MyWork> {
   const today = todayIST();
 
-  const [tasks, teams, access] = await Promise.all([
+  const [replyRows, digest, tasks, teams, access] = await Promise.all([
+    prisma.taskReplyRequest.findMany({
+      where: { userId, resolvedAt: null },
+      select: {
+        taskId: true,
+        createdAt: true,
+        task: { select: { title: true, client: { select: { contactPerson: true, companyName: true } } } },
+        comment: { select: { content: true } },
+        requestedBy: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+      take: MAX_ROWS,
+    }),
+    // A summary older than a day and a half is stale (the run skipped a day)
+    prisma.taskDigest.findFirst({
+      where: { userId, createdAt: { gte: new Date(now.getTime() - 36 * 3_600_000) } },
+      orderBy: { createdAt: "desc" },
+      select: { body: true, createdAt: true },
+    }),
     prisma.task.findMany({
       where: { assignees: { some: { userId } }, status: { notIn: ["completed", "cancelled"] } },
       select: {
@@ -159,11 +191,30 @@ export async function getMyWork(userId: string, now = new Date()): Promise<MyWor
     status: i.status,
   }));
 
+  // One line per task: several open comments on a task are answered by one reply
+  const seen = new Set<string>();
+  const replies: MyReplyNeeded[] = [];
+  for (const r of replyRows) {
+    if (seen.has(r.taskId)) continue;
+    seen.add(r.taskId);
+    replies.push({
+      taskId: r.taskId,
+      taskTitle: r.task.title,
+      client: r.task.client ? partyName(r.task.client) : null,
+      comment: r.comment.content,
+      askedBy: r.requestedBy.name,
+      askedAt: r.createdAt.toISOString(),
+    });
+  }
+
   return {
+    replies,
+    digest: digest ? { body: digest.body, createdAt: digest.createdAt.toISOString() } : null,
     tasks: myTasks,
     compliance: myItems,
     billing,
     counts: {
+      repliesNeeded: replies.length,
       tasksOverdue: myTasks.filter((t) => t.due === "overdue").length,
       tasksDueToday: myTasks.filter((t) => t.due === "today").length,
       tasksOpen: myTasks.length,

@@ -30,14 +30,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 // POST /api/clients/[id]/credentials { kind, title?, username, password } –
-// Admins and Partners; "Other" needs its title
+// any staff member; "Other" needs its title. Who added it is kept.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!["ADMIN", "PARTNER"].includes(session.user.role)) {
-    return NextResponse.json({ error: "Only administrators and partners can add credentials" }, { status: 403 });
-  }
+  const user = getSessionUser(await getServerSession(authOptions));
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const parsed = credentialInput.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Check the login" }, { status: 400 });
@@ -45,7 +42,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } });
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
-    const created = await prisma.credential.create({ data: { ...parsed.data, clientId }, select: credentialSelect });
+    const created = await prisma.credential.create({ data: { ...parsed.data, clientId, updatedById: user.id }, select: credentialSelect });
     return NextResponse.json(created);
   } catch (error) {
     console.error("Error adding credential:", error instanceof Error ? error.message : error);

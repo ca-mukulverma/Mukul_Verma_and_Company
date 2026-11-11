@@ -72,6 +72,7 @@ export const authOptions: NextAuthOptions = {
             isActive: true, 
             password: true,
             canApproveBilling: true,
+            canFollowUpTasks: true,
             roleVersion: true,
           }, // Include avatar, isActive, and password
         });
@@ -98,6 +99,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role,
           avatar: user.avatar,
           canApproveBilling: user.canApproveBilling,
+          canFollowUpTasks: user.canFollowUpTasks,
           roleVersion: user.roleVersion,
         };
       },
@@ -112,6 +114,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role,
           avatar: user.avatar || null,
           canApproveBilling: user.canApproveBilling || false,
+          canFollowUpTasks: user.canFollowUpTasks || false,
           roleVersion: user.roleVersion,
           checkedAt: Date.now(),
         };
@@ -133,6 +136,7 @@ export const authOptions: NextAuthOptions = {
             isActive: true, 
             avatar: true, 
             canApproveBilling: true,
+            canFollowUpTasks: true,
             role: true,
             roleVersion: true,
           },
@@ -158,6 +162,7 @@ export const authOptions: NextAuthOptions = {
           ...token,
           avatar: user.avatar || null,
           canApproveBilling: user.canApproveBilling || false,
+          canFollowUpTasks: user.canFollowUpTasks || false,
           role: user.role,
           roleVersion: user.roleVersion,
           checkedAt: Date.now(),
@@ -182,6 +187,7 @@ export const authOptions: NextAuthOptions = {
           role: token.role,
           avatar: token.avatar || null,
           canApproveBilling: token.canApproveBilling || false,
+          canFollowUpTasks: token.canFollowUpTasks || false,
           roleVersion: token.roleVersion as number,
         },
       };

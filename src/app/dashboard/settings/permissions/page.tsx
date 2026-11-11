@@ -27,6 +27,8 @@ export default function PermissionsPage() {
     billingListTypes: BillTypeValue[];
     // Sees everyone's Work Done list
     canViewWorkDone: boolean;
+    // Follows up tasks from the cards (last comments, one-click comments)
+    canFollowUpTasks: boolean;
   }
 
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -58,6 +60,7 @@ export default function PermissionsPage() {
           // Saved as [] for "all"
           billingListTypes: user.billingListTypes?.length ? user.billingListTypes : [...BILL_TYPES],
           canViewWorkDone: user.canViewWorkDone || false,
+          canFollowUpTasks: user.canFollowUpTasks || false,
         }))
       );
       setLoading(false);
@@ -71,7 +74,7 @@ export default function PermissionsPage() {
   // Toggle a billing permission for a partner
   const handleToggle = (
     id: string,
-    permission: "canApproveBilling" | "canManageBedgeBilling" | "canEnterBillAmounts" | "canViewBillingList" | "canViewWorkDone"
+    permission: "canApproveBilling" | "canManageBedgeBilling" | "canEnterBillAmounts" | "canViewBillingList" | "canViewWorkDone" | "canFollowUpTasks"
   ) => {
     setPartners((prev) =>
       prev.map((partner) =>
@@ -108,7 +111,7 @@ export default function PermissionsPage() {
     try {
       setError(null);
       const updates = partners.map(
-        ({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts, canViewBillingList, billingListTypes, canViewWorkDone }) => ({
+        ({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts, canViewBillingList, billingListTypes, canViewWorkDone, canFollowUpTasks }) => ({
           id,
           canApproveBilling,
           canManageBedgeBilling,
@@ -117,6 +120,7 @@ export default function PermissionsPage() {
           // All ticked is saved as "all", so a new bill type is included too
           billingListTypes: billingListTypes.length === BILL_TYPES.length ? [] : billingListTypes,
           canViewWorkDone,
+          canFollowUpTasks,
         })
       );
       await axios.post("/api/admin/dashboard", { updates });
@@ -149,6 +153,10 @@ export default function PermissionsPage() {
             Partners with Work Done on see everyone&apos;s finished tasks, logged work and compliance on the Work done page,
             with who did each one (no fees). Everyone else sees only their own work there; Admins see everyone&apos;s.
           </p>
+          <p className="text-sm text-muted-foreground">
+            Partners with Follow up tasks on see the last comments and one-click comments on the cards of the tasks they
+            created or are on, and their comments ask the others on the task for a reply. Admins always can.
+          </p>
         </CardHeader>
         <CardContent>
           {error && <p className="text-red-500 mb-4">{error}</p>}
@@ -168,6 +176,7 @@ export default function PermissionsPage() {
                         <TableHead className="text-center">Can Enter Amounts</TableHead>
                         <TableHead className="text-center">Billing List</TableHead>
                         <TableHead className="text-center">Work Done</TableHead>
+                        <TableHead className="text-center">Follow up tasks</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -216,10 +225,17 @@ export default function PermissionsPage() {
                               aria-label={`${partner.name}: sees everyone's Work Done list`}
                             />
                           </TableCell>
+                          <TableCell className="text-center">
+                            <Switch
+                              checked={partner.canFollowUpTasks}
+                              onCheckedChange={() => handleToggle(partner.id, "canFollowUpTasks")}
+                              aria-label={`${partner.name}: follows up tasks from the cards`}
+                            />
+                          </TableCell>
                         </TableRow>
                         {partner.canViewBillingList && (
                           <TableRow>
-                            <TableCell colSpan={7} className="pt-0">
+                            <TableCell colSpan={8} className="pt-0">
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
                                 <span className="font-medium">{partner.name} sees:</span>
                                 {BILL_TYPES.map((type) => (

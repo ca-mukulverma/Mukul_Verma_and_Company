@@ -526,7 +526,7 @@ function ClientDetailView({
       <Box title={`Logins${several ? ` · ${data.client.state}` : ""}`}>
         <CredentialSections
           clientId={data.client.id}
-          canEdit={isManager}
+          canEdit
           canDelete={session?.user?.role === "ADMIN"}
           onChanged={() => setLogins((n) => n + 1)}
         />

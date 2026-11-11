@@ -35,6 +35,30 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "task-follow-up",
+    date: "2026-11-11",
+    audience: "everyone",
+    title: { en: "Tasks: replies needed, cleaner list and bell", hi: "टास्क: जवाब ज़रूरी, साफ़ लिस्ट और घंटी" },
+    steps: {
+      en: [
+        "Today shows Reply needed: comments that ask for your reply. They stay until you reply on the task.",
+        "Tasks has views: Active, Done – awaiting bill and Closed. Click a card to open the task in a side panel.",
+        "The bell shows only unread notifications. Click one and it goes; Reply answers without leaving the page.",
+        "Cancelled is gone: use Request deletion with a reason, and Admin approves. Everyone can now add and change client logins.",
+      ],
+      hi: [
+        "Today में Reply needed दिखता है: वो कमेंट जिनका जवाब आपसे चाहिए। टास्क पर जवाब देने तक ये वहीं रहते हैं।",
+        "Tasks में अब Active, Done – awaiting bill और Closed अलग हैं। कार्ड पर क्लिक करें, टास्क साइड में खुलेगा।",
+        "घंटी में सिर्फ़ बिना पढ़े नोटिफिकेशन दिखते हैं। क्लिक करते ही हट जाते हैं; Reply से वहीं जवाब दें।",
+        "Cancelled हट गया: Request deletion में कारण लिखें, एडमिन मंज़ूरी देंगे। अब सब लोग क्लाइंट के लॉगिन जोड़ और बदल सकते हैं।",
+      ],
+    },
+    push: {
+      title: "New in the app: replies needed on Today",
+      body: "Comments that need your reply now wait on Today until you answer. Tasks has Active, Done – awaiting bill and Closed.",
+    },
+  },
+  {
     id: "client-logins-by-portal",
     date: "2026-11-10",
     audience: "everyone",
@@ -42,12 +66,12 @@ export const ANNOUNCEMENTS: Announcement[] = [
     steps: {
       en: [
         "Open a client in Compliance → Clients: the Logins box has a row for GST, Income tax, TDS – TRACES, TDS – Income tax, PF, ESIC and MCA.",
-        "Admins and Partners click Add on a row to save its username and password, or Add other for any other portal with its own name. The pencil changes a saved login.",
+        "Click Add on a row to save its username and password, or Add other for any other portal with its own name. The pencil changes a saved login.",
         "Everyone can see and copy the logins there, and on the client's Credentials tab. The GST portal download uses the GST row.",
       ],
       hi: [
         "Compliance → Clients में क्लाइंट खोलें: Logins बॉक्स में GST, Income tax, TDS – TRACES, TDS – Income tax, PF, ESIC और MCA की अलग लाइन है।",
-        "एडमिन और पार्टनर लाइन पर Add दबाकर यूज़रनेम और पासवर्ड सेव करें, या किसी और पोर्टल के लिए Add other से नाम देकर सेव करें। पेंसिल से सेव लॉगिन बदलें।",
+        "लाइन पर Add दबाकर यूज़रनेम और पासवर्ड सेव करें, या किसी और पोर्टल के लिए Add other से नाम देकर सेव करें। पेंसिल से सेव लॉगिन बदलें।",
         "सब लोग वहाँ और क्लाइंट के Credentials टैब में लॉगिन देख और कॉपी कर सकते हैं। GST पोर्टल डाउनलोड GST वाली लाइन का लॉगिन लेता है।",
       ],
     },

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Bell, CheckCheck } from "lucide-react";
+import { Bell, CheckCheck, MessageSquareReply, X } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -20,6 +20,8 @@ import { useSession } from "next-auth/react";
 import { useActivePolling } from "@/hooks/use-active-polling";
 import { cn } from "@/lib/utils";
 import { notificationLink, notificationText } from "@/lib/notification-links";
+import { QuickReply } from "@/components/tasks/quick-reply";
+import { followsUpTasks } from "@/lib/task-views";
 
 // How often the bell refreshes while the user is active. Push notifications
 // still arrive instantly; this only refreshes the in-app list and badge.
@@ -29,6 +31,9 @@ const POLL_INTERVAL_MS = 60_000;
 const REFRESH_ON_RETURN_MIN_GAP_MS = 30_000;
 // Guards against near-simultaneous fetches.
 const MIN_FETCH_GAP_MS = 5_000;
+// The bell holds unread notifications only; a read one leaves it (all of
+// them stay under Settings → Notifications)
+const BELL_SIZE = 20;
 
 // Define notification types
 export interface Notification {
@@ -49,6 +54,8 @@ interface NotificationContextProps {
   loading: boolean;
   error: string | null;
   markAsRead: (id: string) => Promise<void>;
+  // Clears every unread notification about one task
+  markTaskAsRead: (taskId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   deleteNotification: (id: string) => Promise<void>;
   refreshNotifications: () => Promise<void>;
@@ -61,6 +68,7 @@ const NotificationContext = createContext<NotificationContextProps>({
   loading: false,
   error: null,
   markAsRead: async () => {},
+  markTaskAsRead: async () => {},
   markAllAsRead: async () => {},
   deleteNotification: async () => {},
   refreshNotifications: async () => {},
@@ -98,7 +106,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       setError(null);
       lastFetchedRef.current = now;
       
-      const response = await axios.get("/api/notifications");
+      const response = await axios.get(`/api/notifications?unreadOnly=true&limit=${BELL_SIZE}`);
       const data = response.data as { data: Notification[]; unreadCount?: number };
       setNotifications(data.data || []);
       setUnreadCount(data.unreadCount ?? (data.data || []).filter((n) => !n.isRead).length);
@@ -114,15 +122,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
-  // Mark a notification as read - stabilized with useCallback
+  // Mark a notification as read: it leaves the bell
   const markAsRead = useCallback(async (id: string) => {
     try {
       const wasUnread = notificationsRef.current.some((n) => n.id === id && !n.isRead);
-      setNotifications(prev =>
-        prev.map(notification =>
-          notification.id === id ? { ...notification, isRead: true } : notification
-        )
-      );
+      setNotifications((prev) => prev.filter((notification) => notification.id !== id));
       if (wasUnread) setUnreadCount((count) => Math.max(0, count - 1));
       await axios.patch(`/api/notifications/${id}`, { isRead: true });
     } catch (err) {
@@ -131,11 +135,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
-  // Mark every notification read (they stay in the list)
+  // Every unread notification about one task leaves the bell
+  const markTaskAsRead = useCallback(async (taskId: string) => {
+    try {
+      const shown = notificationsRef.current.filter((n) => n.taskId === taskId && !n.isRead).length;
+      setNotifications((prev) => prev.filter((n) => n.taskId !== taskId));
+      const { data } = await axios.patch<{ count: number }>("/api/notifications", { taskId });
+      setUnreadCount((count) => Math.max(0, count - Math.max(shown, data.count ?? 0)));
+    } catch (err) {
+      console.error("Failed to mark the task's notifications read:", err);
+    }
+  }, []);
+
+  // Mark every notification read: the bell empties
   const markAllAsRead = useCallback(async () => {
     try {
       await axios.patch("/api/notifications");
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setNotifications([]);
       setUnreadCount(0);
     } catch (err) {
       console.error("Failed to mark notifications read:", err);
@@ -195,6 +211,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     loading,
     error,
     markAsRead,
+    markTaskAsRead,
     markAllAsRead,
     deleteNotification,
     refreshNotifications: fetchNotifications,
@@ -207,22 +224,37 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   );
 }
 
-// The bell in the header: unread count, the latest notifications, and a click
-// opens what each one is about
+// The bell in the header: unread notifications only. Clicking one opens what
+// it is about and takes it (and the task's other notifications) off the bell.
+// Task notifications have Reply, to answer without leaving the page.
 export function NotificationBell() {
-  const { notifications, unreadCount, markAsRead, markAllAsRead, loading } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markTaskAsRead, markAllAsRead, loading } = useNotifications();
+  const { data: session } = useSession();
   const [open, setOpen] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const router = useRouter();
+  const canAskReply = followsUpTasks(session?.user);
+
+  const dismiss = (notification: Notification) => {
+    if (notification.taskId) markTaskAsRead(notification.taskId);
+    else markAsRead(notification.id);
+  };
 
   const handleNotificationClick = (notification: Notification) => {
-    if (!notification.isRead) markAsRead(notification.id);
+    dismiss(notification);
     const link = notificationLink(notification);
     setOpen(false);
     if (link) router.push(link);
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setReplyingTo(null);
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -242,18 +274,18 @@ export function NotificationBell() {
           <span className="sr-only">Notifications</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[min(360px,calc(100vw-32px))] p-0" align="end">
+      <PopoverContent className="w-[min(380px,calc(100vw-32px))] p-0" align="end">
         <div className="flex items-center justify-between border-b p-3">
           <h3 className="font-medium">
-            Notifications{unreadCount > 0 && <span className="ml-1 text-muted-foreground">({unreadCount} unread)</span>}
+            Notifications{unreadCount > 0 && <span className="ml-1 text-muted-foreground">({unreadCount})</span>}
           </h3>
           {unreadCount > 0 && (
             <Button variant="ghost" size="sm" onClick={() => markAllAsRead()} className="h-7 text-xs">
-              <CheckCheck className="mr-1 h-3.5 w-3.5" />Mark all read
+              <CheckCheck className="mr-1 h-3.5 w-3.5" />Clear all
             </Button>
           )}
         </div>
-        <ScrollArea className="h-[min(400px,60vh)]">
+        <ScrollArea className="h-[min(440px,65vh)]">
           {loading && notifications.length === 0 ? (
             <div className="space-y-3 p-4">
               {Array(3).fill(0).map((_, i) => (
@@ -270,31 +302,65 @@ export function NotificationBell() {
             </div>
           ) : (
             <div className="divide-y">
-              {notifications.map(notification => (
-                <button
-                  type="button"
-                  key={notification.id}
-                  className={cn(
-                    "flex w-full gap-2 p-3 text-left transition-colors hover:bg-muted",
-                    !notification.isRead && "bg-primary/5"
+              {notifications.map((notification) => (
+                <div key={notification.id} className="group relative">
+                  <button
+                    type="button"
+                    className="flex w-full gap-2 p-3 pr-9 text-left transition-colors hover:bg-muted"
+                    onClick={() => handleNotificationClick(notification)}
+                  >
+                    <span
+                      className={cn(
+                        "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                        notification.title === "Reply needed" ? "bg-amber-500" : "bg-primary"
+                      )}
+                      aria-hidden
+                    />
+                    <span className="flex-1 space-y-1">
+                      <span className="block text-sm font-medium">{notification.title}</span>
+                      <span className="block text-xs text-muted-foreground line-clamp-3">
+                        {notificationText(notification.content)}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                        {notification.sentByName && ` · ${notification.sentByName}`}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => dismiss(notification)}
+                    aria-label="Clear"
+                    title="Clear"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                  {notification.taskId && (
+                    <div className="px-3 pb-3 pl-7">
+                      {replyingTo === notification.id ? (
+                        <QuickReply
+                          taskId={notification.taskId}
+                          canAskReply={canAskReply}
+                          autoFocus
+                          onSent={() => {
+                            setReplyingTo(null);
+                            dismiss(notification);
+                          }}
+                        />
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => setReplyingTo(notification.id)}
+                        >
+                          <MessageSquareReply className="mr-1 h-3.5 w-3.5" /> Reply
+                        </Button>
+                      )}
+                    </div>
                   )}
-                  onClick={() => handleNotificationClick(notification)}
-                >
-                  <span
-                    className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", notification.isRead ? "bg-transparent" : "bg-primary")}
-                    aria-hidden
-                  />
-                  <span className="flex-1 space-y-1">
-                    <span className="block text-sm font-medium">{notification.title}</span>
-                    <span className="block text-xs text-muted-foreground line-clamp-3">
-                      {notificationText(notification.content)}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
-                      {notification.sentByName && ` · ${notification.sentByName}`}
-                    </span>
-                  </span>
-                </button>
+                </div>
               ))}
             </div>
           )}

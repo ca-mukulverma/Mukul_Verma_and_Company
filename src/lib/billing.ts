@@ -250,12 +250,13 @@ const UNDO_WINDOW_MS = 10_000;
 
 // Creates the draft bill for a task that has just been completed.
 // Does nothing if the task already has a bill.
-export async function ensureDraftBillForTask(taskId: string, userId: string) {
+// Returns whether a new bill was started (false when the task already had one)
+export async function ensureDraftBillForTask(taskId: string, userId: string): Promise<boolean> {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: { id: true, title: true, description: true, company: true, clientId: true, bill: { select: { id: true } } },
   });
-  if (!task || task.bill) return;
+  if (!task || task.bill) return false;
   const type = await defaultBillType(task.company, task.clientId);
 
   try {
@@ -272,7 +273,7 @@ export async function ensureDraftBillForTask(taskId: string, userId: string) {
     });
   } catch (error) {
     // Two completions at the same moment: the other request created the bill
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return;
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return false;
     throw error;
   }
 
@@ -298,6 +299,7 @@ export async function ensureDraftBillForTask(taskId: string, userId: string) {
       `/dashboard/billing?tab=${task.company === "BEDGE" ? "bedge" : "mvc"}`
     );
   });
+  return true;
 }
 
 // When a completed task is reopened, its bill is removed if nobody has
