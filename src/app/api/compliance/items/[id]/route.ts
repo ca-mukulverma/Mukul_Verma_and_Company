@@ -13,7 +13,8 @@ import {
   TDS_RETURN_REQUIRED_FIGURES,
   TDS_SECTIONS,
 } from "@/lib/compliance";
-import { loadSheetItem } from "@/lib/compliance-sheet";
+import { loadSheetItem, loadSheetItemWithClient } from "@/lib/compliance-sheet";
+import { addAdjustment, adjustmentInput, itemAdjustments, previousFollowUps } from "@/lib/compliance-adjustments";
 import { addMonths, parseDateKey, todayIST } from "@/lib/compliance-periods";
 import { formatRupees } from "@/lib/billing-constants";
 import {
@@ -43,6 +44,8 @@ const actionSchema = z.discriminatedUnion("action", [
     arn: z.string().trim().max(50).optional().nullable(),
     isNil: z.boolean().optional().nullable(),
     figures,
+    // An adjustment made in this return, noted while marking it filed
+    adjustment: adjustmentInput.optional().nullable(),
     ...signOff,
   }),
   z.object({ action: z.literal("undo_filed") }),
@@ -81,14 +84,22 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("fee"), fee: money.nullable() }),
 ]);
 
-// GET /api/compliance/items/[id] – one item with its history
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// GET /api/compliance/items/[id] – one item with its history and adjustments;
+// ?client=1 adds its client row (to open it from the client's page)
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { access, error } = await requireComplianceAccess();
   if (error) return error;
   const { id } = await params;
-  const item = await loadSheetItem(id, access);
+  const withClient = new URL(request.url).searchParams.get("client") === "1";
+  const loaded = withClient ? await loadSheetItemWithClient(id, access) : { item: await loadSheetItem(id, access), client: undefined };
+  const item = loaded?.item;
   if (!item) return notFound("Item not found");
-  const [events, reminders, fee] = await Promise.all([
+  const period = await prisma.complianceItem.findUnique({
+    where: { id },
+    select: { clientId: true, workTypeId: true, periodStart: true },
+  });
+  if (!period) return notFound("Item not found");
+  const [events, reminders, fee, adjustments, followUps] = await Promise.all([
     prisma.complianceEvent.findMany({
       where: { itemId: id },
       orderBy: { createdAt: "desc" },
@@ -103,11 +114,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     }),
     // The fee is shown only to Admins and Partners
     access.isManager ? prisma.complianceItem.findUnique({ where: { id }, select: { fee: true } }) : null,
+    itemAdjustments(id, access, canWorkOn(access, period.workTypeId)),
+    previousFollowUps(period, access),
   ]);
   return NextResponse.json({
     item,
+    ...(loaded?.client && { client: loaded.client }),
     events,
     reminders,
+    adjustments,
+    followUps,
     ...(access.isManager && { fee: fee?.fee != null ? Number(fee.fee) : null }),
   });
 }
@@ -210,6 +226,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           .filter(Boolean)
           .join(" · ");
         await logEvent(tx, id, isOpen ? "filed" : "filing_updated", userId, remark || null);
+        if (input.adjustment) await addAdjustment(tx, id, userId, input.adjustment);
         const signOffChanged = signed && (signed.completedById !== item.completedById || signed.checkedById !== item.checkedById);
         if (signed && (isOpen || signOffChanged)) await logSignOff(tx, id, userId, signed, changedCompleter ? item.completedById : null);
       });

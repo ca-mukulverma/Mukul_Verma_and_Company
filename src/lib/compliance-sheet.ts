@@ -140,6 +140,15 @@ export async function loadSheetItem(id: string, access: ComplianceAccess) {
   return serialized;
 }
 
+// The item and its client row, for opening its window outside a sheet (the
+// client's page)
+export async function loadSheetItemWithClient(id: string, access: ComplianceAccess) {
+  const item = await prisma.complianceItem.findUnique({ where: { id }, include: sheetItemInclude });
+  if (!item) return null;
+  const [serialized] = await serializeItems([item], access);
+  return { item: serialized, client: clientRow(item.client) };
+}
+
 function clientRow(client: SheetItemRecord["client"]) {
   return { id: client.id, name: partyName(client), gstin: client.gstin, managerId: client.managerId, ...reminderContacts(client) };
 }

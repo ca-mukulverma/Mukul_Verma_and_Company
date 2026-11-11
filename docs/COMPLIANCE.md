@@ -212,6 +212,32 @@ Both show on the item ("Completed by Ramesh · checked by Suresh" or
 each person completed in the last 90 days and how many were self-checked.
 Past periods don't ask for these.
 
+## Adjustments in a return
+
+Anything adjusted in a return (an earlier month's invoice added, ITC reversed
+or deferred, a credit note set off, interest paid, figures that differ from the
+books) is written down in the staff member's own words, so the reason is
+always on record.
+
+- **When marking filed**: the box *Adjustments made in this return* under
+  **Mark as filed**. It is optional; leave it empty when nothing was adjusted.
+- **Later** (a filed or completed return, or a TDS payment month): **Add
+  adjustment** in the item's window, under *Adjustments in this return*. A
+  return can have several.
+- **Follow up in the next period**: tick it and the note is shown at the top
+  of the next period's window of the same work, e.g. "ITC to be reversed next
+  month".
+- **Where to find them**: Compliance → Clients → the client → **Return
+  adjustments** (all years, filter by year and work; **Open** opens the
+  period's window), and a violet dot on the period in **Year at a glance**
+  (any cell there opens its window too). Each note shows who wrote it and
+  when, and the period's history has a line for each note added, changed or
+  deleted.
+- **Changing or deleting**: the person who wrote it, on the same day. After
+  that, only Admins and Partners. A changed note shows who changed it.
+- **Internal only**: adjustments are never put in emails, WhatsApp messages
+  or bills to the client.
+
 ## TDS step by step
 
 1. **Each month**: open the month's cell, confirm/skip the TDS lines, add the
@@ -735,7 +761,11 @@ which is several years of return PDFs.
 - Tables: `ComplianceWorkType`, `ComplianceTeamMember`, `ClientCompliance`,
   `ComplianceItem` (unique per client + work + period start), `ComplianceEvent`,
   `ComplianceDocument`, `ClientObligation`, `ComplianceObligationLine`,
-  `TdsChallan`, `ComplianceReminder`, `ComplianceNote`. Migration
+  `TdsChallan`, `ComplianceReminder`, `ComplianceNote`, `ComplianceAdjustment`
+  (staff's return adjustments; `src/lib/compliance-adjustments.ts`, API
+  `POST /api/compliance/items/[id]/adjustments` and
+  `PATCH|DELETE /api/compliance/adjustments/[id]`; kept apart from
+  `ComplianceNote`, which Claude's database login may write to). Migration
   `20261029000000_add_compliance` also adds the default work types.
 - A party's other-state GSTINs are `Client` records with `parentClientId` set
   to the party's main record (migration `20261102000000_add_client_gst_registrations`),

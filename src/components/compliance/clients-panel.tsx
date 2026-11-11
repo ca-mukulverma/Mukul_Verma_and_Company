@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { ChevronLeft, Download, FileUp, Loader2, Mail, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ChevronLeft, Download, ExternalLink, FileUp, Loader2, Mail, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,6 +15,7 @@ import { AskClaudeButton } from "./ask-claude";
 import type { WorkType } from "./setup";
 import {
   apiError,
+  ClientCell,
   currentMonthKey,
   DOC_KIND_LABELS,
   OWN_NAME_DOC_KINDS,
@@ -22,10 +23,13 @@ import {
   longDate,
   RCM_CATEGORIES,
   rupees,
+  SheetItem,
   STATUS_LABELS,
   statusClasses,
   TDS_SECTIONS,
 } from "./types";
+import { Adjustment, AdjustmentList } from "./adjustments";
+import { ItemDialog } from "./item-dialog";
 import { uploadComplianceFile } from "./upload";
 import { OldPeriods } from "./old-periods";
 import { ClientRef, ReturnUpload } from "./return-upload";
@@ -90,7 +94,21 @@ interface ClientDetail {
     active: boolean;
   }[];
   documents: { id: string; kind: string; fileName: string; size: number; createdAt: string; itemId: string | null; work: string | null }[];
-  items: { id: string; workTypeId: string; period: string; periodStart: string; frequency: string; status: keyof typeof STATUS_LABELS; dueDate: string; filedAt: string | null; historical: boolean }[];
+  items: {
+    id: string;
+    workTypeId: string;
+    period: string;
+    periodStart: string;
+    frequency: string;
+    status: keyof typeof STATUS_LABELS;
+    dueDate: string;
+    filedAt: string | null;
+    historical: boolean;
+    // How many adjustments were noted in the return
+    adjustments: number;
+  }[];
+  // Adjustments noted in the client's returns, all years, newest period first
+  adjustments: { itemId: string; workTypeId: string; work: string; period: string; fy: number; notes: Adjustment[] }[];
 }
 
 const FREQ = { MONTHLY: "Monthly", QUARTERLY: "Quarterly", YEARLY: "Yearly" } as const;
@@ -421,6 +439,8 @@ function ClientDetailView({
   const [uploads, setUploads] = useState(0);
   // Bumped after a login changes, so the GST portal box sees a GST login
   const [logins, setLogins] = useState(0);
+  // A period's window opened from this page (Year at a glance, adjustments)
+  const [opened, setOpened] = useState<{ item: SheetItem; client: ClientCell } | null>(null);
   const { data: session } = useSession();
 
   const load = useCallback(async () => {
@@ -444,6 +464,15 @@ function ClientDetailView({
   const hasGst = !!data.client.gstin || data.subscriptions.some((s) => gstWorks.has(s.workTypeId));
   const several = data.registrations.length > 1;
   const others = data.registrations.filter((r) => r.id !== data.client.id).map((r) => r.id);
+
+  const openItem = async (itemId: string) => {
+    try {
+      const { data: loaded } = await axios.get(`/api/compliance/items/${itemId}`, { params: { client: 1 } });
+      setOpened({ item: loaded.item, client: loaded.client });
+    } catch (error) {
+      toast.error(apiError(error, "Could not open the period"));
+    }
+  };
 
   const addGstin = async (gstin: string): Promise<ClientRef | null> => {
     const { data: added } = await axios.post(`/api/compliance/clients/${data.client.mainId}/registrations`, { gstin });
@@ -533,10 +562,23 @@ function ClientDetailView({
       </Box>
       <Works data={data} workTypes={workTypes} isManager={isManager} onChanged={reload} />
       <Obligations data={data} onChanged={reload} />
-      <YearView data={data} workTypes={workTypes} fy={data.fy} setFy={setFy} />
+      <YearView data={data} workTypes={workTypes} fy={data.fy} setFy={setFy} onOpen={openItem} />
+      <ReturnAdjustments data={data} onOpen={openItem} onChanged={load} />
       <PastPeriods data={data} workTypes={workTypes} onChanged={reload} />
       <Documents data={data} onChanged={reload} />
 
+      {opened && (
+        <ItemDialog
+          item={opened.item}
+          client={opened.client}
+          isManager={isManager}
+          onClose={() => {
+            setOpened(null);
+            load();
+          }}
+          onChange={(item) => setOpened((o) => o && { ...o, item })}
+        />
+      )}
       {editing && (
         <EditClientDialog
           clientId={data.client.id}
@@ -921,7 +963,19 @@ function Obligations({ data, onChanged }: { data: ClientDetail; onChanged: () =>
   );
 }
 
-function YearView({ data, workTypes, fy, setFy }: { data: ClientDetail; workTypes: WorkType[]; fy: number; setFy: (fy: number) => void }) {
+function YearView({
+  data,
+  workTypes,
+  fy,
+  setFy,
+  onOpen,
+}: {
+  data: ClientDetail;
+  workTypes: WorkType[];
+  fy: number;
+  setFy: (fy: number) => void;
+  onOpen: (itemId: string) => void;
+}) {
   const ids = [...new Set([...data.subscriptions.map((s) => s.workTypeId), ...data.items.map((i) => i.workTypeId)])];
   const rows = workTypes.filter((w) => ids.includes(w.id));
   const months = Array.from({ length: 12 }, (_, i) => {
@@ -962,13 +1016,21 @@ function YearView({ data, workTypes, fy, setFy }: { data: ClientDetail; workType
                     return (
                       <td key={m} className="p-0.5">
                         {item ? (
-                          <span
-                            title={`${item.period}: ${STATUS_LABELS[item.status]}${item.filedAt ? `, filed ${longDate(item.filedAt)}` : ""}`}
-                            className={cn("block min-w-[3.5rem] rounded border px-1 py-0.5 text-center", statusClasses({ status: item.status, overdue: false }))}
+                          <button
+                            type="button"
+                            onClick={() => onOpen(item.id)}
+                            title={`${item.period}: ${STATUS_LABELS[item.status]}${item.filedAt ? `, filed ${longDate(item.filedAt)}` : ""}${
+                              item.adjustments ? ` · ${item.adjustments} adjustment${item.adjustments === 1 ? "" : "s"} noted` : ""
+                            }`}
+                            className={cn(
+                              "relative block w-full min-w-[3.5rem] rounded border px-1 py-0.5 text-center hover:ring-1 hover:ring-ring",
+                              statusClasses({ status: item.status, overdue: false })
+                            )}
                           >
                             {item.status === "completed" ? "✓" : item.status === "filed" ? "Filed" : item.status === "not_required" ? "N/A" : item.status === "data_received" ? "Data" : "–"}
                             {item.frequency === "QUARTERLY" ? " Q" : item.frequency === "YEARLY" ? " FY" : ""}
-                          </span>
+                            {item.adjustments > 0 && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-violet-600" />}
+                          </button>
                         ) : (
                           <span className="block min-w-[3.5rem]" />
                         )}
@@ -979,6 +1041,67 @@ function YearView({ data, workTypes, fy, setFy }: { data: ClientDetail; workType
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </Box>
+  );
+}
+
+const fyLabel = (y: number) => `FY ${y}-${String((y + 1) % 100).padStart(2, "0")}`;
+
+// Adjustments noted in the client's returns (docs/COMPLIANCE.md); internal only
+function ReturnAdjustments({ data, onOpen, onChanged }: { data: ClientDetail; onOpen: (itemId: string) => void; onChanged: () => void }) {
+  const [fy, setFy] = useState("all");
+  const [work, setWork] = useState("all");
+  const years = [...new Set(data.adjustments.map((a) => a.fy))].sort((a, b) => b - a);
+  const works = [...new Map(data.adjustments.map((a) => [a.workTypeId, a.work])).entries()];
+  const shown = data.adjustments.filter((a) => (fy === "all" || String(a.fy) === fy) && (work === "all" || a.workTypeId === work));
+  const count = data.adjustments.reduce((n, a) => n + a.notes.length, 0);
+  return (
+    <Box
+      title={`Return adjustments${count ? ` (${count})` : ""}`}
+      action={
+        data.adjustments.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <Select value={fy} onValueChange={setFy}>
+              <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All years</SelectItem>
+                {years.map((y) => <SelectItem key={y} value={String(y)}>{fyLabel(y)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={work} onValueChange={setWork}>
+              <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All work</SelectItem>
+                {works.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )
+      }
+    >
+      {data.adjustments.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          None noted yet. Staff write them in a return&apos;s window when marking it filed (or later under &quot;Adjustments in this return&quot;).
+        </p>
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-muted-foreground">None for this year or work.</p>
+      ) : (
+        <div className="space-y-3">
+          {shown.map((group) => (
+            <div key={group.itemId} className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">
+                  {group.work} · {group.period}
+                </p>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onOpen(group.itemId)}>
+                  <ExternalLink className="mr-1 h-3 w-3" /> Open
+                </Button>
+              </div>
+              <AdjustmentList adjustments={group.notes} readOnly={false} onChanged={() => onChanged()} />
+            </div>
+          ))}
         </div>
       )}
     </Box>
