@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ClientPhone, PHONE_LABELS, clientPhones } from "@/lib/client-contacts";
 import { REGISTRATION_FIELDS, RegistrationValues } from "@/lib/client-documents";
+import { SavedPersonPicker, responsiblePhoneOf } from "./saved-person-picker";
 
 // Parts of the client form (create and edit): the owner's mobile numbers, the
 // responsible person, the connector and the Tally ledger (see docs/BILLING.md)
@@ -72,7 +73,16 @@ export function contactsProblem(value: ContactsValue): string | null {
   return null;
 }
 
-export function ClientContactsFields({ value, onChange }: { value: ContactsValue; onChange: (v: ContactsValue) => void }) {
+export function ClientContactsFields({
+  value,
+  onChange,
+  clientId,
+}: {
+  value: ContactsValue;
+  onChange: (v: ContactsValue) => void;
+  // The client being edited, left out of "Use saved details"
+  clientId?: string;
+}) {
   const id = useId();
   const setPhone = (i: number, patch: Partial<ClientPhone>) =>
     onChange({ ...value, phones: value.phones.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
@@ -126,6 +136,20 @@ export function ClientContactsFields({ value, onChange }: { value: ContactsValue
         <p className="text-xs text-muted-foreground">
           Compliance reminders (WhatsApp and email) go to the responsible person. Untick if someone else, e.g. the accountant, handles it.
         </p>
+        {!value.ownerIsResponsible && (
+          <SavedPersonPicker
+            label="Use a saved owner or responsible person"
+            excludeClientId={clientId}
+            onPick={(person) =>
+              onChange({
+                ...value,
+                responsibleName: person.name.slice(0, 50),
+                responsiblePhone: responsiblePhoneOf(person).slice(0, 15),
+                responsibleEmail: person.email ?? "",
+              })
+            }
+          />
+        )}
         {!value.ownerIsResponsible && (
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1">

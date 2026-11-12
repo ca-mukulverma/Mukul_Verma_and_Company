@@ -1,5 +1,6 @@
 "use client";
 
+import { SavedPersonPicker, ownerPhonesOf } from "@/components/clients/saved-person-picker";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -271,6 +272,13 @@ export default function ClientCreatePage() {
                           <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         </div>
                         <FormDescription>Owner / proprietor of the business</FormDescription>
+                        <SavedPersonPicker
+                          onPick={(person) => {
+                            form.setValue("contactPerson", person.name.slice(0, 50), { shouldValidate: true, shouldDirty: true });
+                            if (person.email) form.setValue("email", person.email, { shouldValidate: true, shouldDirty: true });
+                            if (person.phones.length) setContacts((c) => ({ ...c, phones: ownerPhonesOf(person) }));
+                          }}
+                        />
                         <FormMessage />
                       </FormItem>
                     )}

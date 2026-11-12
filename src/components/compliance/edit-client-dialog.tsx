@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
+import { SavedPersonPicker, ownerPhonesOf } from "@/components/clients/saved-person-picker";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -143,6 +144,13 @@ export function EditClientDialog({
               <div className="space-y-1">
                 <Label>Owner name *</Label>
                 <Input value={form.contactPerson} maxLength={50} onChange={(e) => set({ contactPerson: e.target.value })} />
+                <SavedPersonPicker
+                  excludeClientId={clientId}
+                  onPick={(person) => {
+                    set({ contactPerson: person.name.slice(0, 50), ...(person.email && { email: person.email }) });
+                    if (person.phones.length) setContacts((c) => ({ ...c, phones: ownerPhonesOf(person) }));
+                  }}
+                />
               </div>
               <div className="space-y-1">
                 <Label>Company name</Label>
@@ -158,7 +166,7 @@ export function EditClientDialog({
               </div>
             </div>
             <ClientRegistrationFields value={registrations} onChange={setRegistrations} />
-            <ClientContactsFields value={contacts} onChange={setContacts} />
+            <ClientContactsFields value={contacts} onChange={setContacts} clientId={clientId} />
             <ClientBillingFields value={billing} onChange={setBilling} options={billingOptions} clientName={form.companyName || form.contactPerson} />
             <div className="space-y-1">
               <Label>Address</Label>

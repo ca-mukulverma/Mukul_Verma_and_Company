@@ -16,11 +16,14 @@ import {
 } from "@/lib/billing";
 import { COMPANY_LABELS, WAITING_BILL_STATUSES } from "@/lib/billing-constants";
 import { billListWhere } from "@/lib/bill-list-query";
+import { MAX_WORK_ROWS } from "@/lib/billing-constants";
 
 const PAGE_SIZE = 50;
 
 // One piece of work: the party, what was done and when
 const workItemSchema = z.object({
+  // Each piece of work may be for a different company (the batch's otherwise)
+  company: z.enum(["MVC", "BEDGE"]).optional(),
   // A saved client, or "Other" with the name typed in
   clientId: z.string().min(1).optional().nullable(),
   other: otherPartySchema.optional().nullable(),
@@ -29,15 +32,15 @@ const workItemSchema = z.object({
 });
 
 const entryFields = {
-  company: z.enum(["MVC", "BEDGE"]),
+  company: z.enum(["MVC", "BEDGE"]).optional(),
   remark: z.string().trim().max(1000).optional().nullable(),
   // Partners chosen on the form to be told about the work
   notifyPartnerIds: z.array(z.string().min(1)).max(50).optional(),
 };
-// One entry, or several (items) logged together with the same company,
-// remark and partners
+// One entry, or several (items) logged together with the same remark and
+// partners; the company is given for the batch or for each item
 const workEntrySchema = workItemSchema.extend(entryFields);
-const workBatchSchema = z.object({ ...entryFields, items: z.array(workItemSchema).min(1, "Add the work done").max(20) });
+const workBatchSchema = z.object({ ...entryFields, items: z.array(workItemSchema).min(1, "Add the work done").max(MAX_WORK_ROWS) });
 
 // GET /api/bills – a page of bills; the filters are described in lib/bill-list-query.ts
 export async function GET(request: NextRequest) {
@@ -111,7 +114,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.errors[0]?.message || "Invalid data" }, { status: 400 });
   }
   const data = parsed.data;
-  const items = "items" in data ? data.items : [data];
+  const items = ("items" in data ? data.items : [data]).map((item) => ({ ...item, company: item.company ?? data.company }));
+  if (items.some((item) => !item.company)) {
+    return NextResponse.json({ error: "Choose the company" }, { status: 400 });
+  }
 
   if (items.some((item) => !item.clientId && !item.other)) {
     return NextResponse.json({ error: "Select a client or enter the name to bill" }, { status: 400 });
@@ -122,12 +128,12 @@ export async function POST(request: NextRequest) {
     if (found !== clientIds.length) return NextResponse.json({ error: "Client not found" }, { status: 400 });
   }
 
-  const types = await Promise.all(items.map((item) => defaultBillType(data.company, item.other ? null : item.clientId)));
+  const types = await Promise.all(items.map((item) => defaultBillType(item.company!, item.other ? null : item.clientId)));
   const bills = await prisma.$transaction(
     items.map((item, i) =>
       prisma.bill.create({
         data: {
-          company: data.company,
+          company: item.company!,
           type: types[i],
           description: item.description,
           workDate: new Date(item.workDate),
@@ -140,26 +146,28 @@ export async function POST(request: NextRequest) {
     )
   );
 
-  // Admins, the company's billing managers and the partners chosen on the
-  // form: one notification for everything logged together
+  // Admins, each company's billing managers and the partners chosen on the
+  // form: one notification per company for everything logged together
   after(async () => {
-    const [managerIds, partners] = await Promise.all([
-      getBillingManagerIds(data.company),
-      data.notifyPartnerIds?.length
-        ? prisma.user.findMany({
-            where: { id: { in: data.notifyPartnerIds }, role: "PARTNER", isActive: true },
-            select: { id: true },
-          })
-        : Promise.resolve([]),
-    ]);
-    await notifyBillingUsers([...managerIds, ...partners.map((p) => p.id)].filter((id) => id !== user.id), {
-      title: "Work logged for billing",
-      content:
-        bills.length === 1
-          ? `${user.name} logged ${COMPANY_LABELS[data.company]} work: ${describeBill(bills[0])}`
-          : `${user.name} logged ${bills.length} items of ${COMPANY_LABELS[data.company]} work: ${bills.map((b) => describeBill(b)).join("; ")}`.slice(0, 1000),
-      sentById: user.id,
-    });
+    const partners = data.notifyPartnerIds?.length
+      ? await prisma.user.findMany({
+          where: { id: { in: data.notifyPartnerIds }, role: "PARTNER", isActive: true },
+          select: { id: true },
+        })
+      : [];
+    const companies = [...new Set(bills.map((b) => b.company))];
+    for (const company of companies) {
+      const logged = bills.filter((b) => b.company === company);
+      const managerIds = await getBillingManagerIds(company);
+      await notifyBillingUsers([...new Set([...managerIds, ...partners.map((p) => p.id)])].filter((id) => id !== user.id), {
+        title: "Work logged for billing",
+        content:
+          logged.length === 1
+            ? `${user.name} logged ${COMPANY_LABELS[company]} work: ${describeBill(logged[0])}`
+            : `${user.name} logged ${logged.length} items of ${COMPANY_LABELS[company]} work: ${logged.map((b) => describeBill(b)).join("; ")}`.slice(0, 1000),
+        sentById: user.id,
+      });
+    }
   });
 
   return NextResponse.json("items" in data ? { bills: bills.map((b) => serializeBill(b, access)) } : serializeBill(bills[0], access), {

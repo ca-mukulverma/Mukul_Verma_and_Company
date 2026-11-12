@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
       include: {
         client: { select: { contactPerson: true, companyName: true, gstin: true, email: true } },
         createdBy: { select: { name: true } },
+        task: { select: { assignedBy: { select: { name: true } } } },
         amountEnteredBy: { select: { name: true } },
         reissuedFrom: { select: { billNumber: true } },
         reissuedAs: { select: { billNumber: true } },
@@ -78,6 +79,7 @@ export async function GET(request: NextRequest) {
     { header: "Total", key: "total", width: 14, style: money },
     { header: "Status", key: "status", width: 12 },
     { header: "Reissue", key: "reissue", width: 26 },
+    { header: "Task created by", key: "taskBy", width: 18 },
     { header: "Logged by", key: "createdBy", width: 18 },
     { header: "Amount by", key: "amountBy", width: 18 },
     { header: "Email", key: "email", width: 18 },
@@ -129,6 +131,7 @@ export async function GET(request: NextRequest) {
       ]
         .filter(Boolean)
         .join("; "),
+      taskBy: bill.task?.assignedBy.name ?? "",
       createdBy: bill.createdBy.name,
       amountBy: bill.amountEnteredBy?.name ?? "",
       email: bill.emailStatus ? EMAIL_STATUS_LABELS[bill.emailStatus] : "Not emailed",

@@ -22,7 +22,7 @@ import {
 import { BillTypeSelect } from "./bill-type-select";
 import { BillReturnNotice } from "./bill-return-notice";
 import { BillTo, BillToPicker, billToPayload, billToValid } from "./client-picker";
-import { apiErrorMessage, Bill, BillAction, BillEvent, billParty, EVENT_LABELS, runBillAction } from "./bill-types";
+import { apiErrorMessage, Bill, BillAction, BillEvent, billParty, billRaisedBy, EVENT_LABELS, runBillAction } from "./bill-types";
 
 export type BillDialog =
   | "amount"
@@ -93,6 +93,10 @@ function BillSummary({ bill }: { bill: Bill }) {
       <div className="rounded-md bg-muted/50 p-3 text-sm">
         <p className="font-medium">{client}</p>
         <p className="text-muted-foreground whitespace-pre-line line-clamp-3">{bill.description}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {billRaisedBy(bill).viaTask ? "Task created by" : "Logged by"}{" "}
+          <span className="font-medium text-foreground">{billRaisedBy(bill).name}</span>
+        </p>
       </div>
       <BillReturnNotice bill={bill} />
     </>

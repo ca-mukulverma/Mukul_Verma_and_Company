@@ -427,6 +427,15 @@ owner as well. There is no fallback: when the responsible person has no
 WhatsApp number, the sheet shows "⚠ No WhatsApp number" under the client and
 the reminder is not sent on WhatsApp.
 
+**Use saved details:** on the client form (create, edit and the Edit client
+window), *Use saved details* under the owner's name and *Use a saved owner or
+responsible person* in the responsible-person box search the owners and
+responsible persons of every saved client by name or mobile number
+(`/api/clients/people`). Picking one copies their name, numbers and email
+into the form (an owner can be picked as a responsible person and the other
+way round). The details are copied, not linked: a later change is made on
+each client.
+
 **Gmail limit:** a free Gmail account sends about 500 emails a day, shared with
 bill emails. The Overview shows today's count, and a reminder run that would
 go over is refused with a message to send the rest tomorrow.

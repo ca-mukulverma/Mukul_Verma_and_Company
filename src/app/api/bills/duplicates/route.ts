@@ -11,16 +11,18 @@ import { isLikelyRepeat, workWords } from "@/lib/bill-similarity";
 const LOOKBACK_DAYS = 60;
 
 const schema = z.object({
-  company: z.enum(["MVC", "BEDGE"]),
+  company: z.enum(["MVC", "BEDGE"]).optional(),
   items: z
     .array(
       z.object({
+        // Each piece of work may be for its own company
+        company: z.enum(["MVC", "BEDGE"]).optional(),
         clientId: z.string().min(1).optional().nullable(),
         otherName: z.string().trim().max(150).optional().nullable(),
         description: z.string().max(2000),
       })
     )
-    .max(20),
+    .max(100),
 });
 
 // POST /api/bills/duplicates – for each piece of work about to be logged, the
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest) {
       if (!party || words.size === 0) return [];
 
       const recent = await prisma.bill.findMany({
-        where: { ...party, company, createdAt: { gte: since }, status: { notIn: ["cancelled", "not_billable"] } },
+        where: { ...party, ...((item.company ?? company) && { company: item.company ?? company }), createdAt: { gte: since }, status: { notIn: ["cancelled", "not_billable"] } },
         orderBy: { createdAt: "desc" },
         take: 50,
         select: { id: true, description: true, workDate: true, status: true, createdBy: { select: { name: true } } },

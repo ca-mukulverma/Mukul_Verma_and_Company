@@ -12,7 +12,8 @@ export interface Bill {
   workDate: string;
   remark: string | null;
   statusChangedAt: string;
-  task: { id: string; title: string } | null;
+  // assignedBy: who created the task
+  task: { id: string; title: string; assignedBy: { id: string; name: string } } | null;
   client: (ClientOption & { gstin?: string | null }) | null;
   billToName: string | null;
   billToAddress: string | null;
@@ -187,4 +188,10 @@ export async function blobErrorMessage(error: unknown, fallback = "Download fail
     }
   }
   return fallback;
+}
+
+// Who the work came from: the person who created the task, or who logged the
+// work directly. Billing goes back to them.
+export function billRaisedBy(bill: Pick<Bill, "task" | "createdBy">): { id: string; name: string; viaTask: boolean } {
+  return bill.task ? { ...bill.task.assignedBy, viaTask: true } : { ...bill.createdBy, viaTask: false };
 }
