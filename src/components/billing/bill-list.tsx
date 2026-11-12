@@ -499,7 +499,11 @@ function BillCard({
           <span>Work date: {format(new Date(bill.workDate), "d MMM yyyy")}</span>
           <span>
             {bill.task ? (
-              <>From task: <Link href={`/dashboard/tasks/${bill.task.id}`} className="underline">{bill.task.title}</Link></>
+              <>
+                From task: <Link href={`/dashboard/tasks/${bill.task.id}`} className="underline">{bill.task.title}</Link>
+                {" · "}
+                <span className="font-medium text-foreground/80">Task created by {bill.task.assignedBy.name}</span>
+              </>
             ) : (
               <>Logged by {bill.createdBy.name}</>
             )}

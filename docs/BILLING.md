@@ -76,10 +76,20 @@ manager, exactly like a completed task. Admin and the company's billing
 managers are notified of every work entry; the form also lists the partners,
 and the ones ticked under **Also notify partners** are notified too.
 
-- **Several at once:** *Add another* adds a row (client, work, date; the new
-  row starts with the previous row's client and date). Each row becomes its
-  own bill; the remark and partners apply to all of them, and everyone is
-  sent one notification for the lot (`POST /api/bills` with `items`).
+- **Several at once:** *Add another* adds a row (company, client, work, date;
+  the new row starts with the previous row's company, client and date). Each
+  row has its own company and becomes its own bill; the remark and partners
+  apply to all of them, and everyone is sent one notification per company
+  for the lot (`POST /api/bills` with `items`, each with its `company`). Up
+  to 100 rows at once.
+- **From Excel:** *Download Excel* gives a sheet with drop-downs for the
+  company and the client (the client list is on a hidden *Lists* sheet; the
+  first choice is *Other (not a saved client)*, with columns for the name,
+  address and GSTIN to bill), plus the work done and the date. *Import from
+  Excel* reads the filled sheet (`/api/bills/import`, `src/lib/work-log-excel.ts`)
+  and puts the rows in the form; nothing is logged until *Log* is pressed.
+  Rows that need fixing (client not found or matching several, no company,
+  bad date) are marked in red until changed.
 - **Log again:** in *My entries*, *Log again* fills the form with that
   entry's company, client and work, dated today, for monthly work.
 - **Already logged?** While the work is typed, the form looks for the same
@@ -90,6 +100,10 @@ and the ones ticked under **Also notify partners** are notified too.
 - *My entries* says where each bill is in plain words ("With Rahul for the
   amount", "With Admin for final approval", "Billed") and how long it has
   waited there.
+- **Who it came from:** every bill shows who created the task it came from
+  (*Task created by*), or who logged the work. It is on the bill cards, in
+  every bill dialog, as the *From* column of the Billing List and as *Task
+  created by* in its Excel; the search box finds bills by that person too.
 
 **New client?** Admins and partners see **Add new client** at the end of
 the client search (in *Log work* and in a bill's *Edit details*). It asks

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { AlertTriangle, Loader2, Plus, X } from "lucide-react";
+import { AlertTriangle, Download, FileSpreadsheet, Loader2, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,10 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useDebounce } from "@/hooks/use-debounce";
-import { CompanyValue } from "@/lib/billing-constants";
+import { CompanyValue, MAX_WORK_ROWS } from "@/lib/billing-constants";
 import { BillTo, BillToPicker, billToPayload, billToValid } from "./client-picker";
 import { CompanySelect } from "./company-select";
-import { apiErrorMessage } from "./bill-types";
+import { apiErrorMessage, blobErrorMessage, downloadBillFile } from "./bill-types";
 
 // What "Log again" on an earlier entry fills the form with; a new key each time
 export interface WorkPrefill {
@@ -27,9 +27,23 @@ export interface WorkPrefill {
 
 interface WorkRow {
   key: number;
+  company: CompanyValue;
   billTo: BillTo;
   description: string;
   workDate: string;
+  // From an Excel import: what needs fixing, shown until the row is changed
+  problems?: string[];
+}
+
+// A row of the Excel file, as /api/bills/import reads it
+interface ImportedRow {
+  row: number;
+  company: CompanyValue | null;
+  client: { id: string; contactPerson: string; companyName: string | null } | null;
+  other: { name: string; address: string; gstin: string } | null;
+  description: string;
+  workDate: string | null;
+  problems: string[];
 }
 
 // A recent bill of the same party for what looks like the same work
@@ -43,17 +57,18 @@ interface PossibleRepeat {
 
 let nextRowKey = 1;
 const today = () => format(new Date(), "yyyy-MM-dd");
-const emptyRow = (workDate = today()): WorkRow => ({
+const emptyRow = (workDate = today(), company: CompanyValue = "MVC"): WorkRow => ({
   key: nextRowKey++,
+  company,
   billTo: { client: null, other: null },
   description: "",
   workDate,
 });
 
 // "Log work done" – replaces posting the work in the WhatsApp billing group.
-// Several pieces of work can be logged together; each becomes its own bill.
+// Several pieces of work can be logged together, each for its own company;
+// each becomes its own bill. Many can be filled in Excel and imported.
 export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; prefill?: WorkPrefill | null }) {
-  const [company, setCompany] = useState<CompanyValue>("MVC");
   const [rows, setRows] = useState<WorkRow[]>(() => [emptyRow()]);
   const [remark, setRemark] = useState("");
   const [saving, setSaving] = useState(false);
@@ -62,6 +77,9 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
   const [notifyPartnerIds, setNotifyPartnerIds] = useState<string[]>([]);
   const [repeats, setRepeats] = useState<Record<number, PossibleRepeat[]>>({});
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     axios
@@ -73,8 +91,7 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
   // "Log again": the same client and work, dated today, ready to adjust
   useEffect(() => {
     if (!prefill) return;
-    setCompany(prefill.company);
-    setRows([{ ...emptyRow(), billTo: prefill.billTo, description: prefill.description }]);
+    setRows([{ ...emptyRow(today(), prefill.company), billTo: prefill.billTo, description: prefill.description }]);
     setTimeout(() => descriptionRef.current?.focus(), 0);
   }, [prefill]);
 
@@ -83,20 +100,20 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
     useMemo(
       () =>
         JSON.stringify({
-          company,
           keys: rows.map((row) => row.key),
           items: rows.map((row) => ({
+            company: row.company,
             clientId: row.billTo.other ? null : row.billTo.client?.id ?? null,
             otherName: row.billTo.other?.name ?? null,
             description: row.description.trim(),
           })),
         }),
-      [company, rows]
+      [rows]
     ),
     600
   );
   useEffect(() => {
-    const { keys, ...body } = JSON.parse(checkKey) as { keys: number[]; company: string; items: { description: string }[] };
+    const { keys, ...body } = JSON.parse(checkKey) as { keys: number[]; items: { description: string }[] };
     if (!body.items.some((item) => item.description.length >= 3)) {
       setRepeats({});
       return;
@@ -118,10 +135,55 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
     setNotifyPartnerIds(notifyPartnerIds.includes(id) ? notifyPartnerIds.filter((p) => p !== id) : [...notifyPartnerIds, id]);
 
   const updateRow = (key: number, change: Partial<WorkRow>) =>
-    setRows((current) => current.map((row) => (row.key === key ? { ...row, ...change } : row)));
+    setRows((current) => current.map((row) => (row.key === key ? { ...row, ...change, problems: undefined } : row)));
 
   const rowValid = (row: WorkRow) => billToValid(row.billTo) && row.description.trim().length >= 3 && !!row.workDate;
   const valid = rows.every(rowValid);
+
+  // The Excel sheet with drop-downs for the company and the client
+  const downloadTemplate = async () => {
+    setDownloading(true);
+    try {
+      await downloadBillFile({ method: "get", url: "/api/bills/import" });
+    } catch (error) {
+      toast.error(await blobErrorMessage(error, "Could not download the Excel file"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // The filled sheet: its rows go into the form, to be checked and logged
+  const importFile = async (file: File) => {
+    setImporting(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await axios.post<{ rows: ImportedRow[] }>("/api/bills/import", body);
+      const imported: WorkRow[] = response.data.rows.map((r) => ({
+        ...emptyRow(r.workDate ?? "", r.company ?? "MVC"),
+        billTo: { client: r.client, other: r.other },
+        description: r.description,
+        problems: r.problems.length ? [`Row ${r.row}: ${r.problems.join("; ")}`] : undefined,
+      }));
+      // An empty form is replaced; otherwise the rows are added after
+      const blank = rows.length === 1 && !rows[0].description.trim() && !rows[0].billTo.client && !rows[0].billTo.other;
+      const next = [...(blank ? [] : rows), ...imported];
+      if (next.length > MAX_WORK_ROWS) {
+        toast.error(`Up to ${MAX_WORK_ROWS} pieces of work can be logged at once; the form has ${rows.length} already.`);
+        return;
+      }
+      setRows(next);
+      setRepeats({});
+      const withProblems = imported.filter((r) => r.problems).length;
+      if (withProblems) toast.warning(`${imported.length} rows imported; ${withProblems} need fixing (marked in red)`);
+      else toast.success(`${imported.length} rows imported. Check them and press Log.`);
+    } catch (error) {
+      toast.error(apiErrorMessage(error, "Could not read the Excel file"));
+    } finally {
+      setImporting(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,8 +191,8 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
     setSaving(true);
     try {
       await axios.post("/api/bills", {
-        company,
         items: rows.map((row) => ({
+          company: row.company,
           ...billToPayload(row.billTo),
           description: row.description.trim(),
           workDate: new Date(`${row.workDate}T12:00:00`).toISOString(),
@@ -157,14 +219,33 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
         <CardTitle>Log work done</CardTitle>
         <CardDescription>
           For work done outside a task in the app. It goes to the billing manager to be billed. Add several pieces of
-          work at once with <strong>Add another</strong>; each becomes its own bill.
+          work at once with <strong>Add another</strong>, or fill them in Excel and import the file; each becomes its own
+          bill.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="space-y-5">
-          <div className="space-y-2">
-            <Label>Company</Label>
-            <div><CompanySelect value={company} onChange={setCompany} /></div>
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3">
+            <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+            <span className="mr-auto text-sm text-muted-foreground">Many pieces of work? Fill them in Excel.</span>
+            <Button type="button" variant="outline" size="sm" onClick={downloadTemplate} disabled={downloading}>
+              {downloading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
+              Download Excel
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => fileInput.current?.click()} disabled={importing}>
+              {importing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1 h-4 w-4" />}
+              Import from Excel
+            </Button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) importFile(file);
+              }}
+            />
           </div>
 
           {rows.map((row, index) => (
@@ -184,6 +265,15 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
                   </Button>
                 </div>
               )}
+              {row.problems && (
+                <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:bg-red-950/40 dark:text-red-200">
+                  {row.problems.map((problem) => <p key={problem}>{problem}</p>)}
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>Company*</Label>
+                <div><CompanySelect value={row.company} onChange={(company) => updateRow(row.key, { company })} /></div>
+              </div>
               <div className="space-y-2">
                 <Label>Client*</Label>
                 <BillToPicker value={row.billTo} onChange={(billTo) => updateRow(row.key, { billTo })} />
@@ -233,7 +323,7 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
             </div>
           ))}
 
-          {rows.length < 20 && (
+          {rows.length < MAX_WORK_ROWS && (
             <Button
               type="button"
               variant="outline"
@@ -241,7 +331,7 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
               // The same client and date as the last one, which is the usual case
               onClick={() => {
                 const last = rows[rows.length - 1];
-                setRows([...rows, { ...emptyRow(last.workDate), billTo: last.billTo }]);
+                setRows([...rows, { ...emptyRow(last.workDate, last.company), billTo: last.billTo }]);
               }}
             >
               <Plus className="mr-1 h-4 w-4" />Add another

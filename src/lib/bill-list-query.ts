@@ -81,6 +81,9 @@ export function billListWhere(
       { client: { contactPerson: { contains: search, mode: "insensitive" } } },
       { client: { companyName: { contains: search, mode: "insensitive" } } },
       { billToName: { contains: search, mode: "insensitive" } },
+      // Who the work came from: the task's creator, or who logged it
+      { task: { assignedBy: { name: { contains: search, mode: "insensitive" } } } },
+      { taskId: null, createdBy: { name: { contains: search, mode: "insensitive" } } },
     ];
     // Bill numbers and fees only where the user sees them: the billing
     // managers' bills and the Billing List

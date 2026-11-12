@@ -171,7 +171,7 @@ export async function buildTaskExport(where: Prisma.TaskWhereInput, downloadedBy
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
-function cellText(value: ExcelJS.CellValue): string {
+export function cellText(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") return String(value);
@@ -225,7 +225,7 @@ export async function readTaskRows(buffer: ArrayBuffer): Promise<{ row: number; 
 }
 
 // Due date text as yyyy-mm-dd: 2026-11-15, 15/11/2026, 15-11-26, 15.11.2026
-function parseDay(text: string): string | null {
+export function parseDay(text: string): string | null {
   let y: number, m: number, d: number;
   let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (match) [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])];

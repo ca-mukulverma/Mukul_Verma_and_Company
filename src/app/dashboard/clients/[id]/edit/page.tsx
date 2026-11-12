@@ -1,5 +1,6 @@
 "use client";
 
+import { SavedPersonPicker, ownerPhonesOf } from "@/components/clients/saved-person-picker";
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -307,6 +308,13 @@ export default function EditClientPage({
                     <FormControl>
                       <Input placeholder="John Smith" {...field} />
                     </FormControl>
+                        <SavedPersonPicker excludeClientId={clientId}
+                          onPick={(person) => {
+                            form.setValue("contactPerson", person.name.slice(0, 50), { shouldValidate: true, shouldDirty: true });
+                            if (person.email) form.setValue("email", person.email, { shouldValidate: true, shouldDirty: true });
+                            if (person.phones.length) setContacts((c) => ({ ...c, phones: ownerPhonesOf(person) }));
+                          }}
+                        />
                     <FormMessage />
                   </FormItem>
                 )}
@@ -348,7 +356,7 @@ export default function EditClientPage({
 
               <ClientRegistrationFields value={registrations} onChange={setRegistrations} />
 
-              <ClientContactsFields value={contacts} onChange={setContacts} />
+              <ClientContactsFields value={contacts} onChange={setContacts} clientId={clientId} />
 
               <ClientBillingFields
                 value={billing}

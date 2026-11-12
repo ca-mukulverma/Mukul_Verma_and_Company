@@ -105,7 +105,8 @@ export const billInclude = {
     select: { id: true, contactPerson: true, companyName: true, gstin: true, connector: { select: { id: true, name: true } } },
   },
   connector: { select: { id: true, name: true } },
-  task: { select: { id: true, title: true } },
+  // Who created the task: the bill goes back to them (e.g. for the amount)
+  task: { select: { id: true, title: true, assignedBy: { select: { id: true, name: true } } } },
   createdBy: { select: { id: true, name: true } },
   amountRequestedFrom: { select: { id: true, name: true } },
   amountEnteredBy: { select: { id: true, name: true } },

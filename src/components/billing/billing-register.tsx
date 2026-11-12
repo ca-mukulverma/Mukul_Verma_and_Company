@@ -32,7 +32,7 @@ import { EmailBillsDialog, MAX_EMAIL_BILLS } from "./bill-email-dialog";
 import { billTypeShortLabel } from "./bill-type-select";
 import { EmailStatus } from "./email-status";
 import { BillStatusBadge } from "./bill-list";
-import { apiErrorMessage, Bill, billParty, blobErrorMessage, CHANGE_KIND_LABELS, downloadBillFile } from "./bill-types";
+import { apiErrorMessage, Bill, billParty, billRaisedBy, blobErrorMessage, CHANGE_KIND_LABELS, downloadBillFile } from "./bill-types";
 import { ChangeKind, ChangeRequestDialog } from "./change-request-dialog";
 
 // Numbered bills (approved and cancelled) of the bill types whose Billing List
@@ -312,6 +312,7 @@ export function BillingRegister({ types, onChanged }: { types: BillTypeValue[]; 
                 <TableHead>Date</TableHead>
                 <TableHead>Client</TableHead>
                 <TableHead>Work</TableHead>
+                <TableHead>From</TableHead>
                 <TableHead className="text-right">Fee</TableHead>
                 <TableHead className="text-right">GST</TableHead>
                 <TableHead className="text-right">Total</TableHead>
@@ -354,6 +355,10 @@ export function BillingRegister({ types, onChanged }: { types: BillTypeValue[]; 
                       {bill.reissuedAs && (
                         <p className="text-xs text-muted-foreground">Reissued as {bill.reissuedAs.billNumber}</p>
                       )}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-sm">
+                      {billRaisedBy(bill).name}
+                      <p className="text-xs text-muted-foreground">{billRaisedBy(bill).viaTask ? "Task creator" : "Logged work"}</p>
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">{formatRupees(fee)}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">{gst ? formatRupees(gst) : "—"}</TableCell>

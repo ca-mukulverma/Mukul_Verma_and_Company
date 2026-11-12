@@ -146,3 +146,6 @@ export function formatRupees(amount: number): string {
     minimumFractionDigits: 2,
   }).format(amount);
 }
+
+// Pieces of work that can be logged at once (Log work form and Excel import)
+export const MAX_WORK_ROWS = 100;
