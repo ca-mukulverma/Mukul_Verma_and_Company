@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { contactsData, contactsError, contactsSchema } from "@/lib/client-contacts";
-import { canSetTallyLedger } from "@/lib/connectors";
+import { canSetTallyLedger, ledgerPendingFor, notifyLedgersNeeded } from "@/lib/connectors";
 import { registrationsPayload, registrationsProblem, registrationsSchema } from "@/lib/client-documents";
 
 // Client update validation schema
@@ -165,7 +165,7 @@ export async function PATCH(
     }
 
     // Update client data
-    const updatedClient = await prisma.client.update({
+    let updatedClient = await prisma.client.update({
       where: { id },
       data: {
         contactPerson: data.contactPerson,
@@ -180,10 +180,29 @@ export async function PATCH(
         isGuest: data.isGuest,
         accessExpiry,
         ...(input.connectorId !== undefined && { connectorId: input.connectorId }),
+        // Picking a ledger settles a new client's; leaving it empty keeps the
+        // client on the list until it is marked as created in Billing → Tally
         ...(mayLedger &&
-          input.tallyLedgerName !== undefined && { tallyLedgerName: input.tallyLedgerName || null, tallyLedgerPending: false }),
+          input.tallyLedgerName !== undefined && {
+            tallyLedgerName: input.tallyLedgerName || null,
+            ...(input.tallyLedgerName && { tallyLedgerPending: false }),
+          }),
       },
     });
+
+    // A guest made permanent, or a client whose connector was removed, now
+    // needs its own ledger in Tally
+    if (
+      (existingClient.isGuest || existingClient.connectorId) &&
+      !updatedClient.tallyLedgerPending &&
+      ledgerPendingFor(updatedClient)
+    ) {
+      updatedClient = await prisma.client.update({ where: { id }, data: { tallyLedgerPending: true } });
+      await notifyLedgersNeeded([updatedClient.companyName || updatedClient.contactPerson], {
+        id: session.user.id,
+        name: session.user.name ?? "Someone",
+      });
+    }
 
     // Log the activity
     await prisma.activity.create({

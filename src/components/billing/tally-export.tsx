@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { BILL_TYPE_LABELS, BillTypeValue, formatRupees } from "@/lib/billing-constants";
 import { apiErrorMessage, blobErrorMessage, downloadBillFile } from "./bill-types";
 import { TallyLedgerFile } from "./tally-ledger-file";
+import { PendingLedgers } from "./pending-ledgers";
 
 interface Series {
   type: BillTypeValue;
@@ -35,6 +36,8 @@ const ACTION_LABELS = { Create: "New", Alter: "Changed", Cancel: "Cancelled" } a
 // Billing managers send approved bills to Tally as an XML file per company
 export function TallyExport({ isAdmin }: { isAdmin: boolean }) {
   const [series, setSeries] = useState<Series[] | null>(null);
+  // Bumped to reload the clients waiting for a ledger
+  const [ledgersVersion, setLedgersVersion] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -66,8 +69,14 @@ export function TallyExport({ isAdmin }: { isAdmin: boolean }) {
           Every client&apos;s ledger must exist in Tally under exactly the name used here. To set them all at once,
           download the client list, fill in the names in Excel and upload it.
         </p>
-        <TallyLedgerFile onSaved={load} />
+        <TallyLedgerFile
+          onSaved={() => {
+            load();
+            setLedgersVersion((v) => v + 1);
+          }}
+        />
       </div>
+      <PendingLedgers key={ledgersVersion} onSaved={load} />
       <div className="grid gap-4 xl:grid-cols-3">
         {series.map((s) => (
           <SeriesCard key={s.type} series={s} isAdmin={isAdmin} onChanged={load} />

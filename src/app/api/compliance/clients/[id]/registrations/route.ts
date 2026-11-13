@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { partyName } from "@/lib/compliance";
-import { canSetTallyLedger } from "@/lib/connectors";
+import { ledgerPendingFor, notifyLedgersNeeded } from "@/lib/connectors";
 import { GSTIN_PATTERN, gstState, panOfGstin } from "@/lib/gst-states";
 import { badRequest, notFound, parseBody, requireComplianceAccess } from "@/lib/compliance-api";
 
@@ -45,7 +45,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   });
   if (taken) return badRequest(`GSTIN ${gstin} is already saved for ${partyName(taken)}`);
 
-  const mayLedger = await canSetTallyLedger(access.userId);
   const created = await prisma.client.create({
     data: {
       parentClientId: main.id,
@@ -61,7 +60,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       responsiblePhone: main.responsiblePhone,
       responsibleEmail: main.responsibleEmail,
       connectorId: main.connectorId,
-      tallyLedgerPending: !mayLedger && !main.connectorId,
+      tallyLedgerPending: ledgerPendingFor({ connectorId: main.connectorId }),
       managerId: main.managerId,
       notes: `${gstState(gstin)} GST registration of ${partyName(main)}`,
     },
@@ -70,5 +69,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   await prisma.activity.create({
     data: { type: "client", action: "created", target: `${partyName(main)} – ${gstState(gstin)} (${gstin})`, userId: access.userId },
   });
+  if (!main.connectorId) {
+    const by = await prisma.user.findUnique({ where: { id: access.userId }, select: { id: true, name: true } });
+    if (by) await notifyLedgersNeeded([`${partyName(main)} – ${gstState(gstin)} (${gstin})`], by);
+  }
   return NextResponse.json({ id: created.id, state: gstState(gstin) }, { status: 201 });
 }

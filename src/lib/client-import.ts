@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ClientPhone } from "@/lib/client-contacts";
 import { registrationsPayload, registrationsProblem } from "@/lib/client-documents";
 import { ClientExtras, createItemsForImported, extrasWrites } from "@/lib/client-extras";
+import { ledgerPendingFor, notifyLedgersNeeded } from "@/lib/connectors";
 
 // Bulk client import from an Excel sheet (Admin, Partner). The template has a
 // "Clients" sheet to fill in and an "Instructions" sheet.
@@ -270,7 +271,7 @@ export async function checkClientRows(rows: { row: number; data: ClientRowData }
 // returns how many clients were created
 export async function importClientRows(
   rows: ImportRow[],
-  userId: string,
+  user: { id: string; name: string },
   extras?: ClientExtras,
   allowSharedContact = false,
 ) {
@@ -309,8 +310,9 @@ export async function importClientRows(
         responsiblePhone: data.responsibleName ? data.responsiblePhone : null,
         responsibleEmail: data.responsibleName ? data.responsibleEmail : null,
         connectorId: connectorId ?? null,
+        tallyLedgerPending: ledgerPendingFor({ tallyLedgerName: data.tallyLedgerName, connectorId }),
         isGuest: false,
-        managerId: userId,
+        managerId: user.id,
       })),
     }),
     ...(extras ? extrasWrites(extras, ids) : []),
@@ -319,10 +321,12 @@ export async function importClientRows(
         type: "client",
         action: "created",
         target: `Imported ${ready.length} client${ready.length === 1 ? "" : "s"} from Excel`,
-        userId,
+        userId: user.id,
       },
     }),
   ]);
+  const noLedger = ready.filter((r) => ledgerPendingFor({ tallyLedgerName: r.data.tallyLedgerName, connectorId: r.connectorId }));
+  await notifyLedgersNeeded(noLedger.map((r) => r.data.companyName || r.data.contactPerson!), user);
   if (extras?.setups.length) await createItemsForImported([...new Set(extras.setups.map((s) => ids.get(s.clientRow)!))]);
   return ready.length;
 }

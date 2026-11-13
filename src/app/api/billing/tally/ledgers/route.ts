@@ -11,6 +11,43 @@ const schema = z.object({
   tallyLedgerName: z.string().trim().max(100),
 });
 
+// GET /api/billing/tally/ledgers – new clients whose ledger still has to be
+// created in Tally (billing managers and Admin)
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  const user = getSessionUser(session);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await getBillingAccess(user.id);
+  if (!access || access.manages.length === 0) {
+    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+  }
+  const clients = await prisma.client.findMany({
+    where: { tallyLedgerPending: true, connectorId: null, isGuest: false },
+    select: {
+      id: true,
+      contactPerson: true,
+      companyName: true,
+      gstin: true,
+      createdAt: true,
+      manager: { select: { name: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  return NextResponse.json(
+    {
+      clients: clients.map((c) => ({
+        id: c.id,
+        name: c.companyName || c.contactPerson,
+        contactPerson: c.contactPerson,
+        gstin: c.gstin,
+        createdAt: c.createdAt,
+        addedBy: c.manager.name,
+      })),
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
+}
+
 // PUT /api/billing/tally/ledgers – the client's party ledger name in Tally (billing managers)
 export async function PUT(request: NextRequest) {
   const session = await getServerSession(authOptions);

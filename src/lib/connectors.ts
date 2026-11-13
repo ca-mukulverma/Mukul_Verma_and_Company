@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getBillingAccess } from "@/lib/billing";
+import { getBillingAccess, notifyBillingUsers } from "@/lib/billing";
 
 // Connectors bring clients to the firm and pay their fees, so a connector
 // client's bills go to the connector's ledger in Tally (see docs/BILLING.md).
@@ -14,6 +14,38 @@ import { getBillingAccess } from "@/lib/billing";
 export async function canSetTallyLedger(userId: string) {
   const access = await getBillingAccess(userId);
   return !!access && (access.isAdmin || access.manages.length > 0);
+}
+
+// A new client needs its party ledger created in Tally unless a ledger was
+// picked for it or its bills go to a connector's ledger. Guests aren't billed.
+export function ledgerPendingFor(client: { tallyLedgerName?: string | null; connectorId?: string | null; isGuest?: boolean }) {
+  return !client.tallyLedgerName && !client.connectorId && !client.isGuest;
+}
+
+// Tells the billing managers and Admins (except whoever added them) about new
+// clients without a Tally ledger, so it can be created in Tally
+export async function notifyLedgersNeeded(clientNames: string[], addedBy: { id: string; name: string }) {
+  if (clientNames.length === 0) return;
+  const setters = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      id: { not: addedBy.id },
+      OR: [{ role: "ADMIN" }, { role: "PARTNER", OR: [{ canApproveBilling: true }, { canManageBedgeBilling: true }] }],
+    },
+    select: { id: true },
+  });
+  if (setters.length === 0) return;
+  const one = clientNames.length === 1;
+  const listed = clientNames.slice(0, 5).join(", ") + (clientNames.length > 5 ? ` and ${clientNames.length - 5} more` : "");
+  await notifyBillingUsers(
+    setters.map((u) => u.id),
+    {
+      title: one ? `Tally ledger needed: ${clientNames[0]}` : `Tally ledger needed for ${clientNames.length} new clients`,
+      content: `${addedBy.name} added ${listed} without a Tally ledger. Create ${one ? "the ledger" : "the ledgers"} in Tally (or pick an existing one) in Billing → Tally.`,
+      sentById: addedBy.id,
+    },
+    "/dashboard/billing?tab=tally"
+  );
 }
 
 export function connectorLedger(connector: { name: string; tallyLedgerName: string | null }) {
