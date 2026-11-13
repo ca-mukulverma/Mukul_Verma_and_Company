@@ -85,7 +85,7 @@ export async function buildClientTemplate(): Promise<Buffer> {
 }
 
 // Text of a cell whatever Excel stored: numbers, links, rich text, formulas
-function cellText(value: ExcelJS.CellValue): string {
+export function cellText(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "number") return Number.isInteger(value) ? String(value) : String(value);
   if (typeof value === "string" || typeof value === "boolean") return String(value);

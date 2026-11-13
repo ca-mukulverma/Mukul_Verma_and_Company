@@ -371,6 +371,18 @@ a "Scan & Pay" UPI QR code and the bank details.
     - Each client's party ledger defaults to the client's name. A billing
       manager can change it on the Tally tab when the name in Tally
       differs. Client ledgers must already exist in Tally.
+    - **All client ledgers at once:** on the Tally tab, *Ledger names from
+      Excel* downloads every client (Client ID, name, GSTIN, connector,
+      status and the ledger used now). Change the yellow *Tally Ledger Name*
+      column and upload the file; only that column is read, and rows are
+      matched by Client ID (or a GSTIN only one client has). A check lists
+      every change, rows with problems (unknown client, same client twice,
+      name over 100 characters; skipped) and warnings (two spaces together,
+      one ledger for several clients) before anything is saved. Empty or the
+      client's own name means the client's name. Clients still *to be set*
+      but unchanged in the file can be marked as checked with a tick.
+      Numbered bills not yet sent to Tally move to the new ledger, as with a
+      single change.
 
 ## Emailing bills
 
