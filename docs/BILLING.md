@@ -371,6 +371,18 @@ a "Scan & Pay" UPI QR code and the bank details.
     - Each client's party ledger defaults to the client's name. A billing
       manager can change it on the Tally tab when the name in Tally
       differs. Client ledgers must already exist in Tally.
+    - **All client ledgers at once:** on the Tally tab, *Ledger names from
+      Excel* downloads every client (Client ID, name, GSTIN, connector,
+      status and the ledger used now). Change the yellow *Tally Ledger Name*
+      column and upload the file; only that column is read, and rows are
+      matched by Client ID (or a GSTIN only one client has). A check lists
+      every change, rows with problems (unknown client, same client twice,
+      name over 100 characters; skipped) and warnings (two spaces together,
+      one ledger for several clients) before anything is saved. Empty or the
+      client's own name means the client's name. Clients still *to be set*
+      but unchanged in the file can be marked as checked with a tick.
+      Numbered bills not yet sent to Tally move to the new ledger, as with a
+      single change.
 
 ## Emailing bills
 
@@ -539,11 +551,30 @@ numbered bills not yet sent to Tally.
 
 ## Tally ledger on the client
 
-Only billing managers and Admin see the client form's *Tally ledger name*:
-pick a name already in use (from clients, connectors and bills) or type a new
-one; empty means the client's name. A client added by anyone else is listed as
-*New clients without a Tally ledger* in the billing manager's daily reminder
-until the ledger is set (in the client form or the Tally tab).
+Only billing managers and Admin see the client form's *Tally ledger name*, a
+searchable list of every party ledger in use: clients' own Tally names, the
+names of clients without one (their ledger is their name), connectors' ledgers
+and ledgers on bills, each with who uses it. Pick one, type a new name (*Use
+new ledger "…"*), or keep *Client's name*. Picking a ledger another client or
+a connector uses shows who, so a shared ledger is a choice, not a slip. 
+
+**New clients without a Tally ledger.** Every new permanent client added
+without a ledger (in the form, from Excel, or as another GST registration),
+whoever adds it, needs its ledger created in Tally; so does a guest made
+permanent, or a client whose connector is removed. Clients with a connector
+don't (their bills go to the connector's ledger).
+
+- Billing managers and Admins (except whoever added the client) get a
+  notification at once, linking to Billing → Tally. An Excel import sends one
+  notification for all its clients.
+- Billing → Tally lists them under *New clients without a Tally ledger*, with
+  who added each and when. Create the ledger in Tally, or pick one already
+  there, and press **Done**; left as *Client's name*, the ledger in Tally must
+  be named exactly as the client.
+- Until then they are counted in the daily digest (linking to the Tally tab).
+- Picking a ledger in the client form, on the Tally tab or in the Excel upload
+  also takes the client off the list. Saving the client form with the ledger
+  left empty doesn't.
 
 Every Tally voucher's narration has the work, the client (and GSTIN when it is
 shown), the bill number, the connector, and for a reissue the bill it replaces.

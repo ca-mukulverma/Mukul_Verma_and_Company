@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { contactsData, contactsError, contactsSchema } from "@/lib/client-contacts";
-import { canSetTallyLedger } from "@/lib/connectors";
+import { canSetTallyLedger, ledgerPendingFor, notifyLedgersNeeded } from "@/lib/connectors";
 import { registrationsPayload, registrationsProblem, registrationsSchema } from "@/lib/client-documents";
 
 // Client validation schema
@@ -166,8 +166,8 @@ export async function POST(req: NextRequest) {
     if (registrationProblem) return NextResponse.json({ error: registrationProblem }, { status: 400 });
     const contacts = contactsData(clientData);
     const phone = contacts.phone !== undefined ? contacts.phone : clientData.phone;
-    // Only billing managers and Admin set the Tally ledger; a client added by
-    // anyone else without one is flagged for the billing manager
+    // Only billing managers and Admin set the Tally ledger; a client added
+    // without one is flagged, and they are told, so it is created in Tally
     const mayLedger = await canSetTallyLedger(session.user.id);
     if (clientData.tallyLedgerName && !mayLedger) {
       return NextResponse.json({ error: "Only the billing manager or Admin can set the Tally ledger" }, { status: 403 });
@@ -203,7 +203,11 @@ export async function POST(req: NextRequest) {
         ...registrationsPayload(clientData),
         connectorId: clientData.connectorId || null,
         tallyLedgerName: mayLedger ? clientData.tallyLedgerName || null : null,
-        tallyLedgerPending: !mayLedger && !clientData.isGuest && !clientData.connectorId,
+        tallyLedgerPending: ledgerPendingFor({
+          tallyLedgerName: mayLedger ? clientData.tallyLedgerName : null,
+          connectorId: clientData.connectorId,
+          isGuest: clientData.isGuest,
+        }),
         isGuest: clientData.isGuest || false,
         accessExpiry: clientData.accessExpiry ? new Date(clientData.accessExpiry) : null,
         managerId: session.user.id,
@@ -219,6 +223,13 @@ export async function POST(req: NextRequest) {
         userId: session.user.id,
       },
     });
+
+    if (newClient.tallyLedgerPending) {
+      await notifyLedgersNeeded([newClient.companyName || newClient.contactPerson], {
+        id: session.user.id,
+        name: session.user.name ?? "Someone",
+      });
+    }
 
     return NextResponse.json({ client: newClient }, { status: 201 });
   } catch (error) {

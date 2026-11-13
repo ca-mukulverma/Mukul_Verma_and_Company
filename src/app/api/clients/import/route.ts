@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     if (mode === "preview") return NextResponse.json({ summary, rows, extras: extrasSummary(extras) });
 
-    const created = await importClientRows(rows, user.id, extras, allowSharedContact);
+    const created = await importClientRows(rows, user, extras, allowSharedContact);
     await clientCache.invalidate("*");
     return NextResponse.json({ summary, created });
   } catch (error) {

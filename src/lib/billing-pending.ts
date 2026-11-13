@@ -80,11 +80,11 @@ export async function pendingBillingWork(access: BillingAccess, now = new Date()
         where: { company: { in: access.manages }, status: "approved", emailStatus: "failed" },
         select: { emailStatusAt: true, updatedAt: true },
       }),
-      prisma.client.findMany({ where: { tallyLedgerPending: true, connectorId: null }, select: { createdAt: true } }),
+      prisma.client.findMany({ where: { tallyLedgerPending: true, connectorId: null, isGuest: false }, select: { createdAt: true } }),
     ]);
     groups.push(group("tally", "Bills to send to Tally", "/dashboard/billing?tab=tally", tally.map((b) => b.billDate ?? b.updatedAt), now));
     groups.push(group("emails", "Bill emails that failed", "/dashboard/billing?tab=list", failedEmails.map((b) => b.emailStatusAt ?? b.updatedAt), now));
-    groups.push(group("ledgers", "New clients without a Tally ledger", "/dashboard/clients", ledgers.map((c) => c.createdAt), now));
+    groups.push(group("ledgers", "New clients without a Tally ledger", "/dashboard/billing?tab=tally", ledgers.map((c) => c.createdAt), now));
   }
 
   return groups.filter((g): g is PendingGroup => g !== null);
