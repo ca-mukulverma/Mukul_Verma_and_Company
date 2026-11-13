@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bazaar Buddy Price Calculator</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#f2f5f5; --card:#fff; --ink:#12202a; --mute:#5b6c75; --line:#dbe3e5; --soft:#eef3f4;
+  --accent:#0f6b63; --good:#17703f; --bad:#b3261e; --warn:#8a5a00;
+  --ms:#a3195f; --fk:#1f56c4; --az:#b35c00;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace; color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0e1517; --card:#151e21; --ink:#e6eeef; --mute:#97a9ae; --line:#26343a; --soft:#1c282c;
+  --accent:#4fc2b4; --good:#52c98a; --bad:#ff8a80; --warn:#e8b64c; --ms:#ec7bb2; --fk:#7da6ff; --az:#f0a64e; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--sans);
+  padding:max(20px,env(safe-area-inset-top,0px)) max(14px,env(safe-area-inset-right,0px)) max(40px,env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px))}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font-size:22px;margin:0}
+.sub{color:var(--mute);margin:2px 0 0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.row{display:grid;gap:12px;margin-bottom:12px}
+.r3{grid-template-columns:2fr 1fr 1.4fr}
+.r4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.rp{grid-template-columns:1fr 1fr 1.3fr}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mute);font-weight:500;min-width:0}
+input,select{font:inherit;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;min-width:0}
+input:focus-visible,select:focus-visible,summary:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.pair{display:flex;gap:6px}.pair select{width:auto;flex:none}
+.note{font-size:13px;color:var(--mute);margin:0}
+.note b{color:var(--ink);font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-top:5px solid var(--c);border-radius:12px;padding:16px;min-width:0}
+.pn{font-weight:700;font-size:16px;color:var(--c)}
+.lbl{font-size:12px;color:var(--mute);margin-top:6px}
+.price{font-family:var(--mono);font-size:36px;font-weight:500;letter-spacing:-.02em;line-height:1.1}
+.line{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px dashed var(--line);font-size:14px;font-variant-numeric:tabular-nums}
+.line span:first-child{color:var(--mute)}
+.line b{font-family:var(--mono);font-weight:500;white-space:nowrap}
+.line.big{border-top:2px solid var(--ink);font-weight:700;font-size:15px}
+.line.big span:first-child{color:var(--ink)}
+.sec{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mute);font-weight:600;margin:12px 0 4px}
+.line i{font-style:normal;font-size:12px;color:var(--mute)}
+.line.tot{border-top:1px solid var(--ink);font-weight:600}
+.line.tot span:first-child{color:var(--ink)}
+.pos{color:var(--good)}.neg{color:var(--bad)}
+.chk{margin-top:12px;background:var(--soft);border-radius:8px;padding:10px}
+.chk label{font-size:12.5px}
+.chk .res{font-size:13px;margin-top:6px;font-family:var(--mono)}
+.warn{font-size:13px;color:var(--warn)}
+details.panel{padding:0}
+details.panel>summary{cursor:pointer;font-weight:600;padding:14px 16px;list-style-position:inside}
+details.panel>div{padding:0 16px 16px}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{font-size:13px}
+td.n,th.n{text-align:right}
+td.n{font-family:var(--mono);font-size:13.5px;white-space:nowrap}
+table.rates select{padding:6px 8px;font-size:13px}
+table.rates input{text-align:right;padding:6px 8px;max-width:120px;margin-left:auto;display:block}
+table.rates td:first-child{font-size:13.5px}
+tr.grp td{background:var(--soft);font-size:12px;font-weight:600;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+tr.tot td{font-weight:700;border-top:2px solid var(--ink)}
+.c-ms{color:var(--ms)}.c-fk{color:var(--fk)}.c-az{color:var(--az)}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btns .status{align-self:center}
+button{font:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:8px 12px;cursor:pointer}
+.status{font-size:13px;color:var(--mute);min-height:1em}
+@media (max-width:820px){.cards{grid-template-columns:1fr}.r3,.rp{grid-template-columns:1fr 1fr}.r3 label:first-child{grid-column:span 2}.r4{grid-template-columns:1fr 1fr}}
+/* ---------- PDF report (only shown when printing / saving as PDF) ---------- */
+#report{display:none}
+@media print{
+  @page{size:A4;margin:11mm 10mm}
+  :root{--bg:#fff;--card:#fff;--ink:#000;--mute:#444;--line:#c9d2d4;--soft:#eef3f4;--accent:#0f6b63;--good:#17703f;--bad:#b3261e;--ms:#a3195f;--fk:#1f56c4;--az:#b35c00;color-scheme:light}
+  body{background:#fff;color:#000;padding:0;font-size:10.5px}
+  .wrap{display:none!important}
+  #report{display:block}
+}
+#report{font:10.5px/1.4 var(--sans);color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+#report h1{font-size:18px;margin:0;color:#0f6b63}
+#report .meta{color:#444;margin:2px 0 8px}
+#report h2{font-size:12.5px;margin:12px 0 4px;padding-bottom:2px;border-bottom:1.5px solid #0f6b63;color:#0f6b63;break-after:avoid;page-break-after:avoid}
+#report .blk{break-inside:avoid;page-break-inside:avoid}
+#report table{width:100%;border-collapse:collapse;table-layout:fixed}
+#report th,#report td{padding:3px 6px;border-bottom:1px solid #d5dcde;vertical-align:top;font-size:10px}
+#report th{text-align:right;font-size:10.5px}
+#report th:first-child{text-align:left}
+#report td:first-child{width:34%;color:#222}
+#report td.n{text-align:right;font-family:var(--mono);font-size:9.6px;white-space:normal}
+#report tr{break-inside:avoid;page-break-inside:avoid}
+#report tr.grp td{background:#eef3f4;font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:9px;color:#444}
+#report tr.tot td{font-weight:700;border-top:1.5px solid #000;color:#000}
+#report tr.hi td{background:#e7f3ef;font-weight:700;font-size:11px}
+#report .kv td{font-size:10.5px}
+#report .kv td:nth-child(odd){color:#444;width:18%}
+#report .kv td:nth-child(even){font-weight:600;width:32%}
+#report .best{margin:8px 0 0;padding:6px 8px;border:1px solid #0f6b63;border-radius:6px;background:#e7f3ef}
+#report .fine{color:#555;font-size:9.5px;margin:4px 0 0}
+#report .c-ms{color:#a3195f}#report .c-fk{color:#1f56c4}#report .c-az{color:#b35c00}
+#report .neg{color:#b3261e}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h1>Bazaar Buddy Price Calculator</h1>
+    <p class="sub">Enter the product cost, selling price (optional) and packed weight. Commission, fees and shipping for each platform are worked out automatically, along with the price to sell at.</p>
+  </div>
+
+  <section class="panel" id="inputs">
+    <div class="row r3">
+      <label for="item">What are you selling? (HSN)<select id="item"></select></label>
+      <label for="gst">GST %<select id="gst"><option>0</option><option>3</option><option>5</option><option selected>18</option><option>40</option></select></label>
+      <label for="cat">Category<select id="cat"></select></label>
+    </div>
+    <div class="row r4">
+      <label for="cost">Buying cost per piece, without GST (₹)<input id="cost" type="number" value="500" min="0" step="any"></label>
+      <label for="pack">Packaging per piece (₹)<input id="pack" type="number" value="20" min="0" step="any"></label>
+      <label for="tgt">Profit I want per piece
+        <span class="pair"><input id="tgt" type="number" value="100" min="0" step="any" aria-label="Profit amount"><select id="tgtType" aria-label="Profit in rupees or percent"><option value="rs" selected>₹</option><option value="pc">% of cost</option></select></span></label>
+      <label for="sp">Product value / selling price (₹)<input id="sp" type="number" min="0" step="any" placeholder="Blank = find best price"></label>
+    </div>
+    <div class="row r4">
+      <label for="wt">Packed weight (g) - enter yourself<input id="wt" type="number" value="400" min="0" step="any"></label>
+    </div>
+    <p class="note" id="wtNote"></p>
+    <div class="btns"><button type="button" id="refresh" class="pri">↻ Refresh</button><button type="button" id="pdf">⬇ Download PDF report</button><span class="status" id="refMsg" aria-live="polite"></span></div>
+  </section>
+
+  <section class="cards" id="cards" aria-live="polite"></section>
+
+  <section class="panel">
+    <div class="row r4" style="margin-bottom:8px">
+      <label for="stock">Pieces in stock<input id="stock" type="number" value="100" min="0" step="1"></label>
+    </div>
+    <p class="note" id="stockNote"></p>
+  </section>
+
+  <details class="panel">
+    <summary>Change commission, fees and shipping rates</summary>
+    <div>
+      <p class="note" style="margin-bottom:10px">Commission fills in from the category. Change any number here and the prices update. Rates are planning figures from your fee sheets; check them in Seller Hub, Seller Central and the Meesho Supplier Panel.</p>
+      <div class="tw"><table class="rates" id="rates"></table></div>
+      <div class="btns"><button type="button" id="reset">Reset everything to defaults</button></div>
+      <div class="status" id="status" aria-live="polite"></div>
+    </div>
+  </details>
+
+  <details class="panel">
+    <summary>See the full calculation</summary>
+    <div><div class="tw"><table id="work"></table></div></div>
+  </details>
+</div>
+<div id="report"></div>
+
+<script>
+const ITEMS=[
+  ['3924','Plastic containers, kitchenware, household items',18,'home'],
+  ['3923','Plastic bottles and jars',18,'home'],
+  ['7323','Steel bottles, utensils, lunch boxes',5,'home'],
+  ['7615','Aluminium kitchen items',5,'home'],
+  ['4419','Wooden kitchenware',5,'home'],
+  ['6912','Ceramic cups, plates',5,'home'],
+  ['9617','Vacuum flasks',18,'home'],
+  ['3406','Candles',5,'decor'],
+  ['6302','Bedsheets, towels (up to ₹2,500)',5,'decor'],
+  ['6304','Cushion covers (up to ₹2,500)',5,'decor'],
+  ['9405','Lamps and lights',18,'decor'],
+  ['9105','Clocks',18,'decor'],
+  ['4820','Notebooks, exercise books',0,'stat'],
+  ['4820','Registers, diaries',18,'stat'],
+  ['9609','Pencils, crayons',0,'stat'],
+  ['4016','Erasers',0,'stat'],
+  ['9017','Geometry boxes',5,'stat'],
+  ['9608','Pens and markers',18,'stat'],
+  ['3401','Soap bars',5,'care'],
+  ['3401','Liquid hand wash',18,'care'],
+  ['3402','Detergents, cleaners',18,'care'],
+  ['3305','Shampoo, hair oil',5,'care'],
+  ['3306','Toothpaste',5,'care'],
+  ['9603','Toothbrushes',5,'care'],
+  ['3304','Make-up, skin care',18,'care'],
+  ['6601','Umbrellas',5,'fash'],
+  ['4202','Bags, wallets',18,'fash'],
+  ['9503','Toys, non-electronic',5,'toys'],
+  ['8516','Small electric appliances',18,'elec']
+];
+// commission %: [Flipkart under ₹1,000, Flipkart ₹1,000+, Amazon under ₹1,000, Amazon ₹1,000+]
+const CATS={home:['Home and kitchen',0,10,0,13],stat:['Stationery',0,8,0,10],care:['Personal care',0,8,0,9],
+  decor:['Home décor',0,12,0,14],fash:['Fashion',0,0,0,15],toys:['Toys',0,10,0,10],elec:['Electronics',0,12,0,9]};
+const P3=[{id:'ms',name:'Meesho'},{id:'fk',name:'Flipkart'},{id:'az',name:'Amazon'}];
+const RATES=[ // [key,label,ms,fk,az,group]
+  ['g','Commission'],
+  ['cb','Commission % when price is under ₹1,000',0,0,0],
+  ['ca','Commission % when price is ₹1,000 or more',0,10,13],
+  ['g','Fixed / closing fee (₹ per order)'],
+  ['f1','Price up to ₹300',0,10,27],
+  ['f2','Price ₹301 to ₹500',0,20,23],
+  ['f3','Price ₹501 to ₹1,000',0,30,30],
+  ['f4','Price above ₹1,000',0,50,55],
+  ['g','Other fees'],
+  ['coll','Collection / payment fee (% of price)',0,1.8,0],
+  ['g','Shipping (₹, before GST)'],
+  ['sel','Who pays shipping?'],
+  ['s1','First 500 g',65,68,63],
+  ['s2','Another 500 g (500 g to 1 kg)',15,25,12],
+  ['s3','Each extra 500 g (above 1 kg)',15,25,12],
+  ['g','Advertisement'],
+  ['ad','Ad cost per order (₹)',0,0,0],
+  ['adp','Ad cost (% of selling price)',0,0,0],
+  ['g','Returns'],
+  ['ret','Orders returned (%)',10,10,10],
+  ['rv','Return pickup charge, first 500 g (₹)',153,68,63],
+  ['g','Taxes (same for all)'],
+  ['gf','GST on platform fees (%)',18],
+  ['gad','GST on advertisement (%)',18],
+  ['tcs','TCS deducted by platform (%)',0.5],
+  ['tds','TDS deducted by platform (%)',0.1]
+];
+const KEY='bazaarBuddy.simple.v1';
+const $=id=>document.getElementById(id);
+const num=id=>{const e=$(id);const v=e?parseFloat(e.value):NaN;return isFinite(v)?v:0;};
+const rs=(x,d=0)=>(x<-0.005?'−':'')+'₹'+Math.abs(x).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});
+const r2=x=>(x<-0.005?'−':'')+Math.abs(x).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+// build inputs
+$('item').innerHTML=ITEMS.map((t,i)=>`<option value="${i}">${t[1]} — HSN ${t[0]}</option>`).join('')+'<option value="other">Something else (choose GST yourself)</option>';
+$('cat').innerHTML=Object.entries(CATS).map(([k,c])=>`<option value="${k}">${c[0]}</option>`).join('');
+$('rates').innerHTML='<thead><tr><th></th>'+P3.map(p=>`<th class="n c-${p.id}">${p.name}</th>`).join('')+'</tr></thead><tbody>'+
+  RATES.map(r=>{
+    if(r[0]==='g') return `<tr class="grp"><td colspan="4">${r[1]}</td></tr>`;
+    if(r[0]==='sel') return `<tr><td>${r[1]}</td>`+P3.map(p=>`<td><select id="${p.id}_shipBy" aria-label="${p.name}: who pays shipping"><option value="cust"${p.id==='ms'?' selected':''}>Customer (added to bill)</option><option value="me"${p.id==='ms'?'':' selected'}>Me (taken from payout)</option></select></td>`).join('')+'</tr>';
+    if(r.length===3) return `<tr><td>${r[1]}</td><td colspan="3"><input id="${r[0]}" type="number" value="${r[2]}" min="0" step="any" aria-label="${r[1]}"></td></tr>`;
+    return `<tr><td>${r[1]}</td>`+P3.map((p,i)=>`<td><input id="${p.id}_${r[0]}" type="number" value="${r[2+i]}" min="0" step="any" aria-label="${p.name}: ${r[1]}"></td>`).join('')+'</tr>';
+  }).join('')+'</tbody>';
+
+function applyItem(){
+  const v=$('item').value; if(v==='other') return;
+  const t=ITEMS[+v]; $('gst').value=String(t[2]); $('cat').value=t[3]; applyCat();
+}
+function applyCat(){
+  const c=CATS[$('cat').value]; if(!c) return;
+  $('fk_cb').value=c[1]; $('fk_ca').value=c[2]; $('az_cb').value=c[3]; $('az_ca').value=c[4];
+}
+
+// ---------- calculation ----------
+function common(){
+  const wt=num('wt');
+  const slabs=Math.max(1,Math.ceil(wt/500-1e-9));
+  return {cost:num('cost'),pack:num('pack'),gs:num('gst')/100,gf:num('gf')/100,gad:num('gad')/100,tcs:num('tcs')/100,tds:num('tds')/100,
+    tgt:num('tgt'),tt:$('tgtType').value,wt,slabs};
+}
+function plat(id){const g=k=>num(id+'_'+k);
+  return {cb:g('cb')/100,ca:g('ca')/100,f:[g('f1'),g('f2'),g('f3'),g('f4')],coll:g('coll')/100,s1:g('s1'),s2:g('s2'),s3:g('s3'),ret:g('ret')/100,rv:g('rv'),ad:g('ad'),adp:g('adp')/100,meShip:$(id+'_shipBy').value==='me'};}
+function calc(c,s,P){
+  const N=P/(1+c.gs), gstSale=P-N;
+  const comm=(P<1000?s.cb:s.ca)*P;
+  const fixed=P<=300?s.f[0]:P<=500?s.f[1]:P<=1000?s.f[2]:s.f[3];
+  const coll=s.coll*P;
+  const shipFull=s.s1+(c.slabs>=2?s.s2:0)+Math.max(0,c.slabs-2)*s.s3;   // shipping for this weight
+  const ship=s.meShip?shipFull:0;                    // part taken from your payout
+  const feeBase=comm+fixed+coll, feeGst=feeBase*c.gf;
+  const shipGst=ship*c.gf;
+  const perReturn=(s.meShip?shipFull:0)+s.rv+(shipFull-s.s1);   // forward shipping lost (only if you pay it) + return pickup
+  const retBase=s.ret*perReturn, retGst=retBase*c.gf;
+  const gstBuy=c.cost*c.gs;
+  const tcs=N*c.tcs, tds=N*c.tds;
+  const bank=P-feeBase-feeGst-ship-shipGst-tcs-tds;      // what the platform pays for one delivered order (return cost only hits returned orders)
+  const ad=s.ad+s.adp*P, adGst=ad*c.gad;               // advertising is billed separately with GST
+  const gstCash=gstSale-gstBuy-feeGst-shipGst-retGst-adGst-tcs;
+  const profit=N-feeBase-ship-retBase-ad-c.cost-c.pack;
+  return {P,N,gstSale,comm,fixed,coll,feeBase,feeGst,feeAll:feeBase+feeGst,ad,adGst,ship,shipFull,custShip:s.meShip?0:shipFull,shipGst,shipAll:ship+shipGst,
+    perReturn,retBase,retGst,retAll:retBase+retGst,gstBuy,costAll:c.cost+gstBuy,pack:c.pack,tcs,tds,bank,gstCash,
+    gstGovt:gstCash+tcs,profit,commPc:(P<1000?s.cb:s.ca)*100};
+}
+function want(c){return c.tt==='pc'? c.tgt/100*c.cost : c.tgt;}
+function solve(c,s){
+  const T=want(c), g=P=>calc(c,s,P).profit-T, E=1e-6, edges=[0,300,500,1000,1e7];
+  let best=null;
+  for(let i=0;i<edges.length-1&&best===null;i++){
+    const a=edges[i], b=edges[i+1];
+    if(g(a+E)>=0) best=a+E;
+    else if(g(b-E)>=0){let lo=a+E,hi=b-E;for(let k=0;k<70;k++){const m=(lo+hi)/2;if(g(m)>=0)hi=m;else lo=m;}best=hi;}
+    else if(b<1e7&&g(b)>=0) best=b;
+  }
+  if(best===null) return null;
+  let P=Math.ceil(best-1e-9), n=0; while(g(P)<-1e-9&&n++<20000) P++;
+  return calc(c,s,P);
+}
+
+// ---------- render ----------
+let res=[];
+$('cards').innerHTML=P3.map(p=>`<div class="card" style="--c:var(--${p.id})">
+  <div class="pn">${p.name}</div>
+  <div id="body_${p.id}"></div>
+  <div class="chk"><label for="try_${p.id}">Already have a price for ${p.name}? Type it (₹)<input id="try_${p.id}" type="number" min="0" step="any" placeholder="Leave blank to find the price"></label></div>
+</div>`).join('');
+function render(){
+  const c=common();
+  $('wtNote').innerHTML=`Packed weight <b>${Math.round(c.wt)} g</b> · shipping is charged for <b>${(c.slabs/2).toFixed(1)} kg</b> (rounded up to the next 500 g).`;
+  res=P3.map(p=>{
+    const s=plat(p.id), own=parseFloat(tryVals[p.id])>0?parseFloat(tryVals[p.id]):num('sp');
+    return {p,s,own:own>0,r: own>0? calc(c,s,own) : solve(c,s)};
+  });
+  res.forEach(({p,s,own,r})=>{
+    const b=$('body_'+p.id);
+    if(!r){b.innerHTML='<p class="warn">Fees are too high to reach this profit. Lower the profit or a fee.</p>';return;}
+    const kg=(c.slabs/2).toFixed(1), gf=num('gf');
+    const L=(l,v,note)=>`<div class="line"><span>${l}${note?` <i>${note}</i>`:''}</span><b>${rs(v,2)}</b></div>`;
+    b.innerHTML=`
+      <div class="lbl">${own?'At your price':'Best price to sell at'}</div>
+      <div class="price">${rs(r.P,own&&!Number.isInteger(r.P)?2:0)}</div>
+      ${r.custShip>0?`<div class="lbl">Customer pays <b>${rs(r.P+r.custShip,Number.isInteger(r.P+r.custShip)?0:2)}</b> at checkout (${rs(r.P,0)} price + ${rs(r.custShip,0)} shipping)</div>`:''}
+      <div class="sec">Charges worked out for you</div>
+      ${L('Commission',r.comm,r.commPc.toFixed(1)+'%')}
+      ${L('Fixed / closing fee',r.fixed,'price slab')}
+      ${L('Collection fee',r.coll,(s.coll*100).toFixed(1)+'%')}
+      ${L('Shipping',r.ship,r.custShip>0?'customer pays '+rs(r.custShip,0)+' extra':kg+' kg')}
+      ${L('GST on these',r.feeGst+r.shipGst,gf+'%')}
+      ${L('Returns, average per order',r.retAll,(s.ret*100).toFixed(0)+'% returned')}
+      ${r.ad>0?L('Advertisement',r.ad,(s.adp>0?(s.adp*100).toFixed(1)+'% of price':'per order'))+L('GST on advertisement',r.adGst,num('gad')+'%'):''}
+      <div class="line tot"><span>Total charges${r.ad>0?' and ads':''}</span><b>${rs(r.feeAll+r.shipAll+r.retAll+r.ad+r.adGst,2)}</b></div>
+      <div class="line big"><span>Your profit</span><b class="${r.profit>=0?'pos':'neg'}">${rs(r.profit,2)}</b></div>
+      <div class="lbl">Profit is ${c.cost?(r.profit/c.cost*100).toFixed(1):'0'}% of cost · bank settlement for a delivered order ${rs(r.bank,2)} · GST ${r.gstCash<0?'credit left':'to pay'} ${rs(Math.abs(r.gstCash),2)}</div>`;
+  });
+
+  const stock=Math.max(0,num('stock'));
+  $('stockNote').innerHTML=`Money needed to buy this stock: <b>${rs(stock*(c.cost*(1+c.gs)+c.pack))}</b> (incl. GST and packaging) · Total weight <b>${(stock*c.wt/1000).toLocaleString('en-IN',{maximumFractionDigits:1})} kg</b><br>`+
+    `Profit if all ${stock} sell on: `+res.map(({p,r})=>`<span class="c-${p.id}">${p.name}</span> <b>${r?rs(r.profit*stock):'–'}</b>`).join(' · ');
+
+  const W=[['Selling price (customer pays)','P','tot'],['Sale value without GST','N'],['GST on sale','gstSale'],
+    ['g','Platform fees'],['Commission %','commPc','pc'],['Commission','comm'],['Fixed / closing fee','fixed'],['Collection fee','coll'],['GST on fees','feeGst'],
+    ['g','Shipping and returns'],['Shipping taken from your payout','ship'],['GST on that shipping','shipGst'],['Shipping the customer pays on top','custShip'],['Cost of one return (shipping lost + pickup)','perReturn'],['Returns, average per order (with GST)','retAll'],
+    ['g','Advertisement'],['Advertisement cost (before GST)','ad'],['GST on advertisement','adGst'],
+    ['g','Payout'],['TCS deducted (comes back as GST credit)','tcs'],['TDS deducted (claim in income tax return)','tds'],['Bank settlement for a delivered order','bank','tot'],
+    ['g','GST'],['GST on sale','gstSale'],['Less: GST paid on purchase','gstBuy'],['Less: GST on fees, shipping, returns, ads','gstFees'],['Less: TCS credit','tcs'],['GST to pay in cash','gstCash','tot'],
+    ['g','Profit'],['Bank money + TDS − product cost − packaging − returns − ads − GST in cash','profit','tot']];
+  res.forEach(x=>{if(x.r) x.r.gstFees=x.r.feeGst+x.r.shipGst+x.r.retGst+x.r.adGst;});
+  $('work').innerHTML='<thead><tr><th></th>'+P3.map(p=>`<th class="n c-${p.id}">${p.name}</th>`).join('')+'</tr></thead><tbody>'+
+    W.map(w=>w[0]==='g'?`<tr class="grp"><td colspan="4">${w[1]}</td></tr>`:
+      `<tr class="${w[2]==='tot'?'tot':''}"><td>${w[0]}</td>`+res.map(({r})=>`<td class="n">${r?(w[2]==='pc'?r[w[1]].toFixed(1)+'%':r2(r[w[1]])):'–'}</td>`).join('')+'</tr>').join('')+'</tbody>';
+  save();
+}
+
+// ---------- save / events ----------
+let tryVals={};
+function fields(){return document.querySelectorAll('#inputs input,#inputs select,#rates input,#stock');}
+function save(){try{const v={};fields().forEach(e=>v[e.id]=e.value);localStorage.setItem(KEY,JSON.stringify({v,tryVals}));}catch(e){}}
+function load(){
+  let st=null;try{st=JSON.parse(localStorage.getItem(KEY)||'null');}catch(e){}
+  if(st&&st.v){Object.entries(st.v).forEach(([id,val])=>{const e=$(id);if(e)e.value=val;});tryVals=st.tryVals||{};Object.entries(tryVals).forEach(([k,v])=>{const e=$('try_'+k);if(e)e.value=v;});}
+  else{$('item').value='0';applyItem();}
+}
+function onEdit(e){
+  const id=e.target.id;
+  if(id.startsWith('try_')) tryVals[id.slice(4)]=e.target.value;
+  if(id==='item') applyItem();
+  if(id==='cat') applyCat();
+  render();
+}
+document.addEventListener('input',onEdit);
+document.addEventListener('change',onEdit);
+$('refresh').addEventListener('click',()=>{
+  if($('item').value!=='other') applyItem(); else applyCat();
+  render();
+  const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  $('refMsg').textContent='Rates re-applied and recalculated at '+t;
+});
+$('reset').addEventListener('click',()=>{
+  try{localStorage.removeItem(KEY);}catch(e){}
+  fields().forEach(e=>{if(e.tagName==='SELECT'){const d=[...e.options].find(o=>o.defaultSelected);e.value=d?d.value:e.options[0].value;}else e.value=e.defaultValue;});
+  tryVals={};P3.forEach(p=>$('try_'+p.id).value='');$('item').value='0';applyItem();render();
+  $('status').textContent='All rates are back to the defaults.';
+});
+
+// ---------- PDF report ----------
+const esc=s=>String(s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const slabName=P=>P<=300?'Price up to ₹300':P<=500?'Price ₹301 to ₹500':P<=1000?'Price ₹501 to ₹1,000':'Price above ₹1,000';
+function buildReport(){
+  const c=common(), stock=Math.max(0,num('stock')), gfp=num('gf'), gadp=num('gad');
+  const R=x=>rs(x,2), pc=x=>(x*100).toLocaleString('en-IN',{maximumFractionDigits:2})+'%';
+  const minus=x=>'− '+R(x);
+  const kg=(c.slabs/2).toFixed(1);
+  const head='<thead><tr><th></th>'+P3.map(p=>`<th class="c-${p.id}">${p.name}</th>`).join('')+'</tr></thead>';
+  const row=(label,f,cls='')=>`<tr class="${cls}"><td>${label}</td>`+res.map(x=>`<td class="n">${x.r?f(x.r,x.s,x):'–'}</td>`).join('')+'</tr>';
+  const grp=t=>`<tr class="grp"><td colspan="4">${t}</td></tr>`;
+  const tbl=rows=>`<table>${head}<tbody>${rows.join('')}</tbody></table>`;
+  const sec=(title,body,note)=>`<div class="blk"><h2>${title}</h2>${body}${note?`<p class="fine">${note}</p>`:''}</div>`;
+  const totalCharges=r=>r.feeAll+r.shipAll+r.retAll+r.ad+r.adGst;
+  const ok=res.filter(x=>x.r);
+  const T=want(c);
+  const itemTxt=$('item').selectedOptions[0]?$('item').selectedOptions[0].text:'';
+  const catTxt=$('cat').selectedOptions[0]?$('cat').selectedOptions[0].text:'';
+  const now=new Date();
+
+  // --- header & product details
+  let h=`<h1>Bazaar Buddy — Price &amp; Fee Report</h1>
+  <p class="meta">Generated ${now.toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})} · Meesho, Flipkart and Amazon side by side</p>
+  <div class="blk"><h2>Product details</h2><table class="kv"><tbody>
+    <tr><td>Product</td><td colspan="3">${esc(itemTxt)}</td></tr>
+    <tr><td>Category</td><td>${esc(catTxt)}</td><td>GST rate</td><td>${num('gst')}%</td></tr>
+    <tr><td>Buying cost (without GST)</td><td>${R(c.cost)}</td><td>GST paid on purchase</td><td>${R(c.cost*c.gs)}</td></tr>
+    <tr><td>Packaging per piece</td><td>${R(c.pack)}</td><td>Profit wanted</td><td>${c.tt==='pc'?`${c.tgt}% of cost = ${R(T)}`:R(T)}</td></tr>
+    <tr><td>Packed weight</td><td>${Math.round(c.wt)} g</td><td>Shipping charged on</td><td>${kg} kg (${c.slabs} × 500 g)</td></tr>
+    <tr><td>Pieces in stock</td><td>${stock}</td><td>Money for stock (incl. GST, packing)</td><td>${R(stock*(c.cost*(1+c.gs)+c.pack))}</td></tr>
+  </tbody></table></div>`;
+
+  // --- summary
+  let best='';
+  if(ok.length){
+    const hiP=ok.reduce((a,b)=>b.r.profit>a.r.profit?b:a);
+    const loC=ok.reduce((a,b)=>(b.r.P+b.r.custShip)<(a.r.P+a.r.custShip)?b:a);
+    best=`<p class="best"><b>Lowest price for the customer:</b> <span class="c-${loC.p.id}">${loC.p.name}</span> at ${R(loC.r.P+loC.r.custShip)} (incl. shipping) &nbsp;·&nbsp; <b>Highest profit per piece:</b> <span class="c-${hiP.p.id}">${hiP.p.name}</span> at ${R(hiP.r.profit)}</p>`;
+  }
+  h+=sec('1. Final listing price on each platform',tbl([
+    row('Price basis',(r,s,x)=>x.own?'Your price':'Best price found'),
+    row('<b>LIST AT (selling price)</b>',r=>R(r.P),'hi'),
+    row('Customer pays at checkout',r=>R(r.P+r.custShip)),
+    grp('Charges per order'),
+    row('Commission + fixed + collection fee (with GST)',r=>R(r.feeAll)),
+    row('Shipping taken from payout (with GST)',r=>R(r.shipAll)),
+    row('Returns, average per order (with GST)',r=>R(r.retAll)),
+    row('Advertisement (with GST)',r=>R(r.ad+r.adGst)),
+    row('Total charges',r=>R(totalCharges(r)),'tot'),
+    row('Charges as % of selling price',r=>r.P?pc(totalCharges(r)/r.P):'–'),
+    grp('Money in'),
+    row('Bank settlement per delivered order',r=>R(r.bank)),
+    row('GST to pay in cash',r=>r.gstCash<0?'credit '+R(-r.gstCash):R(r.gstCash)),
+    row('<b>Your profit per piece</b>',r=>`<span class="${r.profit<0?'neg':''}">${R(r.profit)}</span>`,'hi'),
+    row('Profit as % of buying cost',r=>c.cost?(r.profit/c.cost*100).toFixed(1)+'%':'–'),
+    row(`Profit if all ${stock} pieces sell`,r=>R(r.profit*stock),'tot')
+  ])+best);
+
+  // --- shipping
+  const extra=Math.max(0,c.slabs-2);
+  h+=sec('2. Shipping calculation',tbl([
+    row('Charged weight',()=>`${Math.round(c.wt)} g → ${kg} kg`),
+    row('First 500 g',(r,s)=>R(s.s1)),
+    row('Next 500 g (500 g to 1 kg)',(r,s)=>c.slabs>=2?`1 × ${R(s.s2)} = ${R(s.s2)}`:'not needed'),
+    row('Each extra 500 g above 1 kg',(r,s)=>extra?`${extra} × ${R(s.s3)} = ${R(extra*s.s3)}`:'not needed'),
+    row('Shipping charge for this weight',r=>R(r.shipFull),'tot'),
+    row('Who pays shipping',(r,s)=>s.meShip?'You (from payout)':'Customer (on bill)'),
+    row('Taken from your payout',r=>R(r.ship)),
+    row(`GST on shipping (${gfp}%)`,r=>`${gfp}% × ${R(r.ship)} = ${R(r.shipGst)}`),
+    row('Shipping cost to you',r=>R(r.shipAll),'tot'),
+    row('Customer pays on top of price',r=>R(r.custShip))
+  ]),'Shipping is charged in 500 g steps: the packed weight is rounded up to the next 500 g.');
+
+  // --- fees
+  h+=sec('3. Platform fee calculation',tbl([
+    row('Commission',r=>`${r.commPc.toFixed(1)}% × ${R(r.P)} = ${R(r.comm)}`),
+    row('Fixed / closing fee',r=>`${slabName(r.P)} → ${R(r.fixed)}`),
+    row('Collection / payment fee',(r,s)=>`${pc(s.coll)} × ${R(r.P)} = ${R(r.coll)}`),
+    row('Fees before GST',r=>R(r.feeBase),'tot'),
+    row(`GST on fees (${gfp}%)`,r=>`${gfp}% × ${R(r.feeBase)} = ${R(r.feeGst)}`),
+    row('Total platform fees',r=>R(r.feeAll),'tot')
+  ]),'Commission uses the under-₹1,000 rate when the price is below ₹1,000, and the ₹1,000-or-more rate otherwise.');
+
+  // --- returns
+  h+=sec('4. Returns calculation',tbl([
+    row('Orders returned',(r,s)=>pc(s.ret)),
+    row('Forward shipping lost',(r,s)=>s.meShip?R(r.shipFull):'₹0.00 (customer paid)'),
+    row('Return pickup, first 500 g',(r,s)=>R(s.rv)),
+    row('Return pickup, extra weight',(r,s)=>R(r.shipFull-s.s1)),
+    row('Cost of one return',r=>R(r.perReturn),'tot'),
+    row('Average per order',(r,s)=>`${pc(s.ret)} × ${R(r.perReturn)} = ${R(r.retBase)}`),
+    row(`GST on returns (${gfp}%)`,r=>`${gfp}% × ${R(r.retBase)} = ${R(r.retGst)}`),
+    row('Returns cost per order',r=>R(r.retAll),'tot')
+  ]),'Return cost is spread over every order: one return\'s cost × the share of orders that come back.');
+
+  // --- ads
+  if(ok.some(x=>x.r.ad>0)) h+=sec('5. Advertisement',tbl([
+    row('Ad cost per order',(r,s)=>R(s.ad)),
+    row('Ad cost as % of price',(r,s)=>`${pc(s.adp)} × ${R(r.P)} = ${R(s.adp*r.P)}`),
+    row('Ad cost before GST',r=>R(r.ad),'tot'),
+    row(`GST on ads (${gadp}%)`,r=>`${gadp}% × ${R(r.ad)} = ${R(r.adGst)}`),
+    row('Ad cost per order',r=>R(r.ad+r.adGst),'tot')
+  ]));
+
+  // --- payout, GST, profit
+  h+=sec('6. Bank settlement (payout) for a delivered order',tbl([
+    row('Selling price',r=>R(r.P)),
+    row('Less: platform fees with GST',r=>minus(r.feeAll)),
+    row('Less: shipping with GST',r=>minus(r.shipAll)),
+    row(`Less: TCS ${pc(c.tcs)} of sale value`,r=>minus(r.tcs)),
+    row(`Less: TDS ${pc(c.tds)} of sale value`,r=>minus(r.tds)),
+    row('Bank settlement',r=>R(r.bank),'tot')
+  ]),'TCS comes back as GST credit; TDS is claimed in your income tax return.');
+
+  h+=sec('7. GST working',tbl([
+    row(`Sale value without GST (price ÷ ${(1+c.gs).toFixed(2)})`,r=>R(r.N)),
+    row(`GST on sale (${num('gst')}%)`,r=>R(r.gstSale)),
+    row('Less: GST paid on purchase',r=>minus(r.gstBuy)),
+    row('Less: GST on fees, shipping, returns, ads',r=>minus(r.feeGst+r.shipGst+r.retGst+r.adGst)),
+    row('Less: TCS credit',r=>minus(r.tcs)),
+    row('GST to pay in cash',r=>r.gstCash<0?'credit '+R(-r.gstCash):R(r.gstCash),'tot')
+  ]));
+
+  h+=sec('8. Profit working',tbl([
+    row('Sale value without GST',r=>R(r.N)),
+    row('Less: commission + fixed + collection fee',r=>minus(r.feeBase)),
+    row('Less: shipping from payout',r=>minus(r.ship)),
+    row('Less: returns (average)',r=>minus(r.retBase)),
+    row('Less: advertisement',r=>minus(r.ad)),
+    row('Less: buying cost',r=>minus(c.cost)),
+    row('Less: packaging',r=>minus(r.pack)),
+    row('Your profit per piece',r=>`<span class="${r.profit<0?'neg':''}">${R(r.profit)}</span>`,'hi')
+  ]),'GST on fees, shipping, returns and ads is left out of profit because you claim it back as input credit.');
+
+  // --- rates used
+  const rateRows=RATES.map(r=>{
+    if(r[0]==='g') return grp(r[1]);
+    if(r[0]==='sel') return `<tr><td>${r[1]}</td>`+P3.map(p=>`<td class="n">${$(p.id+'_shipBy').value==='me'?'Me':'Customer'}</td>`).join('')+'</tr>';
+    if(r.length===3) return `<tr><td>${r[1]}</td><td class="n" colspan="3">${esc($(r[0]).value)}</td></tr>`;
+    return `<tr><td>${r[1]}</td>`+P3.map(p=>`<td class="n">${esc($(p.id+'_'+r[0]).value)}</td>`).join('')+'</tr>';
+  });
+  h+=sec('9. Rates used in this report',tbl(rateRows),'Planning figures from your fee sheets. Check current rates in Flipkart Seller Hub, Amazon Seller Central and the Meesho Supplier Panel before listing.');
+  return h;
+}
+window.addEventListener('beforeprint',()=>{render();$('report').innerHTML=buildReport();});
+$('pdf').addEventListener('click',()=>{
+  render(); $('report').innerHTML=buildReport();
+  const old=document.title;
+  document.title='Bazaar Buddy Price Report '+new Date().toLocaleDateString('en-CA');   // default PDF file name
+  const restore=()=>{document.title=old;window.removeEventListener('afterprint',restore);};
+  window.addEventListener('afterprint',restore);
+  $('refMsg').textContent='In the print window, choose "Save as PDF" as the printer/destination, then Save.';
+  setTimeout(()=>window.print(),50);
+});
+load();render();
+</script>
+</body></html>
