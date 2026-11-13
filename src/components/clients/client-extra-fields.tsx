@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ClientPhone, PHONE_LABELS, clientPhones } from "@/lib/client-contacts";
 import { REGISTRATION_FIELDS, RegistrationValues } from "@/lib/client-documents";
 import { SavedPersonPicker, responsiblePhoneOf } from "./saved-person-picker";
+import { LedgerOption, LedgerPicker, ledgerUsers } from "./ledger-picker";
 
 // Parts of the client form (create and edit): the owner's mobile numbers, the
 // responsible person, the connector and the Tally ledger (see docs/BILLING.md)
@@ -179,7 +180,8 @@ export function ClientContactsFields({
 export interface BillingOptions {
   canSetLedger: boolean;
   connectors: { id: string; name: string; ledgerName: string }[];
-  ledgerNames: string[];
+  // Party ledgers already in use (billing managers and Admin only)
+  ledgers: LedgerOption[];
 }
 
 export function useBillingOptions() {
@@ -188,7 +190,7 @@ export function useBillingOptions() {
     axios
       .get<BillingOptions>("/api/clients/billing-options")
       .then(({ data }) => setOptions(data))
-      .catch(() => setOptions({ canSetLedger: false, connectors: [], ledgerNames: [] }));
+      .catch(() => setOptions({ canSetLedger: false, connectors: [], ledgers: [] }));
   }, []);
   return options;
 }
@@ -223,6 +225,11 @@ export function ClientBillingFields({
     a.name.localeCompare(b.name)
   );
   const connector = connectors.find((c) => c.id === value.connectorId) ?? null;
+  const chosen = value.tallyLedgerName.trim().toLowerCase();
+  // Who else uses the picked ledger (not this client itself, when editing)
+  const inUse = chosen ? options.ledgers.find((l) => l.name.toLowerCase() === chosen) : undefined;
+  const others = inUse ? { ...inUse, clients: inUse.clients.filter((c) => c !== clientName) } : null;
+  const sharedLedger = others && (others.connector || others.clients.length) ? others : null;
   return (
     <div className="space-y-4 rounded-md border p-3">
       <div className="space-y-1">
@@ -262,18 +269,18 @@ export function ClientBillingFields({
             <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{connector.ledgerName} <span className="text-muted-foreground">(connector&apos;s ledger)</span></p>
           ) : (
             <>
-              <Input
+              <LedgerPicker
                 id={`${listId}-ledger`}
-                list={`${listId}-names`}
-                maxLength={100}
-                placeholder={clientName || "Same as the client's name"}
                 value={value.tallyLedgerName}
-                onChange={(e) => onChange({ ...value, tallyLedgerName: e.target.value })}
+                onChange={(name) => onChange({ ...value, tallyLedgerName: name })}
+                ledgers={options.ledgers}
+                clientName={clientName}
               />
-              <datalist id={`${listId}-names`}>
-                {options.ledgerNames.map((n) => <option key={n} value={n} />)}
-              </datalist>
-              <p className="text-xs text-muted-foreground">Pick a ledger already in use or type a new one. Leave empty to use the client&apos;s name.</p>
+              <p className="text-xs text-muted-foreground">
+                {sharedLedger
+                  ? `Already used by ${ledgerUsers(sharedLedger)}: this client's bills go to the same ledger.`
+                  : "Pick a ledger already in Tally, or type a new name exactly as it is in Tally. The client's name is used if none is picked."}
+              </p>
             </>
           )}
         </div>

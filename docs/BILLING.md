@@ -551,9 +551,12 @@ numbered bills not yet sent to Tally.
 
 ## Tally ledger on the client
 
-Only billing managers and Admin see the client form's *Tally ledger name*:
-pick a name already in use (from clients, connectors and bills) or type a new
-one; empty means the client's name. A client added by anyone else is listed as
+Only billing managers and Admin see the client form's *Tally ledger name*, a
+searchable list of every party ledger in use: clients' own Tally names, the
+names of clients without one (their ledger is their name), connectors' ledgers
+and ledgers on bills, each with who uses it. Pick one, type a new name (*Use
+new ledger "…"*), or keep *Client's name*. Picking a ledger another client or
+a connector uses shows who, so a shared ledger is a choice, not a slip. A client added by anyone else is listed as
 *New clients without a Tally ledger* in the billing manager's daily reminder
 until the ledger is set (in the client form or the Tally tab).
 
