@@ -44,6 +44,9 @@ export interface Bill {
   pendingChange: PendingChange | null;
   tallyExportedAt: string | null;
   tallyNeedsUpdate: boolean;
+  // Tally income ledger (service) and line description; billing managers only
+  incomeLedger: { id: string; name: string } | null;
+  tallyLineDescription: string | null;
   emailedAt: string | null;
   emailedTo: string | null;
   // Delivery of the last email: failed and delayed come with a reason
@@ -91,14 +94,15 @@ export interface BillEvent {
 export type BillAction =
   | { action: "set_type"; type: MvcBillTypeValue }
   | { action: "request_amount"; userId: string; remark?: string }
-  | { action: "enter_amount"; amount: number; type?: MvcBillTypeValue }
+  | { action: "enter_amount"; amount: number; type?: MvcBillTypeValue; incomeLedgerId?: string; lineDescription?: string }
   | { action: "send_back"; remark: string }
   | { action: "not_billable"; remark?: string }
   | { action: "reopen" }
   | { action: "manager_approve" }
   | { action: "final_approve" }
   | { action: "final_reject"; remark: string }
-  | { action: "edit_amount"; amount: number; remark?: string };
+  | { action: "edit_amount"; amount: number; remark?: string }
+  | { action: "set_income_ledger"; incomeLedgerId: string; lineDescription?: string };
 
 export interface BatchResult {
   done: string[];
@@ -138,6 +142,9 @@ export const EVENT_LABELS: Record<string, string> = {
   amount_requested: "Sent for amount",
   amount_entered: "Amount entered",
   amount_edited: "Amount changed by Admin",
+  income_ledger_set: "Tally income ledger set",
+  tally_imported: "Imported into Tally",
+  tally_failed: "Tally refused it",
   sent_back: "Sent back",
   not_billable: "Marked not billable",
   reopened: "Reopened",

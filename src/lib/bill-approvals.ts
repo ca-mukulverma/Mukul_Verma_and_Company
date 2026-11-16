@@ -412,6 +412,9 @@ export async function decideChangeRequest(
           billDate: now,
           reissuedFromId: current.id,
           ...ledger,
+          // The same service in Tally
+          incomeLedgerId: current.incomeLedgerId,
+          tallyLineDescription: current.tallyLineDescription,
           events: {
             create: { action: "reissued", userId: actor.id, remark: `Replaces bill no. ${current.billNumber}: ${request.reason}` },
           },

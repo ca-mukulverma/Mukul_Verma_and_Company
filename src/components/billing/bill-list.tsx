@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Ban, CheckCheck, Copy, History, Mail, IndianRupee, Loader2, MoreVertical, Pencil, RotateCcw, Search, Send, Undo2, UserPlus } from "lucide-react";
+import { Ban, BookOpen, CheckCheck, Copy, History, Mail, IndianRupee, Loader2, MoreVertical, Pencil, RotateCcw, Search, Send, Undo2, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,6 +41,7 @@ import { WaitingChip, billWhereabouts } from "./bill-progress";
 import {
   BillDialog,
   EditAmountDialog,
+  IncomeLedgerDialog,
   EditDetailsDialog,
   EnterAmountDialog,
   HistoryDialog,
@@ -403,6 +404,7 @@ export function BillList({
 
       {open?.dialog === "amount" && <EnterAmountDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {open?.dialog === "edit_amount" && <EditAmountDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
+      {open?.dialog === "income_ledger" && <IncomeLedgerDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {open?.dialog === "request" && <RequestAmountDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {(open?.dialog === "send_back" || open?.dialog === "not_billable" || open?.dialog === "final_reject") && (
         <RemarkDialog bill={open.bill} kind={open.dialog} onClose={() => setOpen(null)} onDone={handleDone} />
@@ -513,6 +515,7 @@ function BillCard({
             <span className="font-medium text-foreground/80">{billWhereabouts(bill)}</span>
           )}
           {bill.amountEnteredBy && <span>Amount by {bill.amountEnteredBy.name}</span>}
+          {canManage && bill.incomeLedger && <span>Tally: {bill.incomeLedger.name}</span>}
           <EmailStatus bill={bill} compact />
         </div>
         {bill.remark && <p className="text-xs text-muted-foreground">Remark: {bill.remark}</p>}
@@ -585,6 +588,11 @@ function BillCard({
                 {editable && (
                   <DropdownMenuItem onClick={() => onOpen("details")}>
                     <Pencil className="mr-2 h-4 w-4" />Edit details
+                  </DropdownMenuItem>
+                )}
+                {bill.status !== "not_billable" && (
+                  <DropdownMenuItem onClick={() => onOpen("income_ledger")}>
+                    <BookOpen className="mr-2 h-4 w-4" />Tally ledger
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => onOpen("history")}>

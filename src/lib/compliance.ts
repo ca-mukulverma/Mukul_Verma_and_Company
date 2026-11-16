@@ -634,6 +634,10 @@ export async function completeIfReady(itemId: string, userId: string): Promise<b
         amount: fee.amount,
         clientId: item.clientId,
         createdById: userId,
+        // The work type's Tally income ledger and a line like "GSTR-3B - Oct 2026";
+        // both can be changed on the bill
+        incomeLedgerId: wt.incomeLedgerId,
+        tallyLineDescription: `${wt.name} - ${label}`.slice(0, 250),
       },
     });
     await tx.complianceItem.update({ where: { id: itemId }, data: { billId: bill.id } });

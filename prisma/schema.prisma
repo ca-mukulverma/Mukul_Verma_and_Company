@@ -584,6 +584,15 @@ model Bill {
   tallyNeedsUpdate Boolean      @default(false)
   tallyExportId    String?      @db.Char(36)
   tallyExport      TallyExport? @relation(fields: [tallyExportId], references: [id])
+  // The income ledger in Tally (the service) and the description on its line;
+  // compliance bills start with their work type's ledger. Changeable until
+  // the bill is in Tally; after that a change makes it "Tally update due".
+  // Why Tally refused the bill the last time it was sent straight into it
+  tallyError   String?   @db.Text
+  tallyErrorAt DateTime?
+  incomeLedgerId       String?            @db.Char(36)
+  incomeLedger         TallyIncomeLedger? @relation(fields: [incomeLedgerId], references: [id])
+  tallyLineDescription String?            @db.VarChar(250)
 
   // Last time the bill was emailed to the party, to whom, and whether it was
   // delivered. emailMessageId matches bounce notices to the email.
@@ -608,6 +617,23 @@ model Bill {
   @@index([clientId])
   @@index([connectorId])
   @@index([workDate])
+  @@index([incomeLedgerId])
+}
+
+// An income ledger in Tally: one per service (e.g. "Gst Return Monthly"),
+// under Sales Accounts. Each bill goes to one of them. Loaded from the
+// mapping sheet; hidden ledgers can't be picked for new bills but stay on
+// the bills that have them. See docs/TALLY_DIRECT_IMPORT.md.
+model TallyIncomeLedger {
+  id        String   @id @default(uuid()) @db.Char(36)
+  name      String   @unique @db.VarChar(100)
+  groupName String?  @db.VarChar(100) // its group in Tally, shown when picking
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bills     Bill[]
+  workTypes ComplianceWorkType[]
 }
 
 // History of everything done to a bill
@@ -812,6 +838,9 @@ model ComplianceWorkType {
   billable                Boolean             @default(false)
   defaultFeeNil           Decimal?            @db.Decimal(12, 2)
   defaultFeeNonNil        Decimal?            @db.Decimal(12, 2)
+  // Tally income ledger its bills start with (changeable on each bill)
+  incomeLedgerId          String?             @db.Char(36)
+  incomeLedger            TallyIncomeLedger?  @relation(fields: [incomeLedgerId], references: [id], onDelete: SetNull)
   reminderSubject         String              @db.VarChar(150)
   reminderMessage         String              @db.Text
   sortOrder               Int                 @default(100)

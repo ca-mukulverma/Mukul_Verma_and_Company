@@ -339,12 +339,20 @@ a "Scan & Pay" UPI QR code and the bank details.
 - To change a format, edit `src/lib/bill-formats.ts`; to change a logo or QR
   code, replace the file in `assets/bills` and run
   `node scripts/build-bill-assets.mjs`.
-- **Tally XML**: one file per billing entity, from the **Tally** tab, because
-  each entity is a separate company in Tally. In TallyPrime, use
-  *Import → Vouchers*.
-  - Each bill becomes a sales voucher. The party ledger is debited with the
-    total, and the fee ledger and the GST ledgers are credited. GST vouchers
-    also carry the party GSTIN and place of supply.
+- **Tally XML**: one file per billing entity, from the **Tally** tab. The
+  four MVC names go into one Tally company, *Mukul Verma & Co.*, each in its
+  own voucher type; B Edge has its own company. In TallyPrime, use
+  *Import → Vouchers*. (Sending straight into Tally: see
+  [TALLY_DIRECT_IMPORT.md](TALLY_DIRECT_IMPORT.md).)
+  - Each bill becomes a sales voucher in the firm's **Accounting Invoice**
+    form: the party ledger is debited with the total; the bill's **income
+    ledger** (the service, e.g. *Gst Return Monthly*) is credited with the
+    fee, with the bill's line description; then CGST + SGST or IGST. GST
+    vouchers also carry the party GSTIN and place of supply. On the
+    non-GST names' bills the income line is marked *Non-GST*.
+  - The narration is the client's name, a tab, then the work.
+  - A bill without an income ledger waits on the Tally tab (*Set ledger*)
+    and is not put in the file until it has one.
   - When the bill's total was rounded to whole rupees, the difference goes
     to the **Round Off** ledger (credited when rounded up, debited when
     rounded down), so the voucher total equals the bill. Create that ledger
@@ -363,11 +371,19 @@ a "Scan & Pay" UPI QR code and the bank details.
     made. Two people exporting at the same moment cannot both send the
     same bills.
   - **Ledger names:**
-    - The Tally company name, voucher type, fee ledger, CGST/SGST/IGST
-      ledgers and round off ledger are set per entity in *Company
-      profiles*. Until they're set, the defaults are used: the entity's
-      name, "Sales", "Professional Fees", "Output CGST/SGST/IGST", "Round
-      Off".
+    - The Tally company name, voucher type, CGST/SGST/IGST ledgers and
+      round off ledger are set per entity in *Company profiles*. Until
+      they're set, the defaults are used: *Mukul Verma & Co.* (B Edge: its
+      name); voucher types "Sales" (GST), "Sales - CA Mukul Verma", "Sales -
+      CA Harsh Verma", "Sales - VLA" (B Edge: "Sales"); "CGST", "SGST",
+      "IGST", "Round Off". An optional income ledger there is used for bills
+      without one (e.g. B Edge).
+    - **Income ledgers (services):** Billing → Tally → *Services* lists
+      them (loaded from Excel, added, renamed or hidden there) and sets the
+      ledger each compliance work type's bills start with. The billing
+      manager picks the ledger in a search box when entering the amount, or
+      with *Tally ledger* on any bill; on a bill already in Tally that makes
+      it *Tally update due*.
     - Each client's party ledger defaults to the client's name. A billing
       manager can change it on the Tally tab when the name in Tally
       differs. Client ledgers must already exist in Tally.
@@ -680,6 +696,9 @@ deleted. The page shows how much will be removed first.
    edit/cancel/reissue requests.
 3. **(Done)** PDF and Word bills, single or bulk, and the company profiles.
 4. **(Done)** Tally XML export.
+5. **(Design, for approval)** Sending bills straight into Tally from the
+   app, with an income ledger per bill: see
+   [TALLY_DIRECT_IMPORT.md](TALLY_DIRECT_IMPORT.md).
 
 The old "pending billing" approval on tasks has been replaced by this flow.
 Tasks that were waiting under it were carried over as draft bills when the

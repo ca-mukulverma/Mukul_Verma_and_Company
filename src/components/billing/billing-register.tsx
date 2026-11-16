@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Ban, Download, FileSpreadsheet, FileText, History, IndianRupee, Loader2, Mail, MailCheck, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
+import { Ban, BookOpen, Download, FileSpreadsheet, FileText, History, IndianRupee, Loader2, Mail, MailCheck, MoreVertical, Pencil, Printer, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,7 +27,7 @@ import {
   formatRupees,
   gstAmount,
 } from "@/lib/billing-constants";
-import { EditAmountDialog, HistoryDialog } from "./bill-dialogs";
+import { EditAmountDialog, HistoryDialog, IncomeLedgerDialog } from "./bill-dialogs";
 import { EmailBillsDialog, MAX_EMAIL_BILLS } from "./bill-email-dialog";
 import { billTypeShortLabel } from "./bill-type-select";
 import { EmailStatus } from "./email-status";
@@ -53,7 +53,7 @@ export function BillingRegister({ types, onChanged }: { types: BillTypeValue[]; 
   const debouncedSearch = useDebounce(search, 300);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ bills: Bill[]; total: number; totals: { type: BillTypeValue; amount: number }[] } | null>(null);
-  const [open, setOpen] = useState<{ bill: Bill; dialog: ChangeKind | "history" | "edit_amount" } | null>(null);
+  const [open, setOpen] = useState<{ bill: Bill; dialog: ChangeKind | "history" | "edit_amount" | "income_ledger" } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
   // Bills being emailed; kept in state so the dialog gets the same list on every render
@@ -414,6 +414,11 @@ export function BillingRegister({ types, onChanged }: { types: BillTypeValue[]; 
                           <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "history" })}>
                             <History className="mr-2 h-4 w-4" />History
                           </DropdownMenuItem>
+                          {bill.canManage && bill.status === "approved" && (
+                            <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "income_ledger" })}>
+                              <BookOpen className="mr-2 h-4 w-4" />Tally ledger{bill.incomeLedger ? "" : " (not set)"}
+                            </DropdownMenuItem>
+                          )}
                           {bill.canEditAmount && bill.status === "approved" && (
                             <DropdownMenuItem onClick={() => setOpen({ bill, dialog: "edit_amount" })}>
                               <IndianRupee className="mr-2 h-4 w-4" />Edit amount
@@ -463,7 +468,17 @@ export function BillingRegister({ types, onChanged }: { types: BillTypeValue[]; 
           }}
         />
       )}
-      {open && open.dialog !== "history" && open.dialog !== "edit_amount" && (
+      {open?.dialog === "income_ledger" && (
+        <IncomeLedgerDialog
+          bill={open.bill}
+          onClose={() => setOpen(null)}
+          onDone={() => {
+            load();
+            onChanged?.();
+          }}
+        />
+      )}
+      {open && open.dialog !== "history" && open.dialog !== "edit_amount" && open.dialog !== "income_ledger" && (
         <ChangeRequestDialog
           bill={open.bill}
           kind={open.dialog}

@@ -113,6 +113,7 @@ export const billInclude = {
   returnedBy: { select: { id: true, name: true } },
   reissuedFrom: { select: { id: true, billNumber: true } },
   reissuedAs: { select: { id: true, billNumber: true } },
+  incomeLedger: { select: { id: true, name: true } },
   changeRequests: {
     where: { status: "pending" },
     select: {
@@ -184,6 +185,9 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     pendingChange: isManager ? (bill.changeRequests[0] ?? null) : null,
     tallyExportedAt: isManager ? bill.tallyExportedAt : null,
     tallyNeedsUpdate: isManager ? bill.tallyNeedsUpdate : false,
+    // The Tally income ledger (service) and its line description
+    incomeLedger: isManager ? bill.incomeLedger : null,
+    tallyLineDescription: isManager ? bill.tallyLineDescription : null,
     canManage: isManager,
     // Admin may correct the amount at any stage after it is entered
     canEditAmount: access.isAdmin && bill.amount !== null && ADMIN_AMOUNT_EDIT_STATUSES.includes(bill.status),

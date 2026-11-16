@@ -4,13 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { AlertTriangle, Download, Loader2, Save } from "lucide-react";
+import { AlertTriangle, BookOpen, Download, Loader2, Save, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { BILL_TYPE_LABELS, BillTypeValue, formatRupees } from "@/lib/billing-constants";
-import { apiErrorMessage, blobErrorMessage, downloadBillFile } from "./bill-types";
+import { apiErrorMessage, blobErrorMessage, downloadBillFile, runBillAction } from "./bill-types";
+import { IncomeLedgerFields } from "./income-ledger-picker";
+import { TallyServices } from "./tally-services";
+import { TallySendDialog } from "./tally-send";
 import { TallyLedgerFile } from "./tally-ledger-file";
 import { PendingLedgers } from "./pending-ledgers";
 
@@ -19,16 +23,33 @@ interface Series {
   ledgers: {
     company: string;
     voucherType: string;
-    salesLedger: string;
+    fallbackIncomeLedger: string | null;
     cgstLedger: string;
     sgstLedger: string;
     igstLedger: string;
   };
   ledgersSet: boolean;
-  bills: { id: string; billNumber: string; action: "Create" | "Alter" | "Cancel"; client: string | null; amount: number | null }[];
+  bills: WaitingBill[];
   // clientId is null for names entered under "Other"
   parties: { clientId: string | null; clientName: string; ledgerName: string; custom: boolean; connectorName?: string }[];
   history: { id: string; createdAt: string; newCount: number; updateCount: number; createdBy: { name: string } }[];
+}
+
+interface WaitingBill {
+  id: string;
+  billNumber: string;
+  action: "Create" | "Alter" | "Cancel";
+  client: string | null;
+  amount: number | null;
+  incomeLedgerId: string | null;
+  // The ledger it goes to (its own, or the profile's fallback); null: not set
+  incomeLedger: string | null;
+  lineDescription: string;
+  savedLineDescription: string | null;
+  // False: waits until its income ledger is set
+  ready: boolean;
+  // Tally's reason the last time it refused the bill
+  tallyError: string | null;
 }
 
 const ACTION_LABELS = { Create: "New", Alter: "Changed", Cancel: "Cancelled" } as const;
@@ -60,9 +81,10 @@ export function TallyExport({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Each file goes into its own company in Tally: in TallyPrime choose <strong>Import → Vouchers</strong> and
-        select the file. Bills in a downloaded file are marked as sent; if the import fails, download the same file
-        again from the history below (the latest 10 files are kept).
+        <strong>Import into Tally</strong> sends the bills you tick straight into TallyPrime on this computer (with the
+        Tally extension), and marks each one as it is taken. Or download the XML and, in TallyPrime, choose{" "}
+        <strong>Import → Vouchers</strong>: bills in a downloaded file are marked as sent; if that import fails, download
+        the same file again from the history below (the latest 10 files are kept).
       </p>
       <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
         <p className="flex-1 min-w-[16rem] text-sm text-muted-foreground">
@@ -82,14 +104,19 @@ export function TallyExport({ isAdmin }: { isAdmin: boolean }) {
           <SeriesCard key={s.type} series={s} isAdmin={isAdmin} onChanged={load} />
         ))}
       </div>
+      <TallyServices />
     </div>
   );
 }
 
 function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: boolean; onChanged: () => void }) {
   const [downloading, setDownloading] = useState<string | null>(null);
-  const newCount = series.bills.filter((b) => b.action === "Create").length;
-  const changeCount = series.bills.length - newCount;
+  const [ledgerFor, setLedgerFor] = useState<WaitingBill | null>(null);
+  const [sending, setSending] = useState(false);
+  const ready = series.bills.filter((b) => b.ready);
+  const newCount = ready.filter((b) => b.action === "Create").length;
+  const changeCount = ready.length - newCount;
+  const noLedger = series.bills.length - ready.length;
   const isGst = series.type === "GST";
 
   const download = async (key: string, request: Parameters<typeof downloadBillFile>[0]) => {
@@ -119,7 +146,7 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
           <div className="flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>
-              Tally names are not set yet, so the defaults below are used.{" "}
+              Tally company and voucher type are not set yet, so the defaults below are used.{" "}
               {isAdmin ? "Set them in Company profiles." : "Admin sets them in Company profiles."}
             </span>
           </div>
@@ -127,8 +154,13 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
           <dt className="text-muted-foreground">Voucher type</dt>
           <dd>{series.ledgers.voucherType}</dd>
-          <dt className="text-muted-foreground">Fee ledger</dt>
-          <dd>{series.ledgers.salesLedger}</dd>
+          <dt className="text-muted-foreground">Income ledger</dt>
+          <dd>
+            The bill&apos;s service ledger
+            {series.ledgers.fallbackIncomeLedger && (
+              <span className="text-muted-foreground"> (if not set: {series.ledgers.fallbackIncomeLedger})</span>
+            )}
+          </dd>
           {isGst && (
             <>
               <dt className="text-muted-foreground">GST ledgers</dt>
@@ -141,27 +173,59 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
 
         <div className="space-y-2">
           <p className="font-medium">
-            Waiting to go to Tally: {series.bills.length === 0 ? "nothing" : `${newCount} new${changeCount ? `, ${changeCount} changed or cancelled` : ""}`}
+            Ready for Tally: {ready.length === 0 ? "nothing" : `${newCount} new${changeCount ? `, ${changeCount} changed or cancelled` : ""}`}
           </p>
+          {noLedger > 0 && (
+            <p className="flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {noLedger} bill{noLedger === 1 ? " has" : "s have"} no income ledger yet and wait{noLedger === 1 ? "s" : ""} until
+              it is set. Click <strong>Set ledger</strong> on {noLedger === 1 ? "it" : "each"}.
+            </p>
+          )}
           {series.bills.length > 0 && (
             <ul className="max-h-56 overflow-y-auto divide-y rounded-md border text-sm">
               {series.bills.map((bill) => (
                 <li key={bill.id} className="flex items-center gap-2 px-2 py-1.5">
-                  <span className="font-mono shrink-0">{bill.billNumber}</span>
-                  <span className="truncate text-muted-foreground flex-1">{bill.client}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="font-mono shrink-0">{bill.billNumber}</span>
+                      <span className="truncate text-muted-foreground">{bill.client}</span>
+                    </span>
+                    {bill.action !== "Cancel" && (
+                      <span className={bill.incomeLedger ? "block truncate text-xs text-muted-foreground" : "block text-xs text-amber-700 dark:text-amber-400"}>
+                        {bill.incomeLedger ?? "No income ledger"}
+                      </span>
+                    )}
+                    {bill.tallyError && <span className="block text-xs text-destructive">Tally refused it: {bill.tallyError}</span>}
+                  </span>
                   {bill.action !== "Create" && <Badge variant="outline">{ACTION_LABELS[bill.action]}</Badge>}
                   {bill.amount !== null && <span className="shrink-0">{formatRupees(bill.amount)}</span>}
+                  {bill.action !== "Cancel" && (
+                    <Button
+                      size={bill.incomeLedgerId ? "icon" : "sm"}
+                      variant={bill.incomeLedgerId ? "ghost" : "outline"}
+                      className={bill.incomeLedgerId ? "h-7 w-7 shrink-0" : "h-7 shrink-0"}
+                      aria-label={`Tally ledger of ${bill.billNumber}`}
+                      onClick={() => setLedgerFor(bill)}
+                    >
+                      {bill.incomeLedgerId ? <BookOpen className="h-3.5 w-3.5" /> : "Set ledger"}
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
           )}
+          <Button className="w-full" disabled={ready.length === 0 || downloading !== null} onClick={() => setSending(true)}>
+            <Upload className="mr-2 h-4 w-4" />Import into Tally
+          </Button>
           <Button
             className="w-full"
-            disabled={series.bills.length === 0 || downloading !== null}
+            variant="outline"
+            disabled={ready.length === 0 || downloading !== null}
             onClick={() => download("export", { method: "post", url: "/api/billing/tally", data: { type: series.type } })}
           >
             {downloading === "export" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            Download Tally XML
+            Download Tally XML instead
           </Button>
         </div>
 
@@ -217,7 +281,79 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
           </div>
         )}
       </CardContent>
+      {sending && (
+        <TallySendDialog
+          type={series.type}
+          company={series.ledgers.company}
+          bills={ready}
+          onClose={() => setSending(false)}
+          onChanged={onChanged}
+        />
+      )}
+      {ledgerFor && (
+        <WaitingBillLedger
+          bill={ledgerFor}
+          onClose={() => setLedgerFor(null)}
+          onSaved={() => {
+            setLedgerFor(null);
+            onChanged();
+          }}
+        />
+      )}
     </Card>
+  );
+}
+
+// The income ledger of a bill waiting for Tally
+function WaitingBillLedger({ bill, onClose, onSaved }: { bill: WaitingBill; onClose: () => void; onSaved: () => void }) {
+  const [ledgerId, setLedgerId] = useState<string | null>(bill.incomeLedgerId);
+  const [line, setLine] = useState(bill.savedLineDescription ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!ledgerId) return;
+    setSaving(true);
+    try {
+      await runBillAction(bill.id, { action: "set_income_ledger", incomeLedgerId: ledgerId, lineDescription: line.trim() });
+      toast.success("Ledger saved");
+      onSaved();
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Tally ledger – {bill.billNumber}</DialogTitle>
+          <DialogDescription>{bill.client}</DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save();
+          }}
+        >
+          <IncomeLedgerFields
+            ledgerId={ledgerId}
+            onLedgerChange={setLedgerId}
+            description={line}
+            onDescriptionChange={setLine}
+            descriptionPlaceholder={bill.lineDescription}
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={!ledgerId || saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
