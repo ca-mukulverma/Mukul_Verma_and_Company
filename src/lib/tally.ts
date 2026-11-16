@@ -4,11 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { GST_STATES, billTotals } from "@/lib/bill-document";
 import { MVC_GST_STATE_CODE } from "@/lib/bill-formats";
 import { BillingAccess } from "@/lib/billing";
-import { billTypesOf } from "@/lib/billing-constants";
+import { billTypesOf, TALLY_DEFAULT_VOUCHER_TYPES, TALLY_DEFAULTS, TALLY_MVC_COMPANY } from "@/lib/billing-constants";
 import { billShowsGstin, clientLedger } from "@/lib/connectors";
 
-// Tally import file (XML) of sales vouchers, one file per billing entity,
-// since each entity is a separate company in Tally.
+// Tally import (XML) of sales vouchers, one file per billing entity. The
+// four MVC names go into one Tally company, each in its own voucher type;
+// B Edge has its own company. Vouchers are in the firm's Accounting Invoice
+// form: party, the bill's income ledger (the service) with its line
+// description, CGST + SGST or IGST, Round Off (docs/TALLY_DIRECT_IMPORT.md).
 //
 // Each voucher carries REMOTEID = the bill's id, so Tally recognises it again:
 // - a bill not sent before goes as ACTION="Create"
@@ -16,30 +19,23 @@ import { billShowsGstin, clientLedger } from "@/lib/connectors";
 // - a bill cancelled after it was sent goes as ACTION="Cancel"
 // Bills cancelled before they were ever sent are not sent at all.
 
-export const TALLY_DEFAULTS = {
-  voucherType: "Sales",
-  salesLedger: "Professional Fees",
-  cgstLedger: "Output CGST",
-  sgstLedger: "Output SGST",
-  igstLedger: "Output IGST",
-  roundOffLedger: "Round Off",
-};
-
 export interface TallyLedgers {
   company: string;
   voucherType: string;
-  salesLedger: string;
+  // Used only for bills without their own income ledger, when set in
+  // Company profiles (e.g. B Edge until it has income ledgers)
+  fallbackIncomeLedger: string | null;
   cgstLedger: string;
   sgstLedger: string;
   igstLedger: string;
   roundOffLedger: string;
 }
 
-export function tallyLedgers(entity: BillingEntity | null, fallbackName: string): TallyLedgers {
+export function tallyLedgers(entity: BillingEntity | null, type: BillType): TallyLedgers {
   return {
-    company: entity?.tallyCompany || entity?.name || fallbackName,
-    voucherType: entity?.tallyVoucherType || TALLY_DEFAULTS.voucherType,
-    salesLedger: entity?.tallySalesLedger || TALLY_DEFAULTS.salesLedger,
+    company: entity?.tallyCompany || (type === "BEDGE" ? entity?.name || "B Edge" : TALLY_MVC_COMPANY),
+    voucherType: entity?.tallyVoucherType || TALLY_DEFAULT_VOUCHER_TYPES[type],
+    fallbackIncomeLedger: entity?.tallySalesLedger || null,
     cgstLedger: entity?.tallyCgstLedger || TALLY_DEFAULTS.cgstLedger,
     sgstLedger: entity?.tallySgstLedger || TALLY_DEFAULTS.sgstLedger,
     igstLedger: entity?.tallyIgstLedger || TALLY_DEFAULTS.igstLedger,
@@ -73,6 +69,7 @@ const tallyBillInclude = {
   },
   connector: { select: { name: true } },
   reissuedFrom: { select: { billNumber: true } },
+  incomeLedger: { select: { id: true, name: true } },
 } satisfies Prisma.BillInclude;
 
 type TallyBill = Prisma.BillGetPayload<{ include: typeof tallyBillInclude }>;
@@ -98,21 +95,38 @@ function reportedGstin(bill: TallyBill) {
   return billShowsGstin(bill, bill.client?.connectorId ?? null) ? partyGstin(bill) : null;
 }
 
-// What the voucher says: the work, the client (and GSTIN when shown), the
-// bill number, the connector and the bill a reissue replaces
+// The work in one line
+function oneLine(text: string) {
+  return text.replace(/\s*\n\s*/g, "; ").trim();
+}
+
+// The voucher's narration, as the firm writes it in Tally: the client, a tab,
+// then the work (and the bill a reissue replaces)
 export function voucherNarration(bill: TallyBill) {
   const client = bill.client ? bill.client.companyName || bill.client.contactPerson : bill.billToName;
-  const gstin = reportedGstin(bill);
-  const connector = bill.connector?.name ?? (bill.billNumber ? null : bill.client?.connector?.name) ?? null;
+  const work = oneLine(bill.description);
   return [
-    bill.description.replace(/\s*\n\s*/g, "; "),
-    client ? `Client: ${client}${gstin ? ` (GSTIN ${gstin})` : ""}` : null,
-    bill.billNumber ? `Bill no. ${bill.billNumber}` : null,
-    connector ? `Via connector: ${connector}` : null,
-    bill.reissuedFrom?.billNumber ? `Reissue of bill no. ${bill.reissuedFrom.billNumber}` : null,
-  ]
-    .filter(Boolean)
-    .join(" | ");
+    client ? `${client}\t${work}` : work,
+    bill.reissuedFrom?.billNumber ? ` (reissue of bill no. ${bill.reissuedFrom.billNumber})` : "",
+  ].join("");
+}
+
+// The bill's income ledger in Tally, or null when it has none yet (it then
+// can't be sent)
+export function incomeLedgerName(bill: Pick<TallyBill, "incomeLedger">, ledgers: TallyLedgers) {
+  return bill.incomeLedger?.name ?? ledgers.fallbackIncomeLedger;
+}
+
+// The description on the income ledger line: the one set on the bill, else
+// the bill's work
+export function lineDescription(bill: Pick<TallyBill, "tallyLineDescription" | "description">) {
+  return (bill.tallyLineDescription || oneLine(bill.description)).slice(0, 250);
+}
+
+// Whether a waiting bill can go to Tally: a cancellation always can; anything
+// else needs its income ledger
+export function readyForTally(bill: TallyBill, ledgers: TallyLedgers) {
+  return voucherAction(bill) === "Cancel" || !!incomeLedgerName(bill, ledgers);
 }
 
 function escapeXml(value: string) {
@@ -133,16 +147,28 @@ function tallyDate(date: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(date).replace(/-/g, "");
 }
 
-// Tally: debit amounts are negative with ISDEEMEDPOSITIVE Yes, credits positive
-function ledgerEntry(ledger: string, amount: number, debit: boolean, isParty = false) {
+// Tally: debit amounts are negative with ISDEEMEDPOSITIVE Yes, credits
+// positive. In an invoice the lines are LEDGERENTRIES.LIST, as in the
+// vouchers entered by hand.
+function ledgerEntry(ledger: string, amount: number, debit: boolean, extra: string[] = [], isParty = false) {
   return [
-    "<ALLLEDGERENTRIES.LIST>",
+    "<LEDGERENTRIES.LIST>",
     tag("LEDGERNAME", ledger),
     tag("ISDEEMEDPOSITIVE", debit ? "Yes" : "No"),
     ...(isParty ? [tag("ISPARTYLEDGER", "Yes")] : []),
     tag("AMOUNT", debit ? -amount : amount),
-    "</ALLLEDGERENTRIES.LIST>",
+    ...extra,
+    "</LEDGERENTRIES.LIST>",
   ].join("");
+}
+
+// The line description, in the same user-defined field Tally keeps it in
+function userDescription(text: string) {
+  return (
+    '<UDF:USERDESCRIPTION.LIST DESC="`User Description`" ISLIST="YES" TYPE="String" INDEX="29">' +
+    `<UDF:USERDESCRIPTION DESC="\`User Description\`">${escapeXml(text)}</UDF:USERDESCRIPTION>` +
+    "</UDF:USERDESCRIPTION.LIST>"
+  );
 }
 
 export function voucherAction(bill: Pick<TallyBill, "status" | "tallyExportedAt">) {
@@ -155,7 +181,7 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
   const party = partyLedgerName(bill);
   const fee = bill.amount !== null ? Number(bill.amount) : 0;
   const date = tallyDate(bill.billDate ?? bill.createdAt);
-  const head = `<VOUCHER REMOTEID="${escapeXml(bill.id)}" VCHTYPE="${escapeXml(ledgers.voucherType)}" ACTION="${action}" OBJVIEW="Accounting Voucher View">`;
+  const head = `<VOUCHER REMOTEID="${escapeXml(bill.id)}" VCHTYPE="${escapeXml(ledgers.voucherType)}" ACTION="${action}" OBJVIEW="Invoice Voucher View">`;
 
   if (action === "Cancel") {
     return [
@@ -172,18 +198,17 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
   const gstin = partyGstin(bill);
   // Every bill in a Tally series has its type
   const { taxLines, roundOff, total } = billTotals(bill.type as BillType, fee, entity?.stateCode || null, gstin || null);
-  const entries: string[] = [];
+  const isGst = bill.type === "GST";
+  const taxEntries: string[] = [];
   let gstTags: string[] = [];
-  if (bill.type === "GST") {
+  if (isGst) {
     for (const line of taxLines) {
       const ledger = line.label.startsWith("CGST")
         ? ledgers.cgstLedger
         : line.label.startsWith("SGST")
           ? ledgers.sgstLedger
-          : line.label.startsWith("IGST")
-            ? ledgers.igstLedger
-            : ledgers.igstLedger;
-      entries.push(ledgerEntry(ledger, line.amount, false));
+          : ledgers.igstLedger;
+      taxEntries.push(ledgerEntry(ledger, line.amount, false));
     }
     const clientState = gstin?.slice(0, 2);
     const stateName = (clientState && GST_STATES[clientState]) || GST_STATES[entity?.stateCode || MVC_GST_STATE_CODE] || null;
@@ -191,24 +216,36 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
     gstTags = [
       ...(reported ? [tag("PARTYGSTIN", reported)] : []),
       ...(stateName ? [tag("STATENAME", stateName), tag("PLACEOFSUPPLY", stateName)] : []),
+      tag("COUNTRYOFRESIDENCE", "India"),
     ];
   }
   // Rounding up is credited to the round off ledger, rounding down debited
-  if (roundOff) entries.push(ledgerEntry(ledgers.roundOffLedger, Math.abs(roundOff), roundOff < 0));
+  if (roundOff) taxEntries.push(ledgerEntry(ledgers.roundOffLedger, Math.abs(roundOff), roundOff < 0));
+
+  // Bills in the non-GST names carry no tax; the line is marked Non-GST so
+  // it isn't read as a taxable supply with no tax
+  const incomeExtra = [
+    ...(isGst ? [] : [tag("GSTOVRDNTAXABILITY", "Non-GST"), tag("GSTOVRDNTYPEOFSUPPLY", "Services")]),
+    userDescription(lineDescription(bill)),
+  ];
 
   return [
     head,
     tag("DATE", date),
+    tag("EFFECTIVEDATE", date),
     tag("VOUCHERTYPENAME", ledgers.voucherType),
     tag("VOUCHERNUMBER", bill.billNumber ?? ""),
-    tag("REFERENCE", bill.billNumber ?? ""),
     tag("PARTYLEDGERNAME", party),
+    tag("PARTYNAME", party),
+    tag("BASICBUYERNAME", party),
     ...gstTags,
     tag("NARRATION", voucherNarration(bill)),
-    tag("PERSISTEDVIEW", "Accounting Voucher View"),
-    ledgerEntry(party, total, true, true),
-    ledgerEntry(ledgers.salesLedger, fee, false),
-    ...entries,
+    tag("PERSISTEDVIEW", "Invoice Voucher View"),
+    tag("VCHENTRYMODE", "Accounting Invoice"),
+    tag("ISINVOICE", "Yes"),
+    ledgerEntry(party, total, true, [], true),
+    ledgerEntry(incomeLedgerName(bill, ledgers) ?? "", fee, false, incomeExtra),
+    ...taxEntries,
     "</VOUCHER>",
   ].join("");
 }
@@ -246,9 +283,9 @@ export function tallyExportXml(tallyExport: Pick<TallyExport, "xml" | "xmlGzip">
   return tallyExport.xmlGzip ? gunzipSync(tallyExport.xmlGzip) : Buffer.from(tallyExport.xml ?? "", "utf8");
 }
 
-// Builds the XML for everything waiting in a series, records the export and
-// marks the bills as sent, all in one transaction. Returns null when nothing
-// is waiting.
+// Builds the XML for everything waiting in a series that can be sent (see
+// readyForTally), records the export and marks those bills as sent, all in
+// one transaction. Returns null when nothing can be sent.
 export async function createTallyExport(type: BillType, userId: string) {
   const [bills, entity] = await Promise.all([
     loadPendingTallyBills(type),
@@ -257,21 +294,24 @@ export async function createTallyExport(type: BillType, userId: string) {
   if (bills.length === 0) return null;
 
   const ledgers = tallyLedgers(entity, type);
-  const xml = buildTallyXml(bills, ledgers, entity);
-  const newCount = bills.filter((b) => !b.tallyExportedAt).length;
+  // Bills without an income ledger wait until one is set
+  const ready = bills.filter((bill) => readyForTally(bill, ledgers));
+  if (ready.length === 0) return null;
+  const xml = buildTallyXml(ready, ledgers, entity);
+  const newCount = ready.filter((b) => !b.tallyExportedAt).length;
   const now = new Date();
 
   return prisma.$transaction(async (tx) => {
     const tallyExport = await tx.tallyExport.create({
-      data: { type, xmlGzip: gzipSync(xml), newCount, updateCount: bills.length - newCount, createdById: userId },
+      data: { type, xmlGzip: gzipSync(xml), newCount, updateCount: ready.length - newCount, createdById: userId },
     });
     // Only bills still waiting are marked; if someone else exported them in
     // the meantime the counts differ and everything is rolled back
     const { count } = await tx.bill.updateMany({
-      where: { id: { in: bills.map((b) => b.id) }, ...pendingTallyWhere(type) },
+      where: { id: { in: ready.map((b) => b.id) }, ...pendingTallyWhere(type) },
       data: { tallyExportedAt: now, tallyNeedsUpdate: false, tallyExportId: tallyExport.id },
     });
-    if (count !== bills.length) throw new TallyExportConflict("These bills were just exported by someone else");
+    if (count !== ready.length) throw new TallyExportConflict("These bills were just exported by someone else");
 
     const older = await tx.tallyExport.findMany({
       where: { type },

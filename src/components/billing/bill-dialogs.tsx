@@ -22,6 +22,7 @@ import {
 import { BillTypeSelect } from "./bill-type-select";
 import { BillReturnNotice } from "./bill-return-notice";
 import { BillTo, BillToPicker, billToPayload, billToValid } from "./client-picker";
+import { IncomeLedgerFields } from "./income-ledger-picker";
 import { apiErrorMessage, Bill, BillAction, BillEvent, billParty, billRaisedBy, EVENT_LABELS, runBillAction } from "./bill-types";
 
 export type BillDialog =
@@ -33,7 +34,8 @@ export type BillDialog =
   | "final_reject"
   | "details"
   | "history"
-  | "no_billing";
+  | "no_billing"
+  | "income_ledger";
 
 const REMARK_DIALOGS = {
   send_back: {
@@ -154,8 +156,16 @@ function FeeHints({ billId, onPick }: { billId: string; onPick: (amount: number)
   );
 }
 
+// The bill's work in one line: the default description of its Tally line
+export function billWorkLine(bill: Bill) {
+  return bill.description.replace(/\s*\n\s*/g, "; ").trim();
+}
+
 export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
   const [value, setValue] = useState(bill.amount !== null ? String(bill.amount) : "");
+  // The billing manager also chooses the Tally income ledger (the service)
+  const [ledgerId, setLedgerId] = useState<string | null>(bill.incomeLedger?.id ?? null);
+  const [line, setLine] = useState(bill.tallyLineDescription ?? "");
   // The billing manager chooses who an MVC bill is issued by along with the amount
   const canChooseType =
     bill.canManage && bill.company === "MVC" && (EDITABLE_BILL_STATUSES as string[]).includes(bill.status);
@@ -181,8 +191,13 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
           onSubmit={async (e) => {
             e.preventDefault();
             if (!valid) return;
-            const action: BillAction =
-              canChooseType && type && type !== bill.type ? { action: "enter_amount", amount, type } : { action: "enter_amount", amount };
+            const action: BillAction = {
+              action: "enter_amount",
+              amount,
+              ...(canChooseType && type && type !== bill.type && { type }),
+              ...(bill.canManage && ledgerId && ledgerId !== bill.incomeLedger?.id && { incomeLedgerId: ledgerId }),
+              ...(bill.canManage && line.trim() !== (bill.tallyLineDescription ?? "") && { lineDescription: line.trim() }),
+            };
             if (await run(action, bill.canManage ? "Amount saved and sent for final approval" : "Amount saved")) onClose();
           }}
         >
@@ -206,6 +221,15 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
             />
           </div>
           <FeeHints billId={bill.id} onPick={(fee) => setValue(String(fee))} />
+          {bill.canManage && (
+            <IncomeLedgerFields
+              ledgerId={ledgerId}
+              onLedgerChange={setLedgerId}
+              description={line}
+              onDescriptionChange={setLine}
+              descriptionPlaceholder={billWorkLine(bill)}
+            />
+          )}
           {type === "GST" && valid && (
             <div className="text-sm space-y-1 rounded-md border p-3">
               <div className="flex justify-between"><span>Fee</span><span>{formatRupees(amount)}</span></div>
@@ -217,6 +241,57 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" disabled={!valid || saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save amount
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Billing manager or Admin: the Tally income ledger and line description of
+// any bill; on a bill already in Tally it makes it "Tally update due"
+export function IncomeLedgerDialog({ bill, onClose, onDone }: DialogProps) {
+  const [ledgerId, setLedgerId] = useState<string | null>(bill.incomeLedger?.id ?? null);
+  const [line, setLine] = useState(bill.tallyLineDescription ?? "");
+  const { saving, run } = useBillAction({ bill, onDone });
+  const inTally = bill.status === "approved" && !!bill.tallyExportedAt;
+  const changed = ledgerId !== (bill.incomeLedger?.id ?? null) || line.trim() !== (bill.tallyLineDescription ?? "");
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Tally ledger{bill.billNumber ? ` – ${bill.billNumber}` : ""}</DialogTitle>
+          <DialogDescription>The income ledger (service) this bill goes to in Tally, and the description on its line.</DialogDescription>
+        </DialogHeader>
+        <BillSummary bill={bill} />
+        {inTally && (
+          <p className="rounded-md border border-amber-400 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+            This bill is already in Tally. After the change it is marked <strong>Tally update due</strong>, and the next
+            send to Tally alters the voucher.
+          </p>
+        )}
+        <form
+          className="space-y-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!ledgerId || !changed) return;
+            const action: BillAction = { action: "set_income_ledger", incomeLedgerId: ledgerId, lineDescription: line.trim() };
+            if (await run(action, inTally ? "Ledger saved – Tally update due" : "Ledger saved")) onClose();
+          }}
+        >
+          <IncomeLedgerFields
+            ledgerId={ledgerId}
+            onLedgerChange={setLedgerId}
+            description={line}
+            onDescriptionChange={setLine}
+            descriptionPlaceholder={billWorkLine(bill)}
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={!ledgerId || !changed || saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save
             </Button>
           </DialogFooter>
         </form>

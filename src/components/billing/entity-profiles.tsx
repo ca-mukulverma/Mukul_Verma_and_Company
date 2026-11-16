@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { BILL_TYPE_LABELS, BillTypeValue } from "@/lib/billing-constants";
+import { BILL_TYPE_LABELS, BillTypeValue, TALLY_DEFAULT_VOUCHER_TYPES, TALLY_DEFAULTS, TALLY_MVC_COMPANY } from "@/lib/billing-constants";
 import { apiErrorMessage } from "./bill-types";
 
 interface Entity {
@@ -56,12 +56,14 @@ const FIELDS: { key: Field; label: string; placeholder?: string; gstOnly?: boole
   { key: "footerNote", label: "Note at the bottom of the bill", long: true },
   // Names exactly as they are in Tally; empty fields use the default shown
   { key: "tallyCompany", label: "Company name in Tally", tally: true },
-  { key: "tallyVoucherType", label: "Voucher type", placeholder: "Sales", tally: true },
-  { key: "tallySalesLedger", label: "Sales / fee ledger", placeholder: "Professional Fees", tally: true },
-  { key: "tallyCgstLedger", label: "CGST ledger", placeholder: "Output CGST", gstOnly: true, tally: true },
-  { key: "tallySgstLedger", label: "SGST ledger", placeholder: "Output SGST", gstOnly: true, tally: true },
-  { key: "tallyIgstLedger", label: "IGST ledger", placeholder: "Output IGST", gstOnly: true, tally: true },
-  { key: "tallyRoundOffLedger", label: "Round off ledger", placeholder: "Round Off", tally: true },
+  { key: "tallyVoucherType", label: "Voucher type", tally: true },
+  // Each bill has its own income ledger (Billing → Tally → Services); this is
+  // only for bills without one
+  { key: "tallySalesLedger", label: "Income ledger for bills without one (optional)", placeholder: "None: such bills wait", tally: true },
+  { key: "tallyCgstLedger", label: "CGST ledger", placeholder: TALLY_DEFAULTS.cgstLedger, gstOnly: true, tally: true },
+  { key: "tallySgstLedger", label: "SGST ledger", placeholder: TALLY_DEFAULTS.sgstLedger, gstOnly: true, tally: true },
+  { key: "tallyIgstLedger", label: "IGST ledger", placeholder: TALLY_DEFAULTS.igstLedger, gstOnly: true, tally: true },
+  { key: "tallyRoundOffLedger", label: "Round off ledger", placeholder: TALLY_DEFAULTS.roundOffLedger, tally: true },
 ];
 
 // Admin edits the letterhead and bank details printed on each type of bill
@@ -134,7 +136,14 @@ function EntityForm({ entity }: { entity: Entity }) {
             const props = {
               id,
               value: values[field.key] ?? "",
-              placeholder: field.key === "tallyCompany" ? values.name : field.placeholder,
+              placeholder:
+                field.key === "tallyCompany"
+                  ? entity.type === "BEDGE"
+                    ? values.name
+                    : TALLY_MVC_COMPANY
+                  : field.key === "tallyVoucherType"
+                    ? TALLY_DEFAULT_VOUCHER_TYPES[entity.type]
+                    : field.placeholder,
               onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
                 setValues({ ...values, [field.key]: e.target.value }),
             };

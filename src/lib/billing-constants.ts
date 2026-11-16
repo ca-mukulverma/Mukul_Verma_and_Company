@@ -149,3 +149,22 @@ export function formatRupees(amount: number): string {
 
 // Pieces of work that can be logged at once (Log work form and Excel import)
 export const MAX_WORK_ROWS = 100;
+
+// The names in the firm's Tally, used while Company profiles leave them empty
+export const TALLY_DEFAULTS = {
+  cgstLedger: "CGST",
+  sgstLedger: "SGST",
+  igstLedger: "IGST",
+  roundOffLedger: "Round Off",
+};
+
+// MVC & Company, CA Mukul Verma, CA Harsh Verma and Verma Law Associates
+// share one Tally company; each has its own voucher type there
+export const TALLY_MVC_COMPANY = "Mukul Verma & Co.";
+export const TALLY_DEFAULT_VOUCHER_TYPES: Record<BillTypeValue, string> = {
+  GST: "Sales",
+  NON_GST: "Sales - CA Mukul Verma",
+  NON_GST_HV: "Sales - CA Harsh Verma",
+  NON_GST_VLA: "Sales - VLA",
+  BEDGE: "Sales",
+};

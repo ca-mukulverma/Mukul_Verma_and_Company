@@ -43,9 +43,9 @@ One voucher per bill, in the same form as the bills entered by hand:
 
 ```
 Voucher type   Sales                      (MVC & Company, GST)
-               Sales – CA Mukul Verma     (non-GST)
-               Sales – CA Harsh Verma     (non-GST)
-               Sales – VLA                (non-GST)
+               Sales - CA Mukul Verma     (non-GST)
+               Sales - CA Harsh Verma     (non-GST)
+               Sales - VLA                (non-GST)
 Mode           Accounting Invoice (Invoice Voucher View)
 No. / date     the app's bill number and bill date
 Party          the client's (or connector's) Tally ledger      Dr  total
@@ -83,8 +83,9 @@ Today the app sends every fee to one ledger ("Professional Fees"). Instead:
   - Compliance bills get their work type's ledger filled in, e.g. GSTR-1/3B
     → *Gst Return Monthly*, description "GST Return - June 26".
   - The billing manager or Admin can change the ledger and the description
-    on any bill until it is sent to Tally (after that, through the usual
-    edit request, which alters the voucher in Tally).
+    on any bill (*Tally ledger* in the bill's menu, or *Set ledger* on the
+    Tally tab). On a bill already in Tally the change makes it *Tally update
+    due*, and the next send alters the voucher.
   - The default ledger of each work type is set, and can be changed at any
     time, in Billing → Tally → Services; a change applies to bills made
     afterwards.
@@ -119,7 +120,7 @@ Changes:
    with *Mukul Verma & Co.* loaded, and that every voucher type, party ledger
    and income ledger the bills need exists. If anything is missing, nothing
    is sent and the screen shows an error listing it, e.g. "Voucher type
-   'Sales – VLA' does not exist in Mukul Verma & Co. – create it in Tally
+   'Sales - VLA' does not exist in Mukul Verma & Co. – create it in Tally
    and try again"; after it is created, the same bills are sent with one
    click.
 4. Each bill is marked **In Tally** (with the date and who sent it) or
@@ -134,7 +135,7 @@ The XML download stays as a fallback.
 - TallyPrime: *F1 → Settings → Connectivity → Client/Server configuration*:
   TallyPrime acts as **Server**, port **9000**; restart Tally.
 - The billing team creates the three voucher types in Tally themselves:
-  *Sales – CA Mukul Verma*, *Sales – CA Harsh Verma* and *Sales – VLA* (or
+  *Sales - CA Mukul Verma*, *Sales - CA Harsh Verma* and *Sales - VLA* (or
   the names set in Company profiles), under *Sales*, numbering *Manual*.
 - **The app never creates, changes or deletes anything in Tally except the
   bills it sends.** Voucher types, income ledgers and party ledgers are
@@ -155,11 +156,12 @@ TallyPrime.
 - The mapping sheet, updated by billing later (all ledgers shown until then).
 - The names of the three new voucher types (the ones above are proposals).
 
-## Build steps (after approval)
+## Build steps
 
-1. Income ledger per bill: services list, work-type defaults, picker on the
-   amount screen; corrected tax ledger defaults.
-2. Voucher in the Accounting Invoice form above, per-entity voucher type,
-   Non-GST lines; the XML download uses it too, so it can be tested by hand.
+1. **(Done, 17 Nov 2026)** Income ledger per bill: services list, work-type
+   defaults, picker on the amount screen; corrected tax ledger defaults.
+2. **(Done, 17 Nov 2026)** Voucher in the Accounting Invoice form above,
+   per-entity voucher type, Non-GST lines; the XML download uses it, so it
+   can be tested by importing the file by hand.
 3. Extension: talk to Tally, check ledgers, send, report back per bill.
 4. *Send to Tally* screen, results and history; B Edge setting.

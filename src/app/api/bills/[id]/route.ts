@@ -48,8 +48,15 @@ const detailsSchema = z.object({
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("set_type"), type: z.enum(MVC_BILL_TYPES) }),
   z.object({ action: z.literal("request_amount"), userId: z.string().min(1), remark: z.string().trim().max(1000).optional() }),
-  // A billing manager may choose who an MVC bill is issued by in the same step
-  z.object({ action: z.literal("enter_amount"), amount: z.number().positive().max(1e10), type: z.enum(MVC_BILL_TYPES).optional() }),
+  // A billing manager may choose who an MVC bill is issued by in the same
+  // step, and its Tally income ledger
+  z.object({
+    action: z.literal("enter_amount"),
+    amount: z.number().positive().max(1e10),
+    type: z.enum(MVC_BILL_TYPES).optional(),
+    incomeLedgerId: z.string().min(1).optional(),
+    lineDescription: z.string().trim().max(250).optional(),
+  }),
   z.object({ action: z.literal("send_back"), remark: z.string().trim().min(3, "Add a remark").max(1000) }),
   z.object({ action: z.literal("not_billable"), remark: z.string().trim().max(1000).optional() }),
   z.object({ action: z.literal("reopen") }),
@@ -58,7 +65,21 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("final_reject"), remark: z.string().trim().min(3, "Add a remark").max(1000) }),
   // Admin corrects the amount after it was entered, including on approved bills
   z.object({ action: z.literal("edit_amount"), amount: z.number().positive().max(1e10), remark: z.string().trim().max(1000).optional() }),
+  // Billing manager or Admin: the Tally income ledger and line description
+  z.object({
+    action: z.literal("set_income_ledger"),
+    incomeLedgerId: z.string().min(1),
+    lineDescription: z.string().trim().max(250).optional(),
+  }),
 ]);
+
+// A Tally income ledger that may be put on a bill: hidden ones only if the
+// bill already has it
+async function pickableLedger(id: string, currentId: string | null) {
+  const ledger = await prisma.tallyIncomeLedger.findUnique({ where: { id }, select: { id: true, name: true, active: true } });
+  return ledger && (ledger.active || ledger.id === currentId) ? ledger : null;
+}
+const LEDGER_NOT_FOUND = { error: "That income ledger is not in the list. Refresh and pick it again." };
 
 async function loadContext(id: string) {
   const session = await getServerSession(authOptions);
@@ -257,6 +278,11 @@ export async function POST(request: NextRequest, { params }: Params) {
       const type = input.type ?? bill.type;
       if (!type) return NextResponse.json({ error: "Choose GST or Non-GST first" }, { status: 400 });
       if (!hasBillTo(bill)) return NextResponse.json({ error: "Select the client or enter the name to bill first" }, { status: 400 });
+      // Only the billing manager or Admin chooses the Tally income ledger
+      if ((input.incomeLedgerId !== undefined || input.lineDescription !== undefined) && !isManager) return forbidden();
+      if (input.incomeLedgerId && !(await pickableLedger(input.incomeLedgerId, bill.incomeLedgerId))) {
+        return NextResponse.json(LEDGER_NOT_FOUND, { status: 400 });
+      }
 
       // A billing manager or Admin entering the amount approves it in the same
       // step: the bill goes straight to Admin's final approval. An amount
@@ -266,7 +292,15 @@ export async function POST(request: NextRequest, { params }: Params) {
       const ok = await prisma.$transaction(async (tx) => {
         const { count } = await tx.bill.updateMany({
           where: { id: bill.id, status: { in: allowedStatuses } },
-          data: { status: nextStatus, type, amount, amountEnteredById: user.id, amountEnteredAt: new Date() },
+          data: {
+            status: nextStatus,
+            type,
+            amount,
+            amountEnteredById: user.id,
+            amountEnteredAt: new Date(),
+            ...(input.incomeLedgerId && { incomeLedgerId: input.incomeLedgerId }),
+            ...(input.lineDescription !== undefined && { tallyLineDescription: input.lineDescription || null }),
+          },
         });
         if (count === 0) return false;
         await tx.billEvent.create({
@@ -445,6 +479,48 @@ export async function POST(request: NextRequest, { params }: Params) {
           sentById: user.id,
         });
       });
+      break;
+    }
+
+    case "set_income_ledger": {
+      if (!isManager) return forbidden();
+      if (["cancelled", "not_billable"].includes(bill.status)) {
+        return NextResponse.json({ error: "This bill doesn't go to Tally" }, { status: 400 });
+      }
+      const ledger = await pickableLedger(input.incomeLedgerId, bill.incomeLedgerId);
+      if (!ledger) return NextResponse.json(LEDGER_NOT_FOUND, { status: 400 });
+      const description = input.lineDescription === undefined ? bill.tallyLineDescription : input.lineDescription || null;
+      if (ledger.id === bill.incomeLedgerId && description === bill.tallyLineDescription) break;
+
+      // Already in Tally: the next send alters the voucher
+      const tallyUpdateDue = bill.status === "approved" && bill.tallyExportedAt !== null;
+      const ok = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.bill.updateMany({
+          where: { id: bill.id, status: bill.status, incomeLedgerId: bill.incomeLedgerId },
+          data: {
+            incomeLedgerId: ledger.id,
+            tallyLineDescription: description,
+            ...(tallyUpdateDue && { tallyNeedsUpdate: true }),
+          },
+        });
+        if (count === 0) return false;
+        await tx.billEvent.create({
+          data: {
+            billId: bill.id,
+            action: "income_ledger_set",
+            userId: user.id,
+            remark: [
+              bill.incomeLedger && bill.incomeLedger.id !== ledger.id ? `${bill.incomeLedger.name} → ${ledger.name}` : ledger.name,
+              description ? `Line: ${description}` : null,
+              tallyUpdateDue ? "Already in Tally: Tally update due" : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          },
+        });
+        return true;
+      });
+      if (!ok) return conflict();
       break;
     }
 

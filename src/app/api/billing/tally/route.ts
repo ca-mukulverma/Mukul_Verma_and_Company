@@ -8,6 +8,8 @@ import { getBillingAccess } from "@/lib/billing";
 import { formatBillNumber } from "@/lib/billing-constants";
 import {
   createTallyExport,
+  incomeLedgerName,
+  lineDescription,
   loadPendingTallyBills,
   partyLedgerName,
   TallyExportConflict,
@@ -16,6 +18,7 @@ import {
   tallyLedgers,
   tallyTypesFor,
   voucherAction,
+  readyForTally,
 } from "@/lib/tally";
 import { fileResponse } from "@/lib/bill-files";
 
@@ -81,16 +84,23 @@ export async function GET() {
         }
       }
 
+      const ledgers = tallyLedgers(entity, type);
       return {
         type,
-        ledgers: tallyLedgers(entity, type),
-        ledgersSet: !!(entity?.tallyCompany && entity.tallySalesLedger),
+        ledgers,
+        ledgersSet: !!(entity?.tallyCompany && entity.tallyVoucherType),
         bills: pending.map((bill) => ({
           id: bill.id,
           billNumber: bill.billNumber ?? formatBillNumber(type, bill.financialYear ?? "", bill.sequence ?? 0),
           action: voucherAction(bill),
           client: bill.client ? bill.client.companyName || bill.client.contactPerson : bill.billToName,
           amount: bill.amount !== null ? Number(bill.amount) : null,
+          // The service: the bill's own income ledger (null: not set yet)
+          incomeLedgerId: bill.incomeLedger?.id ?? null,
+          incomeLedger: incomeLedgerName(bill, ledgers),
+          lineDescription: lineDescription(bill),
+          savedLineDescription: bill.tallyLineDescription,
+          ready: readyForTally(bill, ledgers),
         })),
         parties: [...parties.values()],
         history,
@@ -118,7 +128,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const tallyExport = await createTallyExport(type, ctx.user.id);
-    if (!tallyExport) return NextResponse.json({ error: "Nothing is waiting to go to Tally" }, { status: 404 });
+    if (!tallyExport) {
+      return NextResponse.json(
+        { error: "Nothing can go to Tally yet: set the income ledger on the waiting bills first" },
+        { status: 404 }
+      );
+    }
     return fileResponse(tallyExportXml(tallyExport), "xml", tallyFileName(type, tallyExport.createdAt));
   } catch (error) {
     if (error instanceof TallyExportConflict) {
