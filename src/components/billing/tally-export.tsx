@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { AlertTriangle, BookOpen, Download, Loader2, Save } from "lucide-react";
+import { AlertTriangle, BookOpen, Download, Loader2, Save, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import { BILL_TYPE_LABELS, BillTypeValue, formatRupees } from "@/lib/billing-con
 import { apiErrorMessage, blobErrorMessage, downloadBillFile, runBillAction } from "./bill-types";
 import { IncomeLedgerFields } from "./income-ledger-picker";
 import { TallyServices } from "./tally-services";
+import { TallySendDialog } from "./tally-send";
 import { TallyLedgerFile } from "./tally-ledger-file";
 import { PendingLedgers } from "./pending-ledgers";
 
@@ -47,6 +48,8 @@ interface WaitingBill {
   savedLineDescription: string | null;
   // False: waits until its income ledger is set
   ready: boolean;
+  // Tally's reason the last time it refused the bill
+  tallyError: string | null;
 }
 
 const ACTION_LABELS = { Create: "New", Alter: "Changed", Cancel: "Cancelled" } as const;
@@ -78,9 +81,10 @@ export function TallyExport({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Each file goes into its own company in Tally: in TallyPrime choose <strong>Import → Vouchers</strong> and
-        select the file. Bills in a downloaded file are marked as sent; if the import fails, download the same file
-        again from the history below (the latest 10 files are kept).
+        <strong>Import into Tally</strong> sends the bills you tick straight into TallyPrime on this computer (with the
+        Tally extension), and marks each one as it is taken. Or download the XML and, in TallyPrime, choose{" "}
+        <strong>Import → Vouchers</strong>: bills in a downloaded file are marked as sent; if that import fails, download
+        the same file again from the history below (the latest 10 files are kept).
       </p>
       <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
         <p className="flex-1 min-w-[16rem] text-sm text-muted-foreground">
@@ -108,6 +112,7 @@ export function TallyExport({ isAdmin }: { isAdmin: boolean }) {
 function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: boolean; onChanged: () => void }) {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [ledgerFor, setLedgerFor] = useState<WaitingBill | null>(null);
+  const [sending, setSending] = useState(false);
   const ready = series.bills.filter((b) => b.ready);
   const newCount = ready.filter((b) => b.action === "Create").length;
   const changeCount = ready.length - newCount;
@@ -191,6 +196,7 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
                         {bill.incomeLedger ?? "No income ledger"}
                       </span>
                     )}
+                    {bill.tallyError && <span className="block text-xs text-destructive">Tally refused it: {bill.tallyError}</span>}
                   </span>
                   {bill.action !== "Create" && <Badge variant="outline">{ACTION_LABELS[bill.action]}</Badge>}
                   {bill.amount !== null && <span className="shrink-0">{formatRupees(bill.amount)}</span>}
@@ -209,13 +215,17 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
               ))}
             </ul>
           )}
+          <Button className="w-full" disabled={ready.length === 0 || downloading !== null} onClick={() => setSending(true)}>
+            <Upload className="mr-2 h-4 w-4" />Import into Tally
+          </Button>
           <Button
             className="w-full"
+            variant="outline"
             disabled={ready.length === 0 || downloading !== null}
             onClick={() => download("export", { method: "post", url: "/api/billing/tally", data: { type: series.type } })}
           >
             {downloading === "export" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            Download Tally XML
+            Download Tally XML instead
           </Button>
         </div>
 
@@ -271,6 +281,15 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
           </div>
         )}
       </CardContent>
+      {sending && (
+        <TallySendDialog
+          type={series.type}
+          company={series.ledgers.company}
+          bills={ready}
+          onClose={() => setSending(false)}
+          onChanged={onChanged}
+        />
+      )}
       {ledgerFor && (
         <WaitingBillLedger
           bill={ledgerFor}

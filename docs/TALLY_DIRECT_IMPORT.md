@@ -163,5 +163,39 @@ TallyPrime.
 2. **(Done, 17 Nov 2026)** Voucher in the Accounting Invoice form above,
    per-entity voucher type, Non-GST lines; the XML download uses it, so it
    can be tested by importing the file by hand.
-3. Extension: talk to Tally, check ledgers, send, report back per bill.
-4. *Send to Tally* screen, results and history; B Edge setting.
+3. **(Done, 17 Nov 2026)** Extension (`public/tally-extension`): talks to
+   Tally, checks voucher types and ledgers, sends one bill at a time,
+   reports each answer. Tested against a stand-in Tally:
+   `node --test tests/tally-extension/e2e.test.mjs`.
+4. **(Done, 17 Nov 2026)** *Import into Tally* on each series card of the
+   Tally tab: tick the bills, check, send, a result per bill; refused bills
+   stay waiting with Tally's reason.
+5. To do: B Edge's own Tally (only its Company profile changes); a test on
+   the real Tally PC with sample bills before go-live.
+
+## How it is built
+
+- **The extension** (`public/tally-extension`: manifest, `bridge.js` on the
+  app's pages, `background.js`) is downloaded from the Import window as a
+  ZIP, set up for the app's address, and loaded unpacked in Chrome or Edge,
+  like the GST and WhatsApp extensions. It answers only the app's own pages
+  and talks only to Tally on the same computer (`localhost`, the port set
+  in the Import window, 9000 by default).
+- **It sends bills only.** Each request must be one voucher import for the
+  expected company; anything holding a ledger, voucher type, group or any
+  other master is refused before it reaches Tally.
+- **Steps of one Import:**
+  1. The app prepares an import request per bill
+     (`POST /api/billing/tally/send`) and the names they use: the voucher
+     type and every ledger (read from the vouchers themselves).
+  2. The extension checks the company is open in Tally and that every one
+     of those names exists (names compared without regard to capitals;
+     aliases count). If anything is missing, nothing is sent and the window
+     lists it.
+  3. The bills go one at a time. After each one, Tally's answer is saved in
+     the app (`POST /api/billing/tally/send/results`) before the next goes:
+     taken → *In Tally*; refused → stays waiting with Tally's reason on the
+     Tally tab and in the bill's history.
+  4. A bill changed while it was being sent is marked *Tally update due*.
+     If Tally doesn't answer in time, or the answer can't be saved, sending
+     stops and the window asks to check those bills in Tally first.

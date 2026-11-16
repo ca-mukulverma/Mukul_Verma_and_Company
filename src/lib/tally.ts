@@ -250,6 +250,21 @@ function voucherXml(bill: TallyBill, ledgers: TallyLedgers, entity: BillingEntit
   ].join("");
 }
 
+function unescapeXml(value: string) {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+// Every ledger a voucher posts to, read from the voucher itself so the
+// check before sending can't differ from what is sent
+function ledgersIn(voucher: string) {
+  return [...voucher.matchAll(/<LEDGERNAME>([^<]*)<\/LEDGERNAME>/g)].map((m) => unescapeXml(m[1]));
+}
+
 export function buildTallyXml(bills: TallyBill[], ledgers: TallyLedgers, entity: BillingEntity | null) {
   const vouchers = bills.map((bill) => `<TALLYMESSAGE xmlns:UDF="TallyUDF">${voucherXml(bill, ledgers, entity)}</TALLYMESSAGE>`);
   return [
@@ -309,7 +324,7 @@ export async function createTallyExport(type: BillType, userId: string) {
     // the meantime the counts differ and everything is rolled back
     const { count } = await tx.bill.updateMany({
       where: { id: { in: ready.map((b) => b.id) }, ...pendingTallyWhere(type) },
-      data: { tallyExportedAt: now, tallyNeedsUpdate: false, tallyExportId: tallyExport.id },
+      data: { tallyExportedAt: now, tallyNeedsUpdate: false, tallyExportId: tallyExport.id, tallyError: null, tallyErrorAt: null },
     });
     if (count !== ready.length) throw new TallyExportConflict("These bills were just exported by someone else");
 
@@ -352,4 +367,103 @@ export function tallyFileName(type: BillType, date: Date) {
     .format(date)
     .replace(/[^0-9]+/g, "-");
   return `Tally-${TALLY_FILE_LABELS[type]}-${stamp}.xml`;
+}
+
+// ─── Sending straight into Tally (docs/TALLY_DIRECT_IMPORT.md) ────────────
+//
+// The app prepares one import request per bill and the names they need; the
+// Tally extension on the Tally PC checks those names exist, sends the bills
+// one at a time and reports each result back here at once.
+
+export interface DirectBill {
+  id: string;
+  billNumber: string;
+  client: string | null;
+  amount: number | null;
+  action: "Create" | "Alter" | "Cancel";
+  // The bill as it was prepared; a later change makes it "Tally update due"
+  version: string;
+  xml: string;
+}
+
+export async function prepareDirectSend(type: BillType, billIds: string[]) {
+  const [bills, entity] = await Promise.all([
+    prisma.bill.findMany({
+      where: { AND: [pendingTallyWhere(type), { id: { in: billIds } }] },
+      include: tallyBillInclude,
+      orderBy: [{ billDate: "asc" }, { sequence: "asc" }],
+    }),
+    prisma.billingEntity.findUnique({ where: { type } }),
+  ]);
+  const ledgers = tallyLedgers(entity, type);
+  const ready = bills.filter((bill) => readyForTally(bill, ledgers));
+  const ledgerNames = new Set<string>();
+  const prepared: DirectBill[] = ready.map((bill) => {
+    const xml = buildTallyXml([bill], ledgers, entity);
+    ledgersIn(xml).forEach((name) => ledgerNames.add(name));
+    return {
+      id: bill.id,
+      billNumber: bill.billNumber ?? "",
+      client: bill.client ? bill.client.companyName || bill.client.contactPerson : bill.billToName,
+      amount: bill.amount !== null ? Number(bill.amount) : null,
+      action: voucherAction(bill),
+      version: bill.updatedAt.toISOString(),
+      xml,
+    };
+  });
+  return {
+    company: ledgers.company,
+    voucherTypes: [ledgers.voucherType],
+    ledgers: [...ledgerNames].filter(Boolean).sort(),
+    bills: prepared,
+    // Asked for but not sent: no longer waiting, or no income ledger
+    skipped: billIds.length - prepared.length,
+  };
+}
+
+export interface DirectResult {
+  billId: string;
+  version: string;
+  ok: boolean;
+  error?: string;
+}
+
+// Records what Tally answered for bills sent straight into it. A bill
+// imported is marked as in Tally (and "Tally update due" if it was changed
+// after it was prepared); a failed one keeps waiting, with Tally's reason.
+export async function recordDirectResults(type: BillType, userId: string, results: DirectResult[]) {
+  const now = new Date();
+  const bills = await prisma.bill.findMany({
+    where: { id: { in: results.map((r) => r.billId) }, type, billNumber: { not: null } },
+    select: { id: true, updatedAt: true, tallyExportedAt: true, status: true },
+  });
+  const byId = new Map(bills.map((b) => [b.id, b]));
+  let recorded = 0;
+  for (const result of results) {
+    const bill = byId.get(result.billId);
+    if (!bill) continue;
+    const changedSince = bill.updatedAt.toISOString() !== result.version;
+    await prisma.$transaction([
+      prisma.bill.update({
+        where: { id: bill.id },
+        data: result.ok
+          ? { tallyExportedAt: now, tallyNeedsUpdate: changedSince, tallyError: null, tallyErrorAt: null }
+          : { tallyError: (result.error || "Tally refused this bill").slice(0, 1000), tallyErrorAt: now },
+      }),
+      prisma.billEvent.create({
+        data: {
+          billId: bill.id,
+          action: result.ok ? "tally_imported" : "tally_failed",
+          userId,
+          remark: result.ok
+            ? changedSince
+              ? "Changed while it was being sent: Tally update due"
+              : null
+            : (result.error || "Tally refused this bill").slice(0, 1000),
+        },
+      }),
+    ]);
+    recorded++;
+  }
+  return recorded;
 }

@@ -587,6 +587,9 @@ model Bill {
   // The income ledger in Tally (the service) and the description on its line;
   // compliance bills start with their work type's ledger. Changeable until
   // the bill is in Tally; after that a change makes it "Tally update due".
+  // Why Tally refused the bill the last time it was sent straight into it
+  tallyError   String?   @db.Text
+  tallyErrorAt DateTime?
   incomeLedgerId       String?            @db.Char(36)
   incomeLedger         TallyIncomeLedger? @relation(fields: [incomeLedgerId], references: [id])
   tallyLineDescription String?            @db.VarChar(250)

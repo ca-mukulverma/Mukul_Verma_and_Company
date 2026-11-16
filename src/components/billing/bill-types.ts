@@ -143,6 +143,8 @@ export const EVENT_LABELS: Record<string, string> = {
   amount_entered: "Amount entered",
   amount_edited: "Amount changed by Admin",
   income_ledger_set: "Tally income ledger set",
+  tally_imported: "Imported into Tally",
+  tally_failed: "Tally refused it",
   sent_back: "Sent back",
   not_billable: "Marked not billable",
   reopened: "Reopened",

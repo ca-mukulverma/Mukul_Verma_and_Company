@@ -101,6 +101,8 @@ export async function GET() {
           lineDescription: lineDescription(bill),
           savedLineDescription: bill.tallyLineDescription,
           ready: readyForTally(bill, ledgers),
+          // Tally's reason the last time it refused the bill
+          tallyError: bill.tallyError,
         })),
         parties: [...parties.values()],
         history,
