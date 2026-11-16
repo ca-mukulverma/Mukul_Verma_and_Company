@@ -115,13 +115,17 @@ Changes:
 1. The screen lists the numbered bills waiting for Tally, by entity: new,
    edited (alter) and cancelled (cancel).
 2. The billing manager or Admin ticks the bills and sees what will be sent.
-3. **Import into Tally**: the extension checks that TallyPrime is open with
-   *Mukul Verma & Co.* loaded, checks that every party and income ledger
-   exists, then sends the vouchers.
+3. **Import into Tally**: the extension first checks that TallyPrime is open
+   with *Mukul Verma & Co.* loaded, and that every voucher type, party ledger
+   and income ledger the bills need exists. If anything is missing, nothing
+   is sent and the screen shows an error listing it, e.g. "Voucher type
+   'Sales – VLA' does not exist in Mukul Verma & Co. – create it in Tally
+   and try again"; after it is created, the same bills are sent with one
+   click.
 4. Each bill is marked **In Tally** (with the date and who sent it) or
    **Failed** with Tally's reason, e.g. "Ledger 'X' does not exist". Failed
    bills stay waiting; nothing half-done is marked as sent.
-5. Missing ledgers are listed before sending, not created by the app.
+5. Missing voucher types and ledgers are reported, never created by the app.
 
 The XML download stays as a fallback.
 
@@ -129,13 +133,12 @@ The XML download stays as a fallback.
 
 - TallyPrime: *F1 → Settings → Connectivity → Client/Server configuration*:
   TallyPrime acts as **Server**, port **9000**; restart Tally.
-- The three voucher types are **created by the app**: Billing → Tally →
-  **Set up Tally** (Admin) shows what is missing in *Mukul Verma & Co.* and,
-  on a click, the extension creates it: *Sales – CA Mukul Verma*, *Sales –
-  CA Harsh Verma* and *Sales – VLA*, under *Sales*, numbering *Manual*, as
-  the names set in Company profiles. It only creates what is missing; it
-  never changes or deletes anything already in Tally. Each one is then
-  checked by reading it back from Tally.
+- The billing team creates the three voucher types in Tally themselves:
+  *Sales – CA Mukul Verma*, *Sales – CA Harsh Verma* and *Sales – VLA* (or
+  the names set in Company profiles), under *Sales*, numbering *Manual*.
+- **The app never creates, changes or deletes anything in Tally except the
+  bills it sends.** Voucher types, income ledgers and party ledgers are
+  always made by the billing team.
 - Install the extension in Chrome on that PC (from the app, as with the
   WhatsApp extension) and sign in to the app.
 - Chrome and Tally must both be open when *Import into Tally* is clicked.
