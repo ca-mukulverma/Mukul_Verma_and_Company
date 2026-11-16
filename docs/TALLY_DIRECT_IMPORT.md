@@ -72,20 +72,32 @@ Narration      client name <tab> work description
 Today the app sends every fee to one ledger ("Professional Fees"). Instead:
 
 - **Billing → Tally → Services**: the list of income ledgers the billing
-  manager can pick, each with its line description pattern. It is first
-  filled from the mapping sheet (below) and can be read again from Tally by
-  the extension, so names always match.
-- **Compliance bills** get the ledger of their work type automatically, e.g.
-  GSTR-1/3B → *Gst Return Monthly*, description "GST Return - June 26".
-- **Other bills** (tasks, logged work): the billing manager picks the ledger
-  where the amount is entered (searchable list, last used first); the
-  description defaults to the bill's description.
+  manager can pick. It starts with **all 124 income ledgers** of *Mukul Verma
+  & Co.* (agreed 16 Nov 2026); ledgers can be hidden, added or renamed there
+  later, or read again from Tally by the extension, so names always match.
+- **Searchable picker.** Wherever a ledger is chosen (the amount screen, the
+  bill, Billing → Tally), the field is a search box: typing any part of the
+  name ("gst", "audit", "itr") narrows the list at once; the ledger's Tally
+  group is shown beside it, and the ledgers used most recently come first.
+- **Defaults, always changeable.**
+  - Compliance bills get their work type's ledger filled in, e.g. GSTR-1/3B
+    → *Gst Return Monthly*, description "GST Return - June 26".
+  - The billing manager or Admin can change the ledger and the description
+    on any bill until it is sent to Tally (after that, through the usual
+    edit request, which alters the voucher in Tally).
+  - The default ledger of each work type is set, and can be changed at any
+    time, in Billing → Tally → Services; a change applies to bills made
+    afterwards.
+- **Other bills** (tasks, logged work) have no default: the billing manager
+  picks the ledger where the amount is entered; the description defaults to
+  the bill's description.
 - A bill can't be sent to Tally without an income ledger; the *Send to Tally*
   screen lists those bills first.
 
 The mapping sheet (*Tally_service_ledger_mapping.xlsx*) lists every income
-ledger, how often it was used this year and its usual descriptions. Billing
-fills in which ledgers to show in the app and the defaults per work type.
+ledger, how often it was used this year and its usual descriptions. For now
+all ledgers are shown; billing will update the sheet later, and it can be
+uploaded again in Billing → Tally → Services.
 
 ## Billing entity settings (Billing → Company profiles)
 
@@ -132,7 +144,7 @@ TallyPrime.
 
 ## Still to confirm
 
-- The mapping sheet, filled in by billing.
+- The mapping sheet, updated by billing later (all ledgers shown until then).
 - The names of the three new voucher types (the ones above are proposals).
 - The TallyPrime release (Help → About).
 
