@@ -5,7 +5,7 @@ Today the billing manager downloads one Tally XML file per billing entity
 replaces that with one click in the app, on the PC where Tally runs. Nothing
 is written in code until this document is approved.
 
-Agreed so far (16 Nov 2026):
+Agreed so far (16 Nov 2026; TallyPrime release 7.1):
 
 - **Option A: a browser extension** on the Tally PC (like the GST and
   WhatsApp extensions) carries the bills from the app into Tally.
@@ -129,8 +129,13 @@ The XML download stays as a fallback.
 
 - TallyPrime: *F1 → Settings → Connectivity → Client/Server configuration*:
   TallyPrime acts as **Server**, port **9000**; restart Tally.
-- Create the three voucher types under *Sales* (Accounting Invoice, numbering
-  Manual or Automatic (Manual Override)).
+- The three voucher types are **created by the app**: Billing → Tally →
+  **Set up Tally** (Admin) shows what is missing in *Mukul Verma & Co.* and,
+  on a click, the extension creates it: *Sales – CA Mukul Verma*, *Sales –
+  CA Harsh Verma* and *Sales – VLA*, under *Sales*, numbering *Manual*, as
+  the names set in Company profiles. It only creates what is missing; it
+  never changes or deletes anything already in Tally. Each one is then
+  checked by reading it back from Tally.
 - Install the extension in Chrome on that PC (from the app, as with the
   WhatsApp extension) and sign in to the app.
 - Chrome and Tally must both be open when *Import into Tally* is clicked.
@@ -146,7 +151,6 @@ TallyPrime.
 
 - The mapping sheet, updated by billing later (all ledgers shown until then).
 - The names of the three new voucher types (the ones above are proposals).
-- The TallyPrime release (Help → About).
 
 ## Build steps (after approval)
 
