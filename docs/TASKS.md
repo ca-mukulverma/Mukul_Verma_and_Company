@@ -106,38 +106,42 @@ scheduled Claude task on the firm's Claude Pro plan (no API key in the app,
 ₹0 extra). The app only shows the latest summary from the last 36 hours
 (`TaskDigest`).
 
-**One-time setup**
+**How it is set up (done on 11 Nov 2026)**
 
-1. A database login that can read the task tables and add summaries, nothing
-   else. In the Neon console → SQL Editor, with a strong password of your own:
+- **Scheduled task**: *Daily task discussion summary (Today page)* in
+  claude.ai, a fresh Claude session every Monday to Saturday at 11:41 IST
+  (office hours, when the database is awake, so no extra wake-up). It writes
+  for at most 15 people and never twice for one person on the same day. It
+  needs the **Neon connector attached to the scheduled task** (claude.ai →
+  scheduled tasks → the task → connectors); without it the run stops and says so.
+- **Database role `claude_tasks`**: every query of the run starts with
+  `SET LOCAL ROLE claude_tasks`, so the database itself checks it. The role
+  can read only the task tables (and only names from Users and Clients) and
+  add rows to `TaskDigest`. Anything else (client logins, bills, phone
+  numbers, PAN, changing or deleting a row, creating a table) is refused with
+  `permission denied`. It has no password and can't log in; the database
+  owner switches to it (`INHERIT FALSE`, so the owner's own rights are
+  unchanged). It was created with plain SQL, not Neon's role tool, which
+  would have put it in Neon's broad superuser group:
 
-   ```sql
-   CREATE ROLE claude_tasks WITH LOGIN PASSWORD 'choose-a-long-password';
-   GRANT USAGE ON SCHEMA public TO claude_tasks;
-   GRANT SELECT ON "Task", "TaskAssignee", "TaskComment", "TaskReplyRequest", "TaskDigest" TO claude_tasks;
-   GRANT SELECT ("id", "name", "role", "isActive") ON "User" TO claude_tasks;
-   GRANT SELECT ("id", "contactPerson", "companyName") ON "Client" TO claude_tasks;
-   GRANT INSERT ON "TaskDigest" TO claude_tasks;
-   ```
+  ```sql
+  CREATE ROLE claude_tasks NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+  GRANT USAGE ON SCHEMA public TO claude_tasks;
+  GRANT SELECT ON "Task", "TaskAssignee", "TaskComment", "TaskReplyRequest", "TaskDigest" TO claude_tasks;
+  GRANT SELECT ("id", "name", "role", "isActive") ON "User" TO claude_tasks;
+  GRANT SELECT ("id", "contactPerson", "companyName") ON "Client" TO claude_tasks;
+  GRANT INSERT ON "TaskDigest" TO claude_tasks;
+  GRANT claude_tasks TO neondb_owner WITH INHERIT FALSE, SET TRUE;
+  ```
 
-2. In Claude Code on the web (claude.ai/code), in the environment's settings,
-   add the `claude_tasks` connection string as a secret named
-   `CLAUDE_TASKS_DATABASE_URL` and allow your Neon host.
-3. Create a scheduled task, **daily during office hours** (e.g. 11:30 IST, when
-   the database is awake anyway, so it adds no wake-up), with this prompt:
-
-   > Connect with `psql "$CLAUDE_TASKS_DATABASE_URL"`. For each active user,
-   > look at the tasks they created or are assigned to that had comments in
-   > the last 3 days, or that have a `TaskReplyRequest` waiting for them
-   > (`resolvedAt IS NULL`). Skip people with nothing. For each person write
-   > 3–6 short sentences in plain English: what they must reply to first
-   > (who asked, on which task and client), what moved on their tasks, and
-   > anything stuck. Use names and task titles; never include passwords or
-   > logins. Insert one row each:
-   > `INSERT INTO "TaskDigest" (id, "userId", body) VALUES (gen_random_uuid()::text, '<user id>', '<summary>');`
-   > Write for at most 15 people. Don't change anything else.
-
-4. If scheduled tasks aren't in your plan, run the prompt by hand when wanted.
+- **What this does and doesn't guard**: a mistaken or misunderstood query is
+  refused by the database. The Neon connector itself still holds the owner's
+  access, so a session that ignored its instructions could leave the role;
+  cloud Claude sessions can't connect to the database directly with a
+  separate login, so this is the strongest lock available without a paid API
+  key in the app. Neon keeps one day of history for restoring if ever needed.
+- **To stop it**: disable the scheduled task in claude.ai. To remove the role:
+  `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM claude_tasks; REVOKE USAGE ON SCHEMA public FROM claude_tasks; DROP ROLE claude_tasks;`
 
 ## Cost
 
