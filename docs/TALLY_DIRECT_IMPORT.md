@@ -170,7 +170,10 @@ TallyPrime.
 4. **(Done, 17 Nov 2026)** *Import into Tally* on each series card of the
    Tally tab: tick the bills, check, send, a result per bill; refused bills
    stay waiting with Tally's reason.
-5. To do: B Edge's own Tally (only its Company profile changes); a test on
+5. **(17 Nov 2026)** No app bill had been imported into Tally yet, so every
+   numbered bill was put back to *waiting for Tally* (migration
+   `20261117020000_reset_tally_sent`); they are all in the Import list.
+6. To do: B Edge's own Tally (only its Company profile changes); a test on
    the real Tally PC with sample bills before go-live.
 
 ## How it is built
