@@ -680,6 +680,9 @@ deleted. The page shows how much will be removed first.
    edit/cancel/reissue requests.
 3. **(Done)** PDF and Word bills, single or bulk, and the company profiles.
 4. **(Done)** Tally XML export.
+5. **(Design, for approval)** Sending bills straight into Tally from the
+   app, with an income ledger per bill: see
+   [TALLY_DIRECT_IMPORT.md](TALLY_DIRECT_IMPORT.md).
 
 The old "pending billing" approval on tasks has been replaced by this flow.
 Tasks that were waiting under it were carried over as draft bills when the
