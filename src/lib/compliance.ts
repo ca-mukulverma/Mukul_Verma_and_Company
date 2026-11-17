@@ -10,6 +10,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { defaultBillType, getBillingManagerIds, notifyBillingUsers } from "@/lib/billing";
 import { COMPANY_LABELS, formatRupees } from "@/lib/billing-constants";
+import { requiredReturnFiles } from "@/lib/compliance-files";
 import {
   addMonths,
   dueDateFor,
@@ -560,8 +561,9 @@ export function missingForCompletion(item: ItemForCompletion): string[] {
   const wt = item.workType;
   const kinds = new Set(item.documents.map((d) => d.kind));
   const missing: string[] = [];
-  if (wt.requirePdf && !kinds.has("RETURN_PDF")) missing.push("Return PDF");
-  if (wt.requireJson && !kinds.has("RETURN_JSON")) missing.push("Return JSON");
+  const files = requiredReturnFiles(wt, item.isNil);
+  if (files.pdf && !kinds.has("RETURN_PDF")) missing.push("Return PDF");
+  if (files.json && !kinds.has("RETURN_JSON")) missing.push("Return JSON");
   if (item.lines.some((l) => l.status === "pending")) missing.push(wt.kind === "GSTR3B" ? "RCM lines" : "TDS lines");
   if (needsCertificates(item, wt)) {
     if (!item.certRequestedAt) missing.push("Form 16/16A request");

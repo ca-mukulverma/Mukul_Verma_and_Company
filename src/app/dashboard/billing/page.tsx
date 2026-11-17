@@ -18,7 +18,8 @@ import { EmailSettings } from "@/components/billing/email-settings";
 import { EntityProfiles } from "@/components/billing/entity-profiles";
 import { TallyExport } from "@/components/billing/tally-export";
 import { cn } from "@/lib/utils";
-import { SeriesSettings } from "@/components/billing/series-settings";
+import { GstReturnSeriesSettings, SeriesSettings } from "@/components/billing/series-settings";
+import { GstReturn } from "@/components/billing/gst-return";
 import { WorkEntryForm, WorkPrefill } from "@/components/billing/work-entry-form";
 import { BillTypeValue, CompanyValue } from "@/lib/billing-constants";
 
@@ -36,6 +37,8 @@ export interface BillingSummary {
   pendingChangeRequests: number;
   // Numbered bills to send (again) to Tally
   tallyDueCount: number;
+  // Numbered GST bills not in the GST return yet; null: no access to it
+  gstReturnPendingCount: number | null;
 }
 
 // Bills are dated on the day Admin approves them, so this reminds Admin to
@@ -126,6 +129,7 @@ function BillingPageContent() {
         awaitingFinalCount: 0,
         pendingChangeRequests: 0,
         tallyDueCount: 0,
+        gstReturnPendingCount: null,
       });
     }
   }, []);
@@ -144,12 +148,15 @@ function BillingPageContent() {
 
   const isManager = summary.manages.length > 0;
   const seesList = summary.listCompanies.length > 0;
+  // MVC billing managers and Admin
+  const usesGstReturn = summary.gstReturnPendingCount !== null;
   const tabs = [
     ...(summary.isAdmin ? ["final"] : []),
     ...(summary.canEnterAmounts ? ["amounts"] : []),
     ...(summary.manages.includes("MVC") ? ["mvc"] : []),
     ...(summary.manages.includes("BEDGE") ? ["bedge"] : []),
     ...(seesList ? ["list"] : []),
+    ...(usesGstReturn ? ["gst"] : []),
     ...(isManager ? ["tally", "connectors", "requests"] : []),
     "log",
     "mine",
@@ -235,6 +242,9 @@ function BillingPageContent() {
               <TabsTrigger value="requests">Change requests<CountBadge count={summary.pendingChangeRequests} /></TabsTrigger>
             )}
             {seesList && <TabsTrigger value="list">Billing list</TabsTrigger>}
+            {usesGstReturn && (
+              <TabsTrigger value="gst">GST return<CountBadge count={summary.gstReturnPendingCount ?? 0} /></TabsTrigger>
+            )}
             <TabsTrigger value="log">Log work</TabsTrigger>
             <TabsTrigger value="mine">My entries</TabsTrigger>
           </TabsList>
@@ -278,6 +288,11 @@ function BillingPageContent() {
         {seesList && (
           <TabsContent value="list" className="mt-4 min-w-0">
             <BillingRegister types={summary.listTypes} onChanged={loadSummary} />
+          </TabsContent>
+        )}
+        {usesGstReturn && (
+          <TabsContent value="gst" className="mt-4 min-w-0">
+            <GstReturn pendingCount={summary.gstReturnPendingCount} onChanged={loadSummary} />
           </TabsContent>
         )}
         {isManager && (
@@ -326,7 +341,10 @@ function BillingPageContent() {
         </TabsContent>
         {summary.isAdmin && (
           <TabsContent value="series" className="mt-4">
-            <SeriesSettings />
+            <div className="space-y-6">
+              <SeriesSettings />
+              <GstReturnSeriesSettings />
+            </div>
           </TabsContent>
         )}
         {summary.isAdmin && (

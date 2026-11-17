@@ -50,6 +50,7 @@ import { SearchableSelect } from "@/components/tasks/searchable-select";
 import { DayPicker } from "react-day-picker";
 import { getSession } from "next-auth/react";
 import { CompanySelect } from "@/components/billing/company-select";
+import { TaskKindBadge, TaskKindSelect } from "@/components/tasks/task-kind-select";
 
 // Update the task form schema to include assignedToIds
 const taskFormSchema = z.object({
@@ -64,6 +65,7 @@ const taskFormSchema = z.object({
   assignedToId: z.string().optional().nullable(),
   clientId: z.string().optional().nullable(),
   company: z.enum(["MVC", "BEDGE"]),
+  kind: z.enum(["GST_REGISTRATION"]).nullable(),
 });
 
 type TaskFormValues = z.infer<typeof taskFormSchema>;
@@ -106,8 +108,11 @@ export default function EditTaskPage() {
       assignedToId: null, // Legacy field
       clientId: null,
       company: "MVC",
+      kind: null,
     },
   });
+  // A task the app created (the GST bank account task) keeps its type
+  const [fixedKind, setFixedKind] = useState<string | null>(null);
 
   // Fetch clients with proper error handling
   const fetchClients = async () => {
@@ -196,7 +201,9 @@ export default function EditTaskPage() {
           assignedToId: taskData.assignedToId,
           clientId: taskData.clientId,
           company: taskData.company ?? "MVC",
+          kind: taskData.kind === "GST_REGISTRATION" ? "GST_REGISTRATION" : null,
         });
+        setFixedKind(taskData.kind && taskData.kind !== "GST_REGISTRATION" ? taskData.kind : null);
       } catch (error) {
         console.error("Error fetching data:", error);
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -221,8 +228,10 @@ export default function EditTaskPage() {
       setIsLoading(true);
 
       // Format data as needed
+      const { kind, ...rest } = data;
       const taskData = {
-        ...data,
+        ...rest,
+        ...(!fixedKind && { kind }),
         // Include the array of assignee IDs
         assignedToIds: data.assignedToIds && data.assignedToIds.length > 0 
           ? data.assignedToIds 
@@ -327,6 +336,27 @@ export default function EditTaskPage() {
                   </FormItem>
                 )}
               />
+
+              {fixedKind ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Task type</p>
+                  <TaskKindBadge kind={fixedKind} />
+                </div>
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="kind"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Task type</FormLabel>
+                      <FormControl>
+                        <TaskKindSelect value={field.value} onChange={field.onChange} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField

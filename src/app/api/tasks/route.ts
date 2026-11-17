@@ -10,6 +10,8 @@ import { sendTaskCreatedNotificationToAdmins } from "@/lib/notifications";
 import { ensureDraftBillForTask } from "@/lib/billing";
 import { TASK_STATUSES, TASK_VIEWS, TaskView, viewWhere } from "@/lib/task-views";
 import { canFollowUpTasks } from "@/lib/task-follow-up";
+import { createFollowOnTasks } from "@/lib/task-follow-ons";
+import { PICKABLE_TASK_KINDS } from "@/lib/task-kinds";
 
 // Schema for task creation
 const taskCreateSchema = z.object({
@@ -22,6 +24,8 @@ const taskCreateSchema = z.object({
   assignedToId: z.string().optional().nullable(), // Legacy field
   clientId: z.string().optional().nullable(),
   company: z.enum(["MVC", "BEDGE"]).optional().default("MVC"),
+  // e.g. GST registration: completing it creates the bank account task
+  kind: z.enum(PICKABLE_TASK_KINDS).optional().nullable(),
 });
 
 const DAY = 86_400_000;
@@ -151,7 +155,7 @@ export async function GET(request: NextRequest) {
           : task.assignees.map((a) => a.user.name);
       return {
         ...task,
-        billStage: task.status === "completed" ? bill?.status ?? "none" : null,
+        billStage: task.status === "completed" ? bill?.status ?? (task.billable ? "none" : "not_billable") : null,
         pendingDeletion: deletionRequests[0] ?? null,
         lastActivity,
         waitingOn,
@@ -218,6 +222,7 @@ export async function POST(request: NextRequest) {
           assignedById: currentUser.id,
           clientId: validatedData.clientId,
           company: validatedData.company,
+          kind: validatedData.kind ?? null,
         },
       });
       
@@ -233,6 +238,7 @@ export async function POST(request: NextRequest) {
     // A task created as already completed is ready for billing straight away
     if (result && validatedData.status === "completed") {
       await ensureDraftBillForTask(result.id, currentUser.id);
+      await createFollowOnTasks(result.id, currentUser.id);
     }
 
     // Create activity log

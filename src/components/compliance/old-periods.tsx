@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import type { WorkType } from "./setup";
 import { apiError, currentMonthKey, todayKey } from "./types";
 import { uploadComplianceFile } from "./upload";
+import { requiredReturnFiles } from "@/lib/compliance-files";
 import { returnFileKind } from "./old-period-files";
 
 // Past periods of one work for a client, one row per month or quarter, each
@@ -249,7 +250,9 @@ function PeriodRow({
   const saved = !!row.item;
   const disabled = !editable || busy !== null;
   // Done only when saved with every file the work needs
-  const filesMissing = row.item?.status === "completed" && ((workType.requirePdf && !hasPdf) || (workType.requireJson && !hasJson));
+  // A NIL return needs only the PDF
+  const files = requiredReturnFiles(workType, draft.isNil);
+  const filesMissing = row.item?.status === "completed" && ((files.pdf && !hasPdf) || (files.json && !hasJson));
 
   return (
     <tr className={cn("border-t", !editable && "opacity-60")}>
@@ -284,8 +287,8 @@ function PeriodRow({
               <Download className="h-3 w-3" /> {d.kind === "RETURN_JSON" ? "JSON" : d.kind === "RETURN_PDF" ? "PDF" : "File"}
             </a>
           ))}
-          {draft.status === "completed" && workType.requirePdf && !hasPdf && <span className="rounded bg-amber-100 px-1 text-amber-900 dark:bg-amber-950 dark:text-amber-200">PDF missing</span>}
-          {draft.status === "completed" && workType.requireJson && !hasJson && <span className="rounded bg-amber-100 px-1 text-amber-900 dark:bg-amber-950 dark:text-amber-200">JSON missing</span>}
+          {draft.status === "completed" && files.pdf && !hasPdf && <span className="rounded bg-amber-100 px-1 text-amber-900 dark:bg-amber-950 dark:text-amber-200">PDF missing</span>}
+          {draft.status === "completed" && files.json && !hasJson && <span className="rounded bg-amber-100 px-1 text-amber-900 dark:bg-amber-950 dark:text-amber-200">JSON missing</span>}
           {editable && (
             <>
               <input ref={inputRef} type="file" multiple accept=".pdf,.json,.zip" className="hidden" onChange={(e) => onUpload(e.target.files)} />

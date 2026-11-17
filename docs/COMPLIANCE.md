@@ -74,7 +74,7 @@ The work types that come with the app:
 
 | Work | Frequency | Due date (default) | Completed when | Billed |
 |---|---|---|---|---|
-| GSTR-1 | Monthly / quarterly | 11th of next month; quarterly 13th | Filed + PDF + JSON | No |
+| GSTR-1 | Monthly / quarterly | 11th of next month; quarterly 13th | Filed + PDF + JSON (NIL: PDF only) | No |
 | GSTR-3B | Monthly / quarterly | 20th of next month; quarterly 22nd or 24th (from the GSTIN's state) | Filed + PDF + all RCM lines done | Yes |
 | TDS Payment | Monthly | 7th of next month; March: 30 April | Challans entered, or "No TDS" | No |
 | TDS Return 24Q | Quarterly | 31 Jul, 31 Oct, 31 Jan, 31 May | Filed with figures; Q4 also Form 16 requested, attached and emailed | Yes |
@@ -272,6 +272,11 @@ separate fee.
 - Attach files from the cell window: **Return PDF**, **Return JSON** (GST
   JSON from the portal wherever available), **Challan**, **Form 16/16A**,
   **Other**. Client-level files go under the client's **Files**.
+- **NIL returns need only the PDF.** When *Nil return* is ticked, the return
+  JSON is not required for any work type (it can still be attached); the
+  return PDF is asked for if the work type needs any return file. The same
+  rule applies to completing the period, the *Files missing* tags of past
+  periods and the files listed as needed (`src/lib/compliance-files.ts`).
 - **Upload documents** (Compliance → Clients → a client): choose or drop all
   of the client's PDFs, JSONs, ZIPs, RARs or a whole folder together. ZIPs and
   RARs (and ZIPs inside them) are opened and each file inside is read on its

@@ -98,6 +98,36 @@ have **Reply**, which answers without leaving the page.
 - Tasks that were *Cancelled* before this change were turned into deletion
   requests (asked by whoever cancelled them) for Admin to approve.
 
+## GST registration → bank account task
+
+A task's **type** is *General* or *GST registration* (New task / Edit task;
+the *GST registration* template sets it). When a GST registration task is
+**completed**, the app creates a compulsory task **"Add bank account in GST –
+<client>"**:
+
+- same client, company and assignees; created by the registration task's
+  creator; priority High; due **30 days** after completion (Rule 10A: within
+  30 days of registration, or before the first GSTR-1 / IFF if earlier), with
+  the portal steps as a checklist;
+- **not billable**: completing it makes no bill and it goes straight to
+  *Closed* (*No bill*);
+- **compulsory**: nobody can request its deletion and its type can't be
+  changed; Admin can close it as not needed only with a reason (kept in the
+  deletion record);
+- the people on it are told after the 10-second undo window. If the
+  registration is reopened (or the completion undone), a bank task nobody has
+  touched (still Pending, no comment) is removed; one that was worked on
+  stays, and completing the registration again never makes a second one;
+- the two tasks link to each other (*Created from* / *Next task*);
+- the completed registration task asks for the **new GSTIN** (optional) when
+  its client has none, and saves it on the client with a line in the
+  client's history (`POST /api/tasks/[id]/gstin`).
+
+Open tasks whose title matched "GST … regist…" when this was released were
+made GST registration tasks. Stored in `Task.kind`, `Task.billable` and
+`Task.parentTaskId`. Code: `src/lib/task-kinds.ts`,
+`src/lib/task-follow-ons.ts`.
+
 ## Claude's summary on Today
 
 Each person's **Today** can show *Your task discussions in short*: a few

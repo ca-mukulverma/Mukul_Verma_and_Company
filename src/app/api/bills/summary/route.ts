@@ -4,6 +4,7 @@ import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { OPEN_RETURN_WHERE, getBillingAccess } from "@/lib/billing";
 import { pendingTallyWhere, tallyTypesFor } from "@/lib/tally";
+import { PUSHABLE_WHERE, canUseGstReturn } from "@/lib/gst-return";
 
 // GET /api/bills/summary – numbers for the dashboard billing card
 export async function GET() {
@@ -15,7 +16,7 @@ export async function GET() {
   if (!access) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const tallyTypes = tallyTypesFor(access);
-  const [awaitingMyAmount, grouped, returned, awaitingFinalCount, pendingChangeRequests, tallyDueCount] = await Promise.all([
+  const [awaitingMyAmount, grouped, returned, awaitingFinalCount, pendingChangeRequests, tallyDueCount, gstReturnPendingCount] = await Promise.all([
     access.canEnterAmounts
       ? prisma.bill.findMany({
           where: { amountRequestedFromId: user.id, status: "awaiting_amount" },
@@ -53,6 +54,8 @@ export async function GET() {
     tallyTypes.length > 0
       ? prisma.bill.count({ where: { OR: tallyTypes.map((type) => pendingTallyWhere(type)) } })
       : Promise.resolve(0),
+    // Numbered GST bills not pushed to the GST return yet
+    canUseGstReturn(access) ? prisma.bill.count({ where: PUSHABLE_WHERE }) : Promise.resolve(null),
   ]);
 
   const awaitingMyAmountCount =
@@ -77,5 +80,7 @@ export async function GET() {
     awaitingFinalCount,
     pendingChangeRequests,
     tallyDueCount,
+    // null: the user doesn't use the GST return
+    gstReturnPendingCount,
   });
 }
