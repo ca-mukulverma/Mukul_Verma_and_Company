@@ -9,6 +9,7 @@ import {
 } from "@/lib/cron-jobs";
 import { runAnnouncementPushes } from "@/lib/whats-new-server";
 import { sendAttendanceReminders } from "@/lib/attendance";
+import { alertMissingDeskReports } from "@/lib/desk";
 
 export const maxDuration = 60;
 
@@ -40,6 +41,8 @@ export async function GET(request: Request) {
     await runStep("attendance-reminders", sendAttendanceReminders),
     // A new feature's What's new push, once (lib/whats-new.ts)
     await runStep("whats-new", runAnnouncementPushes),
+    // Control Centre: clients whose desktop software sent no report for the last weekday
+    await runStep("desk-missing-reports", () => alertMissingDeskReports()),
     await runStep("cleanup-notifications", runCleanupNotifications),
     await runStep("billing-email-delivery", runBillingEmailDelivery),
   ];

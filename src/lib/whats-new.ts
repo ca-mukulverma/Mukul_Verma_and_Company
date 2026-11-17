@@ -35,6 +35,33 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "control-centre",
+    date: "2026-11-17",
+    audience: "admin",
+    title: { en: "Control Centre for clients' desktop software", hi: "क्लाइंट के डेस्कटॉप सॉफ़्टवेयर के लिए कंट्रोल सेंटर" },
+    steps: {
+      en: [
+        "Admin → Control Centre → Clients: add a client (e.g. Gudakesa) and copy its key into their software's Settings.",
+        "Rules: publish a rate or limit change (PF, ESIC, GST, TDS, tax slabs) with the date it applies from.",
+        "Daily reports: each client's day – bills, bank entries, salary, errors and pending work. The bell tells you if a client did not report.",
+      ],
+      hi: [
+        "Admin → Control Centre → Clients: क्लाइंट जोड़ें (जैसे Gudakesa) और उसकी key उनके सॉफ़्टवेयर की Settings में डालें।",
+        "Rules: किसी रेट या लिमिट (PF, ESIC, GST, TDS, टैक्स स्लैब) का बदलाव लागू होने की तारीख़ के साथ भेजें।",
+        "Daily reports: हर क्लाइंट का दिन – बिल, बैंक एंट्री, सैलरी, गलतियाँ और बाकी काम। रिपोर्ट न आए तो घंटी में बताया जाएगा।",
+      ],
+    },
+    showMe: {
+      href: "/dashboard/admin/control-centre",
+      target: "control-centre-tabs",
+      hint: { en: "Daily reports, Rules and Clients", hi: "Daily reports, Rules और Clients" },
+    },
+    push: {
+      title: "New for Admin: Control Centre",
+      body: "See each client's daily report from their desktop software and publish rate changes to them.",
+    },
+  },
+  {
     id: "task-follow-up",
     date: "2026-11-11",
     audience: "everyone",

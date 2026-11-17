@@ -8,6 +8,7 @@ const routePermissions = {
   "/dashboard/admin": ["ADMIN"],
   "/dashboard/admin/users": ["ADMIN"],
   "/dashboard/admin/clients": ["ADMIN"],
+  "/dashboard/admin/control-centre": ["ADMIN"],
   "/dashboard/admin/users/create": ["ADMIN"],
   // Attendance report
   "/dashboard/attendance": ["ADMIN"],

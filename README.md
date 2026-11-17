@@ -65,6 +65,11 @@ Access the live demo: [https://mvcompany.vercel.app/](https://mvcompany.vercel.a
   the last comments and one-click comments; replies needed on Today; deletion
   with Admin approval – see [docs/TASKS.md](docs/TASKS.md)
 
+### 🛰️ Control Centre (Admin)
+- Clients' desktop accounting software (e.g. Gudakesa Desk) sends a daily report
+  and pulls rates/limits published by Admin; alert when a client did not report –
+  see [docs/CONTROL_CENTRE.md](docs/CONTROL_CENTRE.md)
+
 ### 💬 Communication System
 - Real-time notifications (bell with unread count, phone push) and one daily digest per person
 - Header search (Ctrl+K) and keyboard shortcuts (press ? in the app)

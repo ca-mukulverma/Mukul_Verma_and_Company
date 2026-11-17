@@ -14,7 +14,11 @@ export default function AdminDashboardLayout({
   const getCurrentPageName = () => {
     const path = pathname.split('/').filter(Boolean);
     const currentPage = path[path.length - 1];
-    return currentPage.charAt(0).toUpperCase() + currentPage.slice(1);
+    // "control-centre" -> "Control Centre"
+    return currentPage
+      .split("-")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   };
 
   return (

@@ -224,6 +224,7 @@ model Client {
   complianceNotes         ComplianceNote[]
   dispatches              ClientDispatch[]
   gstWorkingChecks        GstWorkingCheck[]
+  deskClients             DeskClient[]
   
   @@index([managerId])
   @@index([contactPerson]) // Index for searching by contact person name
@@ -1197,4 +1198,81 @@ model AnnouncementPush {
   id         String   @id @db.VarChar(50)
   recipients Int      @default(0)
   sentAt     DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// MVC Control Centre (docs/CONTROL_CENTRE.md): the desktop accounting software
+// installed at clients (e.g. Gudakesa Desk) pulls the rules (rates and limits)
+// published here and sends a daily report. Admin only.
+// ---------------------------------------------------------------------------
+
+// One installed copy of the desktop software at a client
+model DeskClient {
+  id             String            @id @default(uuid()) @db.Char(36)
+  code           String            @unique @db.VarChar(30) // GUDAKESA
+  name           String            @db.VarChar(100)
+  clientId       String?           @db.Char(36) // the client in this portal, if linked
+  client         Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  keyHash        String            @unique @db.Char(64) // SHA-256 of the key; the key itself is shown once
+  keyHint        String            @db.VarChar(8) // last characters, to recognise it
+  active         Boolean           @default(true)
+  expectReports  Boolean           @default(true) // alert Admin when a weekday report is missing
+  lastReportDate DateTime?         @db.Date
+  lastReportAt   DateTime?
+  appVersion     String?           @db.VarChar(20)
+  lastAlertDate  DateTime?         @db.Date // missing-report alert already sent for this day
+  notes          String?           @db.Text
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  reports        DeskDailyReport[]
+  events         DeskEvent[]
+
+  @@index([clientId])
+}
+
+// A rate / limit / slab with the date it applies from
+model DeskRule {
+  id            Int      @id @default(autoincrement())
+  key           String   @db.VarChar(60) // PF.WAGE_CEILING
+  value         Json // 15000 or [[400000, 0], ...]
+  effectiveFrom DateTime @db.Date
+  label         String?  @db.VarChar(120)
+  unit          String?  @db.VarChar(40)
+  notes         String?  @db.Text
+  clientCodes   String[] @default([]) // empty = every client
+  withdrawn     Boolean  @default(false)
+  publishedBy   String   @db.VarChar(50)
+  publishedAt   DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([key, effectiveFrom])
+}
+
+// What a client did in a day (sent at 7 PM on weekdays)
+model DeskDailyReport {
+  id           String     @id @default(uuid()) @db.Char(36)
+  deskClientId String     @db.Char(36)
+  deskClient   DeskClient @relation(fields: [deskClientId], references: [id], onDelete: Cascade)
+  reportDate   DateTime   @db.Date
+  receivedAt   DateTime   @default(now())
+  appVersion   String?    @db.VarChar(20)
+  pc           String?    @db.VarChar(60)
+  sentBy       String?    @db.VarChar(60)
+  summary      Json // counts and totals for the lists
+  payload      Json // full detail
+
+  @@unique([deskClientId, reportDate])
+  @@index([reportDate])
+}
+
+// Key created / revoked, report received, missing-report alert …
+model DeskEvent {
+  id           Int         @id @default(autoincrement())
+  deskClientId String?     @db.Char(36)
+  deskClient   DeskClient? @relation(fields: [deskClientId], references: [id], onDelete: Cascade)
+  at           DateTime    @default(now())
+  kind         String      @db.VarChar(30)
+  detail       String?     @db.Text
+
+  @@index([deskClientId, at(sort: Desc)])
 }

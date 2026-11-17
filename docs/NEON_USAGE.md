@@ -130,3 +130,10 @@ over the next 3 working days:
 - Fewer short (≤ 6 minute) sessions, and none late at night from open tabs.
 - Vercel → Cron Jobs: `/api/cron/daily` returns 200 with `"ok": true`.
   If a step fails, the response's `failed` list names it.
+
+## Control Centre (added 17 Nov 2026)
+
+Clients' desktop software contacts the app on weekdays at 11:30, 13:00, 16:00
+and 19:00 IST. The first three are answered from Redis (no database wake-up);
+only the 19:00 report writes to the database, inside office use. The
+missing-report check runs inside the daily job. See docs/CONTROL_CENTRE.md.
