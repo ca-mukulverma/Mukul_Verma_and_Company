@@ -8,6 +8,7 @@ import {
   ListChecks,
   ListTodo,
   Receipt,
+  RadioTower,
   Settings,
   Sparkles,
   Users,
@@ -78,6 +79,7 @@ export function navGroups(role: string): NavGroup[] {
           shortcut: "u",
         },
         { title: "Attendance", href: "/dashboard/attendance", icon: Fingerprint, roles: ["ADMIN"], shortcut: "a" },
+        { title: "Control Centre", href: "/dashboard/admin/control-centre", icon: RadioTower, roles: ["ADMIN"], shortcut: "o" },
       ],
     },
     {
