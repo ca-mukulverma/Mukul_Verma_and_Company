@@ -10,6 +10,8 @@ export interface TaskTemplate {
   // Days from today for the due date
   dueInDays?: number;
   checklist: string[];
+  // Task type the template sets (docs/TASKS.md)
+  kind?: "GST_REGISTRATION";
 }
 
 export const TASK_TEMPLATES: TaskTemplate[] = [
@@ -75,6 +77,7 @@ export const TASK_TEMPLATES: TaskTemplate[] = [
     title: "New GST registration",
     priority: "medium",
     dueInDays: 7,
+    kind: "GST_REGISTRATION",
     checklist: [
       "Collect PAN, Aadhaar, photo, address proof and bank details",
       "Fill Part A and Part B on the portal",

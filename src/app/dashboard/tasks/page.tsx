@@ -43,6 +43,7 @@ import { TaskAssignees } from "@/components/tasks/task-assignees";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { getTaskListScroll, saveTaskListScroll, saveTaskListUrl } from "@/lib/task-list-state";
 import { CompanyBadge } from "@/components/billing/company-select";
+import { TaskKindBadge } from "@/components/tasks/task-kind-select";
 import { TaskDetailView } from "@/components/tasks/task-detail-view";
 import { QuickReply, loadQuickComments } from "@/components/tasks/quick-reply";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,7 @@ interface ListTask {
   priority: string;
   dueDate: string | null;
   company?: "MVC" | "BEDGE";
+  kind?: string | null;
   completedAt: string | null;
   createdAt: string;
   assignedById: string;
@@ -216,6 +218,7 @@ function TaskCard({
             </Badge>
           )}
           <CompanyBadge company={task.company} className="whitespace-nowrap" />
+          <TaskKindBadge kind={task.kind} className="whitespace-nowrap" />
           <Badge variant="outline" className={cn("whitespace-nowrap", PRIORITY_COLOR[task.priority])}>
             {task.priority}
           </Badge>

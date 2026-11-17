@@ -35,6 +35,64 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "gst-return-series",
+    date: "2026-11-18",
+    audience: "admin",
+    title: { en: "GST return numbers, kept apart from bill numbers", hi: "GST रिटर्न नंबर, बिल नंबर से अलग" },
+    steps: {
+      en: [
+        "Billing settings → Number series: set the next GST return number (e.g. GR/26-27/001).",
+        "Billing → GST return: pick the month, tick the numbered GST bills and Push. Each gets the next GST return number.",
+        "Register of the month: the bills with their GST return numbers and tax, ready for GSTR-1. Download Excel.",
+        "These numbers are used only in the GST return: never on the bill, in emails or in Tally. Only Admin can undo a push.",
+      ],
+      hi: [
+        "Billing settings → Number series: अगला GST रिटर्न नंबर सेट करें (जैसे GR/26-27/001)।",
+        "Billing → GST return: महीना चुनें, नंबर वाले GST बिल टिक करें और Push करें। हर बिल को अगला GST रिटर्न नंबर मिलेगा।",
+        "महीने का रजिस्टर: बिल, उनके GST रिटर्न नंबर और टैक्स, GSTR-1 के लिए तैयार। Excel डाउनलोड करें।",
+        "ये नंबर सिर्फ़ GST रिटर्न में इस्तेमाल होते हैं: बिल, ईमेल या Tally में कभी नहीं। Push को सिर्फ़ एडमिन वापस ले सकते हैं।",
+      ],
+    },
+    showMe: {
+      href: "/dashboard/billing?tab=gst",
+      target: "gst-return",
+      hint: { en: "Push GST bills to the GST return", hi: "GST बिल GST रिटर्न में भेजें" },
+    },
+    push: {
+      title: "New in Billing: GST return numbers",
+      body: "Push GST bills to the GST return; they get a separate series used only in GSTR-1, never in Tally.",
+    },
+  },
+  {
+    id: "gst-registration-bank-task",
+    date: "2026-11-18",
+    audience: "everyone",
+    title: { en: "GST registration: bank account task, and NIL returns", hi: "GST रजिस्ट्रेशन: बैंक अकाउंट टास्क, और NIL रिटर्न" },
+    steps: {
+      en: [
+        "New task → Task type: GST registration (the GST registration template sets it).",
+        "When it is completed, the app creates a compulsory task to add the bank account in GST, for the same people, due in 30 days, with no bill.",
+        "The registration task then asks for the new GSTIN to save on the client (optional).",
+        "Compliance: a NIL return needs only the return PDF. The JSON is no longer required for it.",
+      ],
+      hi: [
+        "New task → Task type: GST registration (GST registration टेम्पलेट इसे अपने आप चुन लेता है)।",
+        "टास्क पूरा होते ही ऐप उन्हीं लोगों के लिए GST में बैंक अकाउंट जोड़ने का ज़रूरी टास्क बनाएगा, 30 दिन में, बिना बिल के।",
+        "फिर रजिस्ट्रेशन टास्क नया GSTIN पूछेगा, जो क्लाइंट में सेव होगा (वैकल्पिक)।",
+        "Compliance: NIL रिटर्न के लिए सिर्फ़ रिटर्न PDF चाहिए। JSON अब ज़रूरी नहीं।",
+      ],
+    },
+    showMe: {
+      href: "/dashboard/tasks/create",
+      target: "task-kind",
+      hint: { en: "Pick GST registration here", hi: "यहाँ GST registration चुनें" },
+    },
+    push: {
+      title: "New: GST bank account task",
+      body: "Completing a GST registration task now creates the task to add the bank account in GST. NIL returns need only the PDF.",
+    },
+  },
+  {
     id: "control-centre",
     date: "2026-11-17",
     audience: "admin",

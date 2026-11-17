@@ -51,6 +51,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DayPicker } from "react-day-picker";
 import { getSession, useSession } from "next-auth/react";
 import { CompanySelect } from "@/components/billing/company-select";
+import { TaskKindSelect } from "@/components/tasks/task-kind-select";
 import { Badge } from "@/components/ui/badge";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { TASK_TEMPLATES, TaskTemplate, templateDescription } from "@/lib/task-templates";
@@ -67,6 +68,7 @@ const taskFormSchema = z.object({
   assignedToIds: z.array(z.string()).optional().default([]),
   clientId: z.string().optional().nullable(),
   company: z.enum(["MVC", "BEDGE"]),
+  kind: z.enum(["GST_REGISTRATION"]).nullable(),
 });
 
 type TaskFormValues = z.infer<typeof taskFormSchema>;
@@ -122,6 +124,7 @@ export default function CreateTaskPage() {
       assignedToIds: [], // Properly initialized as array
       clientId: null,
       company: "MVC",
+      kind: null,
     },
   });
 
@@ -135,6 +138,7 @@ export default function CreateTaskPage() {
       form.setValue("title", template.title, opts);
     }
     form.setValue("priority", template.priority, opts);
+    form.setValue("kind", template.kind ?? null, opts);
     form.setValue("description", templateDescription(template), opts);
     if (template.dueInDays && !form.getValues("dueDate")) {
       form.setValue("dueDate", new Date(Date.now() + template.dueInDays * 86_400_000), opts);
@@ -352,6 +356,20 @@ const onSubmit = async (data: TaskFormValues) => {
                       <div>
                         <CompanySelect value={field.value} onChange={field.onChange} />
                       </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="kind"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Task type</FormLabel>
+                    <FormControl>
+                      <TaskKindSelect value={field.value} onChange={field.onChange} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

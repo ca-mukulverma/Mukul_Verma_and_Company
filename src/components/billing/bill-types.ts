@@ -147,6 +147,8 @@ export const EVENT_LABELS: Record<string, string> = {
   tally_failed: "Tally refused it",
   sent_back: "Sent back",
   not_billable: "Marked not billable",
+  gst_return_pushed: "Pushed to GST return",
+  gst_return_undone: "Taken out of GST return",
   reopened: "Reopened",
   details_updated: "Details updated",
   company_changed: "Company changed",

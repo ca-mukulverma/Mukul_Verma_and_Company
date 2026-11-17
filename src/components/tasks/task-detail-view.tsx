@@ -64,6 +64,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { CompanyBadge } from "@/components/billing/company-select";
+import { TaskKindBadge } from "@/components/tasks/task-kind-select";
+import { Input } from "@/components/ui/input";
+import { isCompulsoryTask } from "@/lib/task-kinds";
 
 // Add the missing getInitials function
 // Add null safety to the getInitials function
@@ -112,6 +115,11 @@ interface Task {
   updatedAt: string;
   billingStatus?: string; // Add billingStatus 
   company?: "MVC" | "BEDGE";
+  // GST registration, or the GST bank account task made from it (docs/TASKS.md)
+  kind?: string | null;
+  billable?: boolean;
+  parentTask?: { id: string; title: string } | null;
+  followOnTasks?: { id: string; title: string; status: string }[];
   // Add these new fields
   lastStatusUpdatedAt?: string;
   lastStatusUpdatedBy?: {
@@ -140,6 +148,7 @@ interface Task {
     id: string;
     contactPerson: string;
     companyName: string | null;
+    gstin?: string | null;
   } | null;
   bill?: { status: string } | null;
   deletionRequests?: PendingDeletion[];
@@ -343,6 +352,18 @@ export function TaskDetailView({
             : undefined,
         });
       }
+      // A completed GST registration created the bank account task
+      const followOn = response.data.followOn as { id: string; title: string } | null | undefined;
+      if (!isUndo && followOn) {
+        toast.info(`Created: "${followOn.title}" for the same people (compulsory, no bill).`, { duration: 8000 });
+      }
+      if (followOn || (task?.kind === "GST_REGISTRATION" && previousStatus === "completed")) {
+        // Show (or stop showing) the link to it
+        axios
+          .get<Task>(`/api/tasks/${taskId}`)
+          .then(({ data }) => setTask((prev) => (prev ? { ...prev, followOnTasks: data.followOnTasks } : prev)))
+          .catch(() => undefined);
+      }
       // A finished registration: offer to put the client into Compliance
       if (!isUndo && nextStatus === "completed" && task?.client && canStartCompliance && isRegistrationTask(task.title)) {
         setStartCompliance(true);
@@ -366,11 +387,14 @@ export function TaskDetailView({
     !!task &&
     (isAdmin || task.assignedBy?.id === session.user.id || task.assignees.some((a) => a.userId === session.user.id));
   const hasBill = !!task?.bill;
+  // The GST bank account task: only Admin closes it, with a reason
+  const compulsory = isCompulsoryTask(task?.kind);
+  const reasonNeeded = !isAdmin || compulsory;
 
   const submitDeletion = async () => {
     if (!task) return;
-    if (!isAdmin && deleteReason.trim().length < 5) {
-      toast.error("Say why the task should be deleted");
+    if (reasonNeeded && deleteReason.trim().length < 5) {
+      toast.error(compulsory ? "Say why this task is not needed" : "Say why the task should be deleted");
       return;
     }
     setDeleting(true);
@@ -521,6 +545,7 @@ export function TaskDetailView({
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     <Badge className={statusColor}>{task.status}</Badge>
                     <CompanyBadge company={task.company} />
+                    <TaskKindBadge kind={task.kind} />
                     <Badge
                       variant="outline"
                       className={getPriorityColor(task.priority)}
@@ -649,6 +674,26 @@ export function TaskDetailView({
                       {task.client.companyName &&
                         ` (${task.client.companyName})`}
                     </Link>
+                  </div>
+                )}
+
+                {task.parentTask && (
+                  <div>
+                    <h3 className="text-sm font-medium mb-1">Created from</h3>
+                    <Link href={`/dashboard/tasks/${task.parentTask.id}`} className="text-sm text-primary hover:underline">
+                      {task.parentTask.title}
+                    </Link>
+                  </div>
+                )}
+
+                {!!task.followOnTasks?.length && (
+                  <div>
+                    <h3 className="text-sm font-medium mb-1">Next task</h3>
+                    {task.followOnTasks.map((next) => (
+                      <Link key={next.id} href={`/dashboard/tasks/${next.id}`} className="block text-sm text-primary hover:underline">
+                        {next.title} <span className="text-muted-foreground">({next.status.replace("_", " ")})</span>
+                      </Link>
+                    ))}
                   </div>
                 )}
 
@@ -791,7 +836,13 @@ export function TaskDetailView({
                   </Button>
                 )}
 
-                {onTask && !pendingDeletion && (
+                {onTask && !pendingDeletion && compulsory && !isAdmin && (
+                  <p className="text-xs text-muted-foreground">
+                    This task is compulsory, so it can&apos;t be deleted. Ask Admin if it is really not needed.
+                  </p>
+                )}
+
+                {onTask && !pendingDeletion && (!compulsory || isAdmin) && (
                   <div className="space-y-1">
                     <Button
                       variant="outline"
@@ -800,7 +851,7 @@ export function TaskDetailView({
                       onClick={() => setDeleteOpen(true)}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
-                      {isAdmin ? "Delete task" : "Request deletion"}
+                      {compulsory ? "Close as not needed" : isAdmin ? "Delete task" : "Request deletion"}
                     </Button>
                     {hasBill && (
                       <p className="text-xs text-muted-foreground">
@@ -812,6 +863,7 @@ export function TaskDetailView({
                 )}
 
                 {task.status === "completed" &&
+                  task.billable !== false &&
                   currentBillingStatus !== "billed" &&
                   (isAdmin || session?.user?.role === "PARTNER") && (
                     <div className="mt-4">
@@ -833,6 +885,13 @@ export function TaskDetailView({
                       </div>
                     </div>
                   )}
+
+                {task.status === "completed" && task.kind === "GST_REGISTRATION" && task.client && !task.client.gstin && onTask && (
+                  <NewGstinBox
+                    taskId={task.id}
+                    onSaved={(gstin) => setTask((prev) => (prev?.client ? { ...prev, client: { ...prev.client, gstin } } : prev))}
+                  />
+                )}
 
                 {task.status === "completed" && task.client && canStartCompliance && (
                   <div className="mt-4 rounded-md border p-3">
@@ -919,15 +978,17 @@ export function TaskDetailView({
       <Dialog open={deleteOpen} onOpenChange={(o) => !deleting && setDeleteOpen(o)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{isAdmin ? "Delete this task?" : "Request deletion"}</DialogTitle>
+            <DialogTitle>{compulsory ? "Close this compulsory task?" : isAdmin ? "Delete this task?" : "Request deletion"}</DialogTitle>
             <DialogDescription>
-              {isAdmin
+              {compulsory
+                ? "Only when the bank account really doesn't need adding. The task is deleted and the reason is kept with its title."
+                : isAdmin
                 ? "The task, its comments and attachments are deleted at once. A line with the title and reason is kept."
                 : "Admin is asked to approve. Until then the task stays in the list, marked, and can't be changed."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <Label htmlFor="delete-reason">Reason{isAdmin ? " (optional)" : " *"}</Label>
+            <Label htmlFor="delete-reason">Reason{reasonNeeded ? " *" : " (optional)"}</Label>
             <Textarea
               id="delete-reason"
               value={deleteReason}
@@ -941,7 +1002,7 @@ export function TaskDetailView({
             <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={submitDeletion} disabled={deleting || (!isAdmin && deleteReason.trim().length < 5)}>
+            <Button variant="destructive" onClick={submitDeletion} disabled={deleting || (reasonNeeded && deleteReason.trim().length < 5)}>
               {deleting && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
               {isAdmin ? "Delete" : "Send to Admin"}
             </Button>
@@ -956,6 +1017,44 @@ export function TaskDetailView({
           onClose={() => setStartCompliance(false)}
         />
       )}
+    </div>
+  );
+}
+
+// After a GST registration: save the new GSTIN on the client (optional)
+function NewGstinBox({ taskId, onSaved }: { taskId: string; onSaved: (gstin: string) => void }) {
+  const [gstin, setGstin] = useState("");
+  const [saving, setSaving] = useState(false);
+  const value = gstin.replace(/\s/g, "").toUpperCase();
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await axios.post<{ gstin: string }>(`/api/tasks/${taskId}/gstin`, { gstin: value });
+      toast.success("GSTIN saved on the client");
+      onSaved(data.gstin);
+    } catch (error) {
+      toast.error(errorText(error, "Couldn't save the GSTIN"));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="mt-4 rounded-md border p-3">
+      <h3 className="font-medium">New GSTIN</h3>
+      <p className="mb-2 text-sm text-muted-foreground">The client has no GSTIN yet. Add the one just issued (optional).</p>
+      <div className="flex gap-2">
+        <Input
+          value={gstin}
+          onChange={(e) => setGstin(e.target.value)}
+          placeholder="e.g. 23ABCDE1234F1Z5"
+          maxLength={20}
+          className="font-mono uppercase"
+          aria-label="New GSTIN"
+        />
+        <Button size="sm" onClick={save} disabled={saving || value.length !== 15}>
+          {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}Save
+        </Button>
+      </div>
     </div>
   );
 }

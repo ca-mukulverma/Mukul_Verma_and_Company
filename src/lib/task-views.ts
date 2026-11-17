@@ -12,7 +12,8 @@ export const OPEN_STATUSES = ["pending", "in_progress", "review"] as const;
 // The task list's views:
 // - active: work still to do (and tasks waiting for their deletion to be approved)
 // - awaiting_bill: completed, the bill not numbered yet (or not started)
-// - closed: completed and billed, or no bill to be made
+// - closed: completed and billed, or no bill to be made (including tasks that
+//   are not billable, which make no bill at all)
 // - deletion: deletion requests waiting for Admin (Admin only)
 export const TASK_VIEWS = ["active", "awaiting_bill", "closed", "deletion"] as const;
 export type TaskView = (typeof TASK_VIEWS)[number];
@@ -43,12 +44,13 @@ export function viewWhere(view: TaskView): Prisma.TaskWhereInput {
     case "awaiting_bill":
       return {
         status: "completed",
+        billable: true,
         OR: [{ bill: { is: null } }, { bill: { is: { status: { in: UNBILLED_BILL_STATUSES } } } }],
       };
     case "closed":
       return {
         status: "completed",
-        bill: { is: { status: { notIn: UNBILLED_BILL_STATUSES } } },
+        OR: [{ billable: false }, { bill: { is: { status: { notIn: UNBILLED_BILL_STATUSES } } } }],
       };
     case "deletion":
       return { deletionRequests: { some: { status: "pending" } } };

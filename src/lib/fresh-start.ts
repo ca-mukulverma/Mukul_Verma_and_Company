@@ -30,6 +30,7 @@ export async function clearClientData(adminId: string, details: object) {
       await tx.tallyExport.deleteMany();
       // Numbering starts again at 1 (Billing → Number series can set it)
       await tx.billSeries.deleteMany();
+      await tx.gstReturnSeries.deleteMany();
 
       await tx.clientHistory.deleteMany();
       // Comments and assignees go with their tasks

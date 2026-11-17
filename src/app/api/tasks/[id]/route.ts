@@ -9,6 +9,8 @@ import { dashboardCache, taskCache, clientCache } from "@/lib/cache";
 import { ensureDraftBillForTask, removeUntouchedDraftBillForTask, syncBillCompanyForTask } from "@/lib/billing";
 import { markTaskNotificationsRead, notifyTaskStatusChange } from "@/lib/task-notify";
 import { TASK_STATUSES } from "@/lib/task-views";
+import { createFollowOnTasks, withdrawFollowOnTasks } from "@/lib/task-follow-ons";
+import { PICKABLE_TASK_KINDS, isCompulsoryTask } from "@/lib/task-kinds";
 import { clientLabel, deleteTaskCompletely, deletionBlockedReason, taskForDeletion } from "@/lib/task-delete";
 
 // Task update schema
@@ -24,6 +26,8 @@ const taskUpdateSchema = z.object({
   assignedToId: z.string().optional().nullable(),
   clientId: z.string().optional().nullable(),
   company: z.enum(["MVC", "BEDGE"]).optional(),
+  // The kind a person can set (docs/TASKS.md); null clears it
+  kind: z.enum(PICKABLE_TASK_KINDS).nullable().optional(),
   note: z.string().optional(),
 });
 
@@ -87,9 +91,13 @@ export async function GET(
             id: true,
             contactPerson: true,
             companyName: true,
+            gstin: true,
           },
         },
         bill: { select: { status: true } },
+        // The GST registration this task came from, or the task made from it
+        parentTask: { select: { id: true, title: true } },
+        followOnTasks: { select: { id: true, title: true, status: true } },
         deletionRequests: {
           where: { status: "pending" },
           select: { id: true, reason: true, createdAt: true, requestedBy: { select: { id: true, name: true } } },
@@ -224,6 +232,11 @@ export async function PATCH(
       }
     }
 
+    // The bank account task the app created stays that kind
+    if (body.kind !== undefined && isCompulsoryTask(task.kind)) {
+      return NextResponse.json({ error: "The type of this task can't be changed" }, { status: 400 });
+    }
+
     const originalTask = await prisma.task.findUnique({
       where: { id: taskId },
     });
@@ -248,6 +261,9 @@ export async function PATCH(
     const updatedTask = await prisma.$transaction(async (tx) => {
       // Extract assignedToIds from body and remove it
       const { assignedToIds, assignedToId, ...updateData } = body;
+      // Set only by the app
+      delete updateData.billable;
+      delete updateData.parentTaskId;
 
       // If we're updating status, also update the lastStatusUpdatedBy fields
     if (updateData.status && updateData.status !== task.status) {
@@ -279,8 +295,10 @@ export async function PATCH(
     if (body.status && body.status !== originalTask.status) {
       if (body.status === "completed") {
         billStarted = await ensureDraftBillForTask(taskId, currentUser.id);
+        await createFollowOnTasks(taskId, currentUser.id);
       } else if (originalTask.status === "completed") {
         await removeUntouchedDraftBillForTask(taskId);
+        await withdrawFollowOnTasks(taskId);
       }
     }
 
@@ -383,6 +401,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
     const blocked = deletionBlockedReason(task);
     if (blocked) return NextResponse.json({ error: blocked }, { status: 400 });
+    // Compulsory work is closed as not needed only with a reason
+    if (isCompulsoryTask(task.kind) && (!reason || reason.length < 5)) {
+      return NextResponse.json({ error: "This task is compulsory: say why it is not needed" }, { status: 400 });
+    }
 
     const now = new Date();
     // A request waiting for this task is approved by the deletion itself;

@@ -31,6 +31,13 @@ enum TaskStatus {
   cancelled
 }
 
+// Kinds of task that start other work when they are completed
+// (docs/TASKS.md). Most tasks have no kind.
+enum TaskKind {
+  GST_REGISTRATION // completing it creates the GST_BANK_ACCOUNT task
+  GST_BANK_ACCOUNT // add the bank account on the GST portal (Rule 10A)
+}
+
 enum TaskPriority {
   low
   medium
@@ -129,6 +136,7 @@ model User {
   billsCreated            Bill[]         @relation("BillCreatedBy")
   billsAmountRequested    Bill[]         @relation("BillAmountRequestedFrom")
   billsAmountEntered      Bill[]         @relation("BillAmountEnteredBy")
+  billsGstReturnPushed    Bill[]         @relation("BillGstReturnPushedBy")
   billsReturned           Bill[]         @relation("BillReturnedBy")
   billEvents              BillEvent[]
   billChangesRequested    BillChangeRequest[] @relation("BillChangeRequestedBy")
@@ -260,6 +268,14 @@ model Task {
   scheduledDeletionDate DateTime? // Add this field
   company        Company   @default(MVC)
   bill           Bill?
+  kind           TaskKind?
+  // false: completing the task makes no bill (it closes at once)
+  billable       Boolean   @default(true)
+  // The task this one was created from on its completion, e.g. the GST bank
+  // account task from the GST registration task. One of each kind per task.
+  parentTaskId   String?   @db.Char(36)
+  parentTask     Task?     @relation("TaskFollowOn", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  followOnTasks  Task[]    @relation("TaskFollowOn")
 
   // Add these new fields
   lastStatusUpdatedById String?   @db.Char(36)
@@ -299,6 +315,7 @@ model Task {
   @@index([billingStatus])
   @@index([createdAt])
   @@index([completedAt])
+  @@unique([parentTaskId, kind])
 }
 
 // New join table for many-to-many task assignments
@@ -575,6 +592,19 @@ model Bill {
   billNumber    String?   @db.VarChar(30)
   billDate      DateTime?
 
+  // GST return number: a separate series used only when the bill is
+  // reported in the firm's GST return (GSTR-1). Given when the billing
+  // manager or Admin pushes the bill to the GST return; never printed on the
+  // bill, emailed or sent to Tally. See docs/BILLING.md.
+  gstReturnFinancialYear String?   @db.VarChar(7)
+  gstReturnSequence      Int?
+  gstReturnNumber        String?   @db.VarChar(30)
+  // The return (month) the bill is reported in
+  gstReturnMonth         DateTime? @db.Date
+  gstReturnPushedAt      DateTime?
+  gstReturnPushedById    String?   @db.Char(36)
+  gstReturnPushedBy      User?     @relation("BillGstReturnPushedBy", fields: [gstReturnPushedById], references: [id])
+
   // A reissued bill points to the bill it replaced
   reissuedFromId String? @unique @db.Char(36)
   reissuedFrom   Bill?   @relation("BillReissue", fields: [reissuedFromId], references: [id])
@@ -612,6 +642,8 @@ model Bill {
   updatedAt DateTime    @updatedAt
 
   @@unique([type, financialYear, sequence])
+  @@unique([gstReturnFinancialYear, gstReturnSequence])
+  @@index([gstReturnMonth])
   @@index([company, status])
   @@index([amountRequestedFromId, status])
   @@index([createdById])
@@ -679,6 +711,14 @@ model BillChangeRequest {
 model BillSeries {
   type          BillType @id
   financialYear String   @db.VarChar(7) // year that nextNumber belongs to
+  nextNumber    Int
+  updatedAt     DateTime @updatedAt
+}
+
+// Next GST return number, one row per financial year; Admin sets it in
+// Billing settings → Number series. A year without a row starts at 1.
+model GstReturnSeries {
+  financialYear String   @id @db.VarChar(7)
   nextNumber    Int
   updatedAt     DateTime @updatedAt
 }

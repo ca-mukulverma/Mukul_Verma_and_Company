@@ -259,9 +259,10 @@ const UNDO_WINDOW_MS = 10_000;
 export async function ensureDraftBillForTask(taskId: string, userId: string): Promise<boolean> {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { id: true, title: true, description: true, company: true, clientId: true, bill: { select: { id: true } } },
+    select: { id: true, title: true, description: true, company: true, clientId: true, billable: true, bill: { select: { id: true } } },
   });
-  if (!task || task.bill) return false;
+  // A task marked not billable (e.g. the GST bank account task) makes no bill
+  if (!task || task.bill || !task.billable) return false;
   const type = await defaultBillType(task.company, task.clientId);
 
   try {

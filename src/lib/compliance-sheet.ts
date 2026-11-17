@@ -16,6 +16,7 @@ import {
 } from "@/lib/compliance";
 import { addMonths, dateKey, periodEndOf, periodLabel, todayIST } from "@/lib/compliance-periods";
 import { clientContactSelect, reminderContacts } from "@/lib/client-contacts";
+import { requiredReturnFiles } from "@/lib/compliance-files";
 
 // The data behind the sheets on the Compliance page: one row per client, one
 // cell per item. Opening a sheet also creates the period's missing items.
@@ -40,9 +41,10 @@ const num = (value: Prisma.Decimal | null) => (value === null ? null : Number(va
 // Files a past period still lacks (it is completed when saved; these show as tags)
 function missingFiles(item: SheetItemRecord) {
   const kinds = new Set(item.documents.map((d) => d.kind));
+  const files = requiredReturnFiles(item.workType, item.isNil);
   return [
-    ...(item.workType.requirePdf && !kinds.has("RETURN_PDF") ? ["PDF"] : []),
-    ...(item.workType.requireJson && !kinds.has("RETURN_JSON") ? ["JSON"] : []),
+    ...(files.pdf && !kinds.has("RETURN_PDF") ? ["PDF"] : []),
+    ...(files.json && !kinds.has("RETURN_JSON") ? ["JSON"] : []),
   ];
 }
 

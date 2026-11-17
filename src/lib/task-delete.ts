@@ -12,6 +12,7 @@ export const taskForDeletion = {
   id: true,
   title: true,
   status: true,
+  kind: true,
   assignedById: true,
   bill: { select: { id: true, status: true } },
   client: { select: { contactPerson: true, companyName: true } },

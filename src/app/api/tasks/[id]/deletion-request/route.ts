@@ -6,6 +6,7 @@ import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendInAppNotification } from "@/lib/notifications";
 import { clientLabel, deletionBlockedReason, taskForDeletion } from "@/lib/task-delete";
+import { isCompulsoryTask } from "@/lib/task-kinds";
 
 const requestSchema = z.object({
   reason: z.string().trim().min(5, "Say why the task should be deleted").max(1000),
@@ -31,6 +32,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     task.assignees.some((a) => a.userId === currentUser.id);
   if (!onTask) return NextResponse.json({ error: "You are not on this task" }, { status: 403 });
   if (task.deletionRequests.length) return NextResponse.json({ error: "Deletion has already been requested" }, { status: 400 });
+  // Compulsory work (e.g. the GST bank account): only Admin can close it, with a reason
+  if (isCompulsoryTask(task.kind)) {
+    return NextResponse.json({ error: "This task is compulsory and can't be deleted. Ask Admin if it is really not needed." }, { status: 400 });
+  }
   const blocked = deletionBlockedReason(task);
   if (blocked) return NextResponse.json({ error: blocked }, { status: 400 });
 

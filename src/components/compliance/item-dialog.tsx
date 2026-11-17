@@ -30,6 +30,7 @@ import {
 } from "./types";
 import { uploadComplianceFile } from "./upload";
 import { canDownloadFor } from "@/lib/gst-portal";
+import { requiredReturnFiles } from "@/lib/compliance-files";
 import { useGstDownloads } from "./gst-download-queue";
 import { PortalDownloadDialog } from "./portal-download-panel";
 import {
@@ -948,7 +949,8 @@ function Files({ item, client, disabled, onChange }: { item: SheetItem; client: 
       setSending(false);
     }
   };
-  const needed = [item.requirePdf && "Return PDF", item.requireJson && "Return JSON"].filter(Boolean).join(" and ");
+  const files = requiredReturnFiles(item, item.isNil);
+  const needed = [files.pdf && "Return PDF", files.json && "Return JSON"].filter(Boolean).join(" and ");
   return (
     <Section title="Files">
       {needed && item.kind !== "TDS_PAYMENT" && <p className="text-xs text-muted-foreground">Needed after filing: {needed}.</p>}

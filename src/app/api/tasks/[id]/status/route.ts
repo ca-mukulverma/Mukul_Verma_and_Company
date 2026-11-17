@@ -7,6 +7,7 @@ import { z } from "zod";
 import { ensureDraftBillForTask, removeUntouchedDraftBillForTask } from "@/lib/billing";
 import { notifyTaskStatusChange } from "@/lib/task-notify";
 import { TASK_STATUSES } from "@/lib/task-views";
+import { createFollowOnTasks, withdrawFollowOnTasks } from "@/lib/task-follow-ons";
 
 // "Cancelled" is no longer a status to choose: a task that isn't needed is
 // deleted (by Admin, or on Admin's approval of a request with a reason).
@@ -35,6 +36,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         title: true,
         status: true,
         company: true,
+        billable: true,
         assignedById: true,
         lastStatusUpdatedById: true,
         assignees: { where: { userId: currentUser.id }, select: { userId: true } },
@@ -59,7 +61,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       where: { id: taskId },
       data: {
         status,
-        ...(completing && { billingStatus: BillingStatus.pending_billing }),
+        ...(completing && task.billable && { billingStatus: BillingStatus.pending_billing }),
         lastStatusUpdatedById: currentUser.id,
         lastStatusUpdatedAt: new Date(),
       },
@@ -68,8 +70,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Start the bill for this work (docs/BILLING.md), or withdraw it on reopening
     let billStarted = false;
-    if (completing) billStarted = await ensureDraftBillForTask(taskId, currentUser.id);
-    else if (task.status === "completed") await removeUntouchedDraftBillForTask(taskId);
+    // Work that follows this task, e.g. the GST bank account task after a GST
+    // registration (docs/TASKS.md); withdrawn again if nobody touched it
+    let followOn: { id: string; title: string } | null = null;
+    if (completing) {
+      billStarted = await ensureDraftBillForTask(taskId, currentUser.id);
+      followOn = await createFollowOnTasks(taskId, currentUser.id);
+    } else if (task.status === "completed") {
+      await removeUntouchedDraftBillForTask(taskId);
+      await withdrawFollowOnTasks(taskId);
+    }
 
     if (!undo) {
       after(() =>
@@ -103,6 +113,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       status: updatedTask.status,
       billingStatus: updatedTask.billingStatus,
       lastStatusUpdatedBy: currentUser.name,
+      followOn,
     });
   } catch (error) {
     console.error("Error updating task status:", error instanceof Error ? error.message : error);

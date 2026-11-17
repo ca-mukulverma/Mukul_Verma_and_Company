@@ -61,6 +61,43 @@ GST on a GST bill:
   series free of gaps. A numbered bill is never deleted. If cancelled, it
   stays in the list marked *Cancelled*.
 
+### GST return series
+
+The invoice numbers entered in the firm's GST return (GSTR-1) are a separate
+series from the GST bill numbers. They are given in the app and used **only
+in the GST return**: never printed on the bill, emailed, shown in the
+Billing List or sent to Tally (the Tally XML and extension carry the bill
+number as before).
+
+- **Who:** the MVC billing managers and Admin (Billing → **GST return** tab,
+  with the count of GST bills not pushed yet).
+- **Format:** `GR/26-27/001` (financial year as on GST bills, at least three
+  digits). Restarts at 1 every 1 April. Admin sets the next number in
+  Billing settings → **Number series** → *GST return number series*, for this
+  financial year and the next; it can't be set back over a number already
+  given.
+- **Push:** choose the **return month**, tick numbered GST bills (dated up to
+  the end of that month, not cancelled, not pushed yet) and *Push*. They are
+  numbered in order of bill date and bill number, all in one step. A bill is
+  never pushed twice; cancelled bills and bills dated after the return month
+  are skipped with the reason.
+- **Register:** the month's bills with their GST return number, bill number,
+  date, party, GSTIN (B2B) or B2C, CGST / SGST / IGST and total, the same tax
+  as on the bill. A connector's client is B2C unless its GSTIN is shown on the
+  bill. **Download Excel** for entering in the return.
+- **Cancelled after pushing:** the bill stays in the register with its number,
+  marked *Cancelled*, and is left out of the totals.
+- **Undo (Admin only):** tick bills in the register and *Undo push*. Only the
+  last numbers of a year's series can be taken back (every bill from the first
+  chosen to the latest), and the series goes back to the first of them, so it
+  never has gaps.
+- Stored on the bill (`gstReturnNumber`, `gstReturnSequence`,
+  `gstReturnFinancialYear`, `gstReturnMonth`, who pushed it and when) and in
+  `GstReturnSeries` (next number per financial year). The bill's history shows
+  *Pushed to GST return* / *Taken out of GST return*. Code:
+  `src/lib/gst-return.ts`, `src/lib/gst-return-number.ts`,
+  `src/app/api/billing/gst-return/`, `src/components/billing/gst-return.tsx`.
+
 ## Where bills come from
 
 | Source | How the draft bill is created | Who can create it |
