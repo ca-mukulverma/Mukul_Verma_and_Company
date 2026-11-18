@@ -6,6 +6,7 @@ export function notificationLink(n: { title: string; content?: string | null; ta
   const taskId = n.taskId || n.content?.match(/\[taskId:\s*([a-f0-9-]+)\]/i)?.[1];
   if (taskId) return `/dashboard/tasks/${taskId}`;
   const title = n.title.toLowerCase();
+  if (title.startsWith("control centre")) return "/dashboard/admin/control-centre";
   if (title.startsWith("your day")) return "/dashboard/my-work";
   if (title.startsWith("new in the app")) return "/dashboard/whats-new";
   if (title.endsWith("came to office")) return "/dashboard/attendance";

@@ -1266,6 +1266,7 @@ model DeskClient {
   updatedAt      DateTime          @updatedAt
   reports        DeskDailyReport[]
   events         DeskEvent[]
+  supportFiles   DeskSupportFile[]
 
   @@index([clientId])
 }
@@ -1315,4 +1316,40 @@ model DeskEvent {
   detail       String?     @db.Text
 
   @@index([deskClientId, at(sort: Desc)])
+}
+
+// A new version of the desktop software, published to all clients or chosen
+// ones (docs/CONTROL_CENTRE.md, "Updates"). The installer stays on the private
+// GitHub release; clients download it through /api/desk/download with their key.
+model DeskRelease {
+  id          Int      @id @default(autoincrement())
+  version     String   @db.VarChar(20) // 1.2.0
+  notes       String?  @db.Text // "what is new", shown on the client's PC
+  mandatory   Boolean  @default(false)
+  sha256      String   @db.Char(64) // check-sum of the installer
+  assetId     String   @db.VarChar(30) // GitHub release asset id
+  assetName   String   @db.VarChar(120) // GudakesaDesk_Setup_1.2.0.exe
+  size        Int
+  clientCodes String[] @default([]) // empty = every client
+  withdrawn   Boolean  @default(false)
+  publishedBy String   @db.VarChar(50)
+  publishedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([version])
+}
+
+// A support file (logs zip) a client's PC sent to MVC: Settings → Send support file
+model DeskSupportFile {
+  id           String     @id @default(uuid()) @db.Char(36)
+  deskClientId String     @db.Char(36)
+  deskClient   DeskClient @relation(fields: [deskClientId], references: [id], onDelete: Cascade)
+  fileName     String     @db.VarChar(120)
+  size         Int
+  note         String?    @db.Text
+  storageKey   String     @db.VarChar(200) // where the file is kept (Cloudflare R2)
+  appVersion   String?    @db.VarChar(20)
+  receivedAt   DateTime   @default(now())
+
+  @@index([receivedAt(sort: Desc)])
 }
