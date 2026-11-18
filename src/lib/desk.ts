@@ -36,7 +36,7 @@ export function newDeskKey() {
 export const CODE_RE = /^[A-Z0-9_-]{2,30}$/;
 export const RULE_KEY_RE = /^[A-Z0-9_.]{2,60}$/;
 
-async function cacheGet<T>(k: string): Promise<T | null> {
+export async function cacheGet<T>(k: string): Promise<T | null> {
   try {
     const v = await redis.get(k);
     return v ? (JSON.parse(v) as T) : null;
@@ -45,7 +45,7 @@ async function cacheGet<T>(k: string): Promise<T | null> {
   }
 }
 
-async function cacheSet(k: string, v: unknown, ttl = DAY) {
+export async function cacheSet(k: string, v: unknown, ttl = DAY) {
   try {
     await redis.set(k, JSON.stringify(v), "EX", ttl);
   } catch {
@@ -53,7 +53,7 @@ async function cacheSet(k: string, v: unknown, ttl = DAY) {
   }
 }
 
-async function cacheDel(...keys: string[]) {
+export async function cacheDel(...keys: string[]) {
   try {
     if (keys.length) await redis.del(...keys);
   } catch {

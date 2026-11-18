@@ -97,3 +97,9 @@ export async function deletePrefix(prefix: string): Promise<number> {
   } while (token);
   return deleted;
 }
+
+// Stores bytes the server received itself (small files only, e.g. a client
+// PC's support zip, which comes through the API with the client's key)
+export async function putObject(key: string, body: Buffer, contentType: string) {
+  await r2().send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
+}
