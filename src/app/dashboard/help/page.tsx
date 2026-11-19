@@ -127,6 +127,7 @@ const SECTIONS: Section[] = [
       "Pick the dates (This month / Last month), a staff member, the firm, the kind of work, or search by work or client name. Click a row to open the task or compliance sheet.",
       "By staff shows how much work each person did in those dates; click a name to see their work. Excel downloads the list with the same filters, plus a By staff sheet.",
       "Everyone sees their own work here. Admin sees everyone's, and so do the partners Admin turns Work Done on for (Settings → Permissions).",
+      "Logged wrongly? Admin and those partners see Correct on each piece of logged work. Fix who did it, the firm, client, work, date or remark; write what is being changed and why, and choose on whose request (a member of staff, the client, or no one). The person who logged it is told, the row shows Corrected, and every correction is kept with the bill's history. Once the bill is approved, only who did it and the remark can be corrected here.",
     ],
     link: { href: "/dashboard/work-done", label: "Open Work done" },
   },

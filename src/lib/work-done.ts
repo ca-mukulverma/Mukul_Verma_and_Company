@@ -43,6 +43,10 @@ export interface WorkDoneRow {
   // Where the row opens; logged work opens only for the person who logged it
   // (under Billing → My entries)
   href: string | null;
+  // Logged work: the bill's id, for Admin and partners to correct it
+  // (Work done → Correct), and how many times it was corrected
+  loggedId?: string;
+  corrections?: number;
 }
 
 export interface StaffCount {
@@ -183,6 +187,7 @@ export async function getWorkDone(filter: WorkDoneFilter, viewerId: string) {
             client: { select: { contactPerson: true, companyName: true } },
             createdBy: person,
             reissuedAs: { select: { id: true } },
+            _count: { select: { corrections: true } },
           },
           orderBy: { workDate: "desc" },
           take: MAX_ROWS_PER_SOURCE + 1,
@@ -240,9 +245,11 @@ export async function getWorkDone(filter: WorkDoneFilter, viewerId: string) {
       client: b.client ? partyName(b.client) : b.billToName,
       company: b.company,
       doneBy: [b.createdBy],
-      note: null,
+      note: b._count.corrections ? `Corrected${b._count.corrections > 1 ? ` ${b._count.corrections} times` : ""}` : null,
       status: b.reissuedAs ? "Billed (reissued)" : BILL_STATUS_LABELS[b.status],
       href: b.createdBy.id === viewerId ? "/dashboard/billing?tab=mine" : null,
+      loggedId: b.id,
+      corrections: b._count.corrections,
     });
   }
   for (const i of items.slice(0, MAX_ROWS_PER_SOURCE)) {
