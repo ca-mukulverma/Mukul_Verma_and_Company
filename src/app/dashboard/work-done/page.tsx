@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import axios from "axios";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Download, ListChecks, Loader2, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, ListChecks, Loader2, Pencil, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CompanyBadge } from "@/components/billing/company-select";
 import { HelpLink } from "@/components/help/help-link";
+import { CorrectWorkDialog } from "@/components/work-done/correct-work-dialog";
 import { useLanguage } from "@/components/language-provider";
 import { useDebounce } from "@/hooks/use-debounce";
 import { apiError } from "@/components/compliance/types";
@@ -91,6 +92,26 @@ function DoneBy({ row }: { row: WorkDoneRow }) {
   );
 }
 
+// Admin and partners who see everyone's work can correct logged work
+function CorrectButton({ row, seesAll, onClick }: { row: WorkDoneRow; seesAll: boolean; onClick: (id: string) => void }) {
+  if (!seesAll || row.source !== "logged" || !row.loggedId) return null;
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="relative z-10 h-7 px-2"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick(row.loggedId!);
+      }}
+    >
+      <Pencil className="mr-1 h-3.5 w-3.5" />
+      Correct
+    </Button>
+  );
+}
+
 export default function WorkDonePage() {
   const { t } = useLanguage();
   const [range, setRange] = useState(() => monthRange(0));
@@ -105,6 +126,9 @@ export default function WorkDonePage() {
   const [data, setData] = useState<WorkDoneResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  // Logged work being corrected (Admin and partners who see everyone's work)
+  const [correcting, setCorrecting] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const params = useCallback(
     () => ({
@@ -133,7 +157,7 @@ export default function WorkDonePage() {
     return () => {
       cancelled = true;
     };
-  }, [params, page]);
+  }, [params, page, reloadKey]);
 
   const download = async () => {
     setDownloading(true);
@@ -427,7 +451,10 @@ export default function WorkDonePage() {
                       {row.client && <p className="text-sm text-muted-foreground">{row.client}</p>}
                       <div className="flex items-end justify-between gap-2 text-sm">
                         <DoneBy row={row} />
-                        <span className="text-xs text-muted-foreground">{row.status}</span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-xs text-muted-foreground">{row.status}</span>
+                          <CorrectButton row={row} seesAll={seesAll} onClick={setCorrecting} />
+                        </div>
                       </div>
                     </RowLink>
                   ))}
@@ -444,6 +471,7 @@ export default function WorkDonePage() {
                         <TableHead>Firm</TableHead>
                         <TableHead>Kind</TableHead>
                         <TableHead>Status</TableHead>
+                        {seesAll && <TableHead className="w-24" />}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -471,6 +499,11 @@ export default function WorkDonePage() {
                             <SourceBadge source={row.source} />
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{row.status}</TableCell>
+                          {seesAll && (
+                            <TableCell className="text-right">
+                              <CorrectButton row={row} seesAll={seesAll} onClick={setCorrecting} />
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -494,6 +527,8 @@ export default function WorkDonePage() {
           </CardContent>
         </Card>
       )}
+
+      <CorrectWorkDialog billId={correcting} onClose={() => setCorrecting(null)} onSaved={() => setReloadKey((k) => k + 1)} />
     </div>
   );
 }

@@ -140,6 +140,8 @@ model User {
   billsReturned           Bill[]         @relation("BillReturnedBy")
   billEvents              BillEvent[]
   billChangesRequested    BillChangeRequest[] @relation("BillChangeRequestedBy")
+  workCorrectionsMade      WorkCorrection[] @relation("WorkCorrectionBy")
+  workCorrectionsRequested WorkCorrection[] @relation("WorkCorrectionRequestedBy")
   billChangesDecided      BillChangeRequest[] @relation("BillChangeDecidedBy")
   tallyExports            TallyExport[]
   complianceTeams         ComplianceTeamMember[]
@@ -636,6 +638,7 @@ model Bill {
 
   events         BillEvent[]
   changeRequests BillChangeRequest[]
+  corrections    WorkCorrection[]
   // Set when the bill comes from a completed compliance item
   complianceItem ComplianceItem?
   createdAt DateTime    @default(now())
@@ -705,6 +708,33 @@ model BillChangeRequest {
 
   @@index([status, createdAt])
   @@index([billId])
+}
+
+// Who asked for a correction of logged work
+enum WorkCorrectionRequester {
+  staff  // a member of staff (requestedById)
+  client // the client
+  self   // nobody: the manager or Admin found the mistake
+}
+
+// A correction of logged work (a directly logged bill) by Admin or a partner
+// who sees everyone's work: what changed, why, and on whose request. The
+// bill's history also gets a "Work corrected" line. See docs/BILLING.md.
+model WorkCorrection {
+  id            String                  @id @default(uuid()) @db.Char(36)
+  billId        String                  @db.Char(36)
+  bill          Bill                    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  // Each changed field: { field: { from, to } }, as shown to people
+  changes       Json
+  reason        String                  @db.Text
+  requester     WorkCorrectionRequester
+  requestedById String?                 @db.Char(36)
+  requestedBy   User?                   @relation("WorkCorrectionRequestedBy", fields: [requestedById], references: [id])
+  correctedById String                  @db.Char(36)
+  correctedBy   User                    @relation("WorkCorrectionBy", fields: [correctedById], references: [id])
+  createdAt     DateTime                @default(now())
+
+  @@index([billId, createdAt])
 }
 
 // Next number for each bill series; restarts at 1 every 1 April

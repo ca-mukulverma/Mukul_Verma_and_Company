@@ -35,6 +35,28 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "work-corrections",
+    date: "2026-11-19",
+    audience: "admin",
+    title: { en: "Correct work logged wrongly", hi: "गलत लॉग हुआ काम ठीक करें" },
+    steps: {
+      en: [
+        "In Work done, each piece of logged work has a Correct button for Admin and the partners who see everyone's work.",
+        "Fix who did it, the firm, client, work, date or remark. Write what is being changed and why, and choose on whose request: a member of staff, the client, or no one.",
+        "The person who logged it is told, the row shows Corrected, and every correction is kept in the Correct window and the bill's history. After the bill is approved, only who did it and the remark can be corrected.",
+      ],
+      hi: [
+        "Work done में हर लॉग किए गए काम पर एडमिन और सबका काम देखने वाले पार्टनर्स को Correct बटन दिखता है।",
+        "किसने किया, फ़र्म, क्लाइंट, काम, तारीख या रिमार्क ठीक करें। क्या और क्यों बदला जा रहा है लिखें, और किसके कहने पर चुनें: कोई स्टाफ़, क्लाइंट, या कोई नहीं।",
+        "जिसने काम लॉग किया उसे सूचना जाती है, पंक्ति पर Corrected दिखता है, और हर सुधार Correct विंडो और बिल की हिस्ट्री में रहता है। बिल अप्रूव होने के बाद सिर्फ़ किसने किया और रिमार्क ठीक हो सकते हैं।",
+      ],
+    },
+    push: {
+      title: "New: correct work logged wrongly",
+      body: "Work done → Correct fixes logged work, with what changed, why, and on whose request.",
+    },
+  },
+  {
     id: "gst-return-series",
     date: "2026-11-18",
     audience: "admin",

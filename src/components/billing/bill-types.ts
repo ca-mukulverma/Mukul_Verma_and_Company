@@ -151,6 +151,7 @@ export const EVENT_LABELS: Record<string, string> = {
   gst_return_undone: "Taken out of GST return",
   reopened: "Reopened",
   details_updated: "Details updated",
+  work_corrected: "Work corrected",
   company_changed: "Company changed",
   manager_approved: "Approved by billing manager",
   final_rejected: "Returned by Admin",

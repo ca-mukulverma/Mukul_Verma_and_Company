@@ -142,6 +142,25 @@ and the ones ticked under **Also notify partners** are notified too.
   every bill dialog, as the *From* column of the Billing List and as *Task
   created by* in its Excel; the search box finds bills by that person too.
 
+**Correcting logged work.** Work logged wrongly (wrong person, firm,
+client, work, date or remark) is corrected in **Work done → Correct** by
+Admin and the partners who see everyone's work there. The correction asks
+**what is being changed and why** and **on whose request**: a member of
+staff (chosen from the list), the client, or no one (the corrector found the
+mistake). Each correction is kept (`WorkCorrection`: what changed from and
+to, why, who asked, who corrected, when), listed in the Correct window, shown
+as *Corrected* on the Work done row and in its Excel, and written in the
+bill's history as *Work corrected*. The person who logged it (and the person
+it is moved to) are notified.
+
+- **Who did it** and the **remark** can be corrected at any stage.
+- The **firm, client, work and date** only until the bill is approved; after
+  that the billing manager asks for an edit of the bill. Moving the work to
+  the other firm makes it a draft bill again for that firm's billing manager,
+  who is notified.
+- Code: `src/lib/work-correction.ts`, `src/app/api/work-done/logged/[id]/`,
+  `src/components/work-done/correct-work-dialog.tsx`.
+
 **New client?** Admins and partners see **Add new client** at the end of
 the client search (in *Log work* and in a bill's *Edit details*). It asks
 for the contact person, firm name, email or phone, address and GSTIN, saves
