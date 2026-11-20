@@ -30,6 +30,7 @@ import {
   EDITABLE_BILL_STATUSES,
   MVC_BILL_TYPES,
   formatRupees,
+  withBillDetails,
 } from "@/lib/billing-constants";
 import { finalApprove, finalReject, managerApprove } from "@/lib/bill-approvals";
 
@@ -56,6 +57,9 @@ const actionSchema = z.discriminatedUnion("action", [
     type: z.enum(MVC_BILL_TYPES).optional(),
     incomeLedgerId: z.string().min(1).optional(),
     lineDescription: z.string().trim().max(250).optional(),
+    // Printed on the bill under the work (e.g. the period); replaces the
+    // lines after the first
+    details: z.string().trim().max(2000).optional(),
   }),
   z.object({ action: z.literal("send_back"), remark: z.string().trim().min(3, "Add a remark").max(1000) }),
   z.object({ action: z.literal("not_billable"), remark: z.string().trim().max(1000).optional() }),
@@ -300,6 +304,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             amountEnteredAt: new Date(),
             ...(input.incomeLedgerId && { incomeLedgerId: input.incomeLedgerId }),
             ...(input.lineDescription !== undefined && { tallyLineDescription: input.lineDescription || null }),
+            ...(input.details !== undefined && { description: withBillDetails(bill.description, input.details) }),
           },
         });
         if (count === 0) return false;

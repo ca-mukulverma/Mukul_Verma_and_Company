@@ -168,3 +168,14 @@ export const TALLY_DEFAULT_VOUCHER_TYPES: Record<BillTypeValue, string> = {
   NON_GST_VLA: "Sales - VLA",
   BEDGE: "Sales",
 };
+
+// A bill's description: the work on the first line, then the details printed
+// under it (e.g. the period), entered with the amount
+export function billDetails(description: string): string {
+  return description.split("\n").slice(1).join("\n").trim();
+}
+
+export function withBillDetails(description: string, details: string): string {
+  const work = description.split("\n")[0].trim();
+  return details.trim() ? `${work}\n${details.trim()}` : work;
+}

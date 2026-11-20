@@ -18,6 +18,7 @@ import {
   gstAmount,
   GST_RATE_PERCENT,
   MvcBillTypeValue,
+  billDetails,
 } from "@/lib/billing-constants";
 import { BillTypeSelect } from "./bill-type-select";
 import { BillReturnNotice } from "./bill-return-notice";
@@ -177,6 +178,8 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
   // The billing manager also chooses the Tally income ledger (the service)
   const [ledgerId, setLedgerId] = useState<string | null>(bill.incomeLedger?.id ?? null);
   const [line, setLine] = useState(bill.tallyLineDescription ?? "");
+  // Printed on the bill under the work, e.g. the year or month
+  const [details, setDetails] = useState(billDetails(bill.description));
   // The billing manager chooses who an MVC bill is issued by along with the amount
   const canChooseType =
     bill.canManage && bill.company === "MVC" && (EDITABLE_BILL_STATUSES as string[]).includes(bill.status);
@@ -208,6 +211,7 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
               ...(canChooseType && type && type !== bill.type && { type }),
               ...(bill.canManage && ledgerId && ledgerId !== bill.incomeLedger?.id && { incomeLedgerId: ledgerId }),
               ...(bill.canManage && line.trim() !== (bill.tallyLineDescription ?? "") && { lineDescription: line.trim() }),
+              ...(details.trim() !== billDetails(bill.description) && { details: details.trim() }),
             };
             if (await run(action, bill.canManage ? "Amount saved and sent for final approval" : "Amount saved")) onClose();
           }}
@@ -232,6 +236,20 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
             />
           </div>
           <FeeHints billId={bill.id} onPick={(fee) => setValue(String(fee))} />
+          <div className="space-y-2">
+            <Label htmlFor="bill-details">Details on the bill (optional)</Label>
+            <Textarea
+              id="bill-details"
+              placeholder="Printed under the work, e.g. FY 2025-26 or April to June 2026"
+              value={details}
+              maxLength={2000}
+              onChange={(e) => setDetails(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              The bill shows: <span className="font-medium">{bill.description.split("\n")[0]}</span>
+              {details.trim() ? " and these details below it" : " only"}.
+            </p>
+          </div>
           {bill.canManage && (
             <IncomeLedgerFields
               ledgerId={ledgerId}

@@ -94,7 +94,7 @@ export interface BillEvent {
 export type BillAction =
   | { action: "set_type"; type: MvcBillTypeValue }
   | { action: "request_amount"; userId: string; remark?: string }
-  | { action: "enter_amount"; amount: number; type?: MvcBillTypeValue; incomeLedgerId?: string; lineDescription?: string }
+  | { action: "enter_amount"; amount: number; type?: MvcBillTypeValue; incomeLedgerId?: string; lineDescription?: string; details?: string }
   | { action: "send_back"; remark: string }
   | { action: "not_billable"; remark?: string }
   | { action: "reopen" }
