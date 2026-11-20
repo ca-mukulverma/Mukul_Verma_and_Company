@@ -1,6 +1,12 @@
 // Debtors from Tally (docs/TALLY_DEBTORS.md): what the server and the pages
 // share. Nothing here touches the database, so it runs in the browser too.
 
+// Each firm's own Tally company (the app's Company: MVC, BEDGE)
+export const DEBTOR_ENTITIES = ["MVC", "BEDGE"] as const;
+export type DebtorEntity = (typeof DEBTOR_ENTITIES)[number];
+export const ENTITY_LABELS: Record<DebtorEntity, string> = { MVC: "MVC", BEDGE: "B Edge" };
+export const isDebtorEntity = (v: unknown): v is DebtorEntity => DEBTOR_ENTITIES.includes(v as DebtorEntity);
+
 // When the Tally PC sends the debtors (IST), like Gudakesa Desk
 export const SYNC_SLOTS = ["11:30", "13:00", "16:00", "19:00"];
 // A scheduled update counts as missed this long after its time

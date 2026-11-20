@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import axios from "axios";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import {
   amount,
   asOfText,
   balance,
+  ENTITY_LABELS,
   freshness,
   fyLabel,
   fyStartYear,
@@ -49,7 +50,7 @@ type Action = "pdf" | "xlsx" | "whatsapp";
 
 const EVENT_LABELS: Record<string, string> = { pdf: "PDF downloaded", excel: "Excel downloaded", whatsapp: "Sent on WhatsApp" };
 
-export function LedgerView({ ledgerId, showParty = true }: { ledgerId: string; showParty?: boolean }) {
+export function LedgerView({ ledgerId, showParty = true, openWhatsApp = false }: { ledgerId: string; showParty?: boolean; openWhatsApp?: boolean }) {
   const [data, setData] = useState<LedgerResponse | null>(null);
   const [initialStatus, setInitialStatus] = useState<SyncStatus | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -65,11 +66,15 @@ export function LedgerView({ ledgerId, showParty = true }: { ledgerId: string; s
   const [sharing, setSharing] = useState(false);
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
-  const sync = useSyncStatus(initialStatus, reload);
+  // From Recovery's "whom to chase": open the WhatsApp step once, after the checks
+  const autoOpened = useRef(false);
+  const sync = useSyncStatus(data?.ledger.entity ?? "MVC", initialStatus, reload);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([axios.get<LedgerResponse>(`/api/debtors/${ledgerId}`), axios.get<SyncStatus>("/api/debtors/status")])
+    axios
+      .get<LedgerResponse>(`/api/debtors/${ledgerId}`)
+      .then(async (ledger) => [ledger, await axios.get<SyncStatus>("/api/debtors/status", { params: { entity: ledger.data.ledger.entity } })] as const)
       .then(([ledger, status]) => {
         if (cancelled) return;
         setData(ledger.data);
@@ -81,6 +86,13 @@ export function LedgerView({ ledgerId, showParty = true }: { ledgerId: string; s
       cancelled = true;
     };
   }, [ledgerId, reloadKey]);
+
+  useEffect(() => {
+    if (!openWhatsApp || autoOpened.current || !data || !sync.status) return;
+    autoOpened.current = true;
+    if (freshness(sync.status.readAt, new Date()).level !== "fresh") setConfirming("whatsapp");
+    else setSharing(true);
+  }, [openWhatsApp, data, sync.status]);
 
   const choosePreset = (value: "this" | "last" | "custom") => {
     setPreset(value);
@@ -155,7 +167,7 @@ export function LedgerView({ ledgerId, showParty = true }: { ledgerId: string; s
         </p>
       )}
 
-      {showParty && <PartyCard party={party} ledgerName={ledger.name} group={ledger.group} />}
+      {showParty && <PartyCard party={party} ledgerName={ledger.name} group={ledger.group} firm={`${ENTITY_LABELS[ledger.entity]} (${ledger.company})`} />}
 
       <Card>
         <CardHeader className="space-y-3">
@@ -378,12 +390,13 @@ export function TallyLedgerTable({ company, name, st, narration }: { company: st
 
 // ─── The party, from the app ────────────────────────────────────────────────
 
-function PartyCard({ party, ledgerName, group }: { party: PartyDetails | null; ledgerName: string; group: string }) {
+function PartyCard({ party, ledgerName, group, firm }: { party: PartyDetails | null; ledgerName: string; group: string; firm: string }) {
   return (
     <Card>
       <CardContent className="flex flex-wrap items-start justify-between gap-4 pt-6 text-sm">
         <div className="space-y-1">
           <p className="text-xl font-bold">{ledgerName}</p>
+          <p className="font-medium">{firm}</p>
           <p className="text-muted-foreground">Group in Tally: {group}</p>
         </div>
         {party ? (

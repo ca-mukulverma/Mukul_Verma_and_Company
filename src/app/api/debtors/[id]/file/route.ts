@@ -27,6 +27,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const body = format === "pdf" ? ledgerPdf(input) : await ledgerExcel(input);
   await prisma.tallyLedgerEvent.create({
     data: {
+      entity: ledger.entity,
       ledgerName: ledger.name,
       kind: format === "pdf" ? "pdf" : "excel",
       periodFrom: new Date(`${from}T00:00:00Z`),

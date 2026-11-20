@@ -16,7 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const [parties, events] = await Promise.all([
     partiesForLedgers([nameKey(ledger.name)]),
     prisma.tallyLedgerEvent.findMany({
-      where: { ledgerName: ledger.name },
+      where: { entity: ledger.entity, ledgerName: ledger.name },
       orderBy: { at: "desc" },
       take: 10,
       select: { kind: true, at: true, recipient: true, periodFrom: true, periodTo: true, user: { select: { name: true } } },

@@ -36,6 +36,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   await saveShare(token, { key, fileName: `${ledgerFileName(ledger.name, from, to)}.pdf` });
   await prisma.tallyLedgerEvent.create({
     data: {
+      entity: ledger.entity,
       ledgerName: ledger.name,
       kind: "whatsapp",
       periodFrom: new Date(`${from}T00:00:00Z`),
