@@ -71,8 +71,8 @@ export const tallyStatus = () => ask({ type: "tally-status" }, 20_000);
 
 // ─── Debtors sync (docs/TALLY_DEBTORS.md) ───────────────────────────────────
 
-// The extension sends debtors from version 1.1.0
-export const SYNC_EXTENSION_VERSION = "1.1.0";
+// The extension sends debtors for MVC and B Edge from version 1.2.0
+export const SYNC_EXTENSION_VERSION = "1.2.0";
 export function extensionCanSync(version: string | null) {
   if (!version) return false;
   const [a = 0, b = 0] = version.split(".").map(Number);
@@ -80,19 +80,24 @@ export function extensionCanSync(version: string | null) {
   return a > x || (a === x && b >= y);
 }
 
+export interface SyncFirmInfo {
+  company: string;
+  port: number;
+  running: boolean;
+  last: { ok: boolean; at: string; message?: string; ledgers?: number; changed?: number; trigger?: string } | null;
+}
+
+// The firms this PC sends for, by "MVC" / "BEDGE"
 export interface SyncInfo extends Answer {
-  connected?: boolean;
-  company?: string | null;
-  running?: boolean;
-  last?: { ok: boolean; at: string; message?: string; ledgers?: number; changed?: number; trigger?: string } | null;
+  firms?: Partial<Record<"MVC" | "BEDGE", SyncFirmInfo>>;
 }
 
 export const syncInfo = () => ask({ type: "tally-sync-info" }, 10_000) as Promise<SyncInfo>;
 // Port: Tally's port saved on this computer (saveTallyPort)
-export const syncConnect = (key: string, company: string) => ask({ type: "tally-sync-connect", key, company }, 10_000);
-export const syncDisconnect = () => ask({ type: "tally-sync-disconnect" }, 10_000);
-// Reads Tally and sends the debtors now; can take a few minutes
-export const syncNow = () => ask({ type: "tally-sync-now" }, 600_000) as Promise<Answer & { ledgers?: number; changed?: number; readAt?: string }>;
+export const syncConnect = (entity: "MVC" | "BEDGE", key: string, company: string) => ask({ type: "tally-sync-connect", entity, key, company }, 10_000);
+export const syncDisconnect = (entity: "MVC" | "BEDGE") => ask({ type: "tally-sync-disconnect", entity }, 10_000);
+// Reads Tally and sends that firm's debtors now; can take a few minutes
+export const syncNow = (entity: "MVC" | "BEDGE") => ask({ type: "tally-sync-now", entity }, 600_000) as Promise<Answer & { ledgers?: number; changed?: number; readAt?: string }>;
 
 // The extension as a ZIP to load unpacked, set up for this app's address
 export async function downloadTallyExtension() {

@@ -1393,9 +1393,10 @@ model DeskSupportFile {
 // here at 11:30, 13:00, 16:00 and 19:00 IST and on "Refresh now".
 // ---------------------------------------------------------------------------
 
-// The one Tally PC that sends debtors, and the latest data it sent (one row, id 1)
+// Each firm's Tally company (MVC, B Edge): the Tally PC that sends its
+// debtors, and the latest data it sent. Each can be on its own PC.
 model TallyDebtorSync {
-  id          Int       @id @default(1)
+  entity      Company   @id // MVC / BEDGE
   company     String    @db.VarChar(100) // company in Tally
   keyHash     String?   @unique @db.Char(64) // SHA-256 of the PC's key; null = not connected
   keyHint     String?   @db.VarChar(8)
@@ -1415,8 +1416,9 @@ model TallyDebtorSync {
 // One Sundry Debtors ledger with its entries for the kept period
 model TallyDebtorLedger {
   id              String    @id @default(uuid()) @db.Char(36)
+  entity          Company // whose Tally company: MVC / BEDGE
   name            String    @db.VarChar(150)
-  nameKey         String    @unique @db.VarChar(150) // lower case, for matching clients
+  nameKey         String    @db.VarChar(150) // lower case, for matching clients
   groupName       String    @db.VarChar(150)
   opening         Decimal   @db.Decimal(14, 2) // balance at periodFrom, debit positive
   closing         Decimal   @db.Decimal(14, 2) // balance at periodTo, debit positive
@@ -1427,12 +1429,14 @@ model TallyDebtorLedger {
   hash            String    @db.Char(64) // of what the Tally PC sent, so unchanged ledgers aren't written again
   updatedAt       DateTime  @updatedAt
 
-  @@index([groupName])
+  @@unique([entity, nameKey])
+  @@index([nameKey])
 }
 
 // Who downloaded or sent which ledger, and when
 model TallyLedgerEvent {
   id         Int       @id @default(autoincrement())
+  entity     Company   @default(MVC)
   ledgerName String    @db.VarChar(150)
   kind       String    @db.VarChar(20) // pdf / excel / whatsapp
   periodFrom DateTime  @db.Date
@@ -1443,6 +1447,6 @@ model TallyLedgerEvent {
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   at         DateTime  @default(now())
 
-  @@index([ledgerName, at(sort: Desc)])
+  @@index([entity, ledgerName, at(sort: Desc)])
   @@index([at])
 }

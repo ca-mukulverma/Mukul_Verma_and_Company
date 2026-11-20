@@ -15,8 +15,9 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// The Tally PC (the Tally extension) sending the Sundry Debtors ledgers, with
-// its own key. docs/TALLY_DEBTORS.md and src/lib/tally-debtors.ts.
+// A Tally PC (the Tally extension) sending a firm's Sundry Debtors ledgers,
+// with that firm's key (the key tells MVC from B Edge). docs/TALLY_DEBTORS.md
+// and src/lib/tally-debtors.ts.
 
 const MAX_BODY = 4 * 1024 * 1024; // gzipped, under Vercel's 4.5 MB
 const MAX_JSON = 60 * 1024 * 1024;
@@ -30,7 +31,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ acti
   if (action !== "poll") return NextResponse.json({ error: "Not found" }, { status: 404 });
   const who = await syncAgentFromRequest(request);
   if (!who) return refuse();
-  return NextResponse.json(await pollAnswer(who.company));
+  return NextResponse.json(await pollAnswer(who));
 }
 
 // The body as JSON; the extension gzips large ones (X-MVC-Gzip: 1)
@@ -58,26 +59,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ act
     case "plan": {
       const parsed = planSchema.safeParse(body);
       if (!parsed.success) return NextResponse.json({ error: "Bad list of ledgers" }, { status: 400 });
-      return NextResponse.json({ need: await ledgersNeeded(parsed.data.hashes) });
+      return NextResponse.json({ need: await ledgersNeeded(who.entity, parsed.data.hashes) });
     }
     // The changed ledgers with their entries
     case "upload": {
       const parsed = uploadSchema.safeParse(body);
       if (!parsed.success) return NextResponse.json({ error: `Bad ledgers: ${parsed.error.issues[0]?.message ?? ""}` }, { status: 400 });
-      await saveLedgers(parsed.data.ledgers);
+      await saveLedgers(who.entity, parsed.data.ledgers);
       return NextResponse.json({ ok: true, saved: parsed.data.ledgers.length });
     }
     // The update is complete: groups, every ledger's name, and when Tally was read
     case "commit": {
       const parsed = commitSchema.safeParse(body);
       if (!parsed.success) return NextResponse.json({ error: `Bad update: ${parsed.error.issues[0]?.message ?? ""}` }, { status: 400 });
-      await commitSync(who.company, parsed.data);
+      await commitSync(who, parsed.data);
       return NextResponse.json({ ok: true });
     }
     // Tally couldn't be read (closed, company not open…): shown on Debtors
     case "error": {
       const message = typeof (body as { message?: unknown })?.message === "string" ? (body as { message: string }).message : "Unknown error";
-      await reportSyncError(message);
+      await reportSyncError(who.entity, message);
       return NextResponse.json({ ok: true });
     }
     default:

@@ -116,7 +116,7 @@ after(async () => {
 const ask = (message, page = appPage) => page.evaluate((m) => window.ask(m), message);
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-tally")), "1.1.0");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-tally")), "1.2.0");
 });
 
 test("status: Tally running, with its open companies", async () => {

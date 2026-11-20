@@ -10,7 +10,7 @@ import {
 import { runAnnouncementPushes } from "@/lib/whats-new-server";
 import { sendAttendanceReminders } from "@/lib/attendance";
 import { alertMissingDeskReports } from "@/lib/desk";
-import { cleanupLedgerShares } from "@/lib/tally-debtors";
+import { cleanupLedgerShares, sendMonthlyRecoveryReport } from "@/lib/tally-debtors";
 
 export const maxDuration = 60;
 
@@ -47,6 +47,8 @@ export async function GET(request: Request) {
     await runStep("cleanup-notifications", runCleanupNotifications),
     // Debtors: ledger PDFs whose 7-day WhatsApp link has expired (R2 only, no database)
     await runStep("ledger-share-cleanup", cleanupLedgerShares),
+    // Debtors: on the 1st (or the next days, if missed) last month's recovery to Admin, once
+    await runStep("recovery-report", sendMonthlyRecoveryReport),
     await runStep("billing-email-delivery", runBillingEmailDelivery),
   ];
 

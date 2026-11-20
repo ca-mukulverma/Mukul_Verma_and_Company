@@ -35,6 +35,35 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "debtors-recovery",
+    date: "2026-11-21",
+    audience: "admin",
+    title: { en: "Debtors: B Edge too, and monthly recovery", hi: "Debtors: अब B Edge भी, और महीने की वसूली" },
+    steps: {
+      en: [
+        "Debtors now shows MVC's and B Edge's debtors separately, each from its own Tally company and its own Tally PC. Choose MVC, B Edge or Both at the top.",
+        "Recovery shows each firm's month: dues at the start, billed, received, TDS (counted as recovered), recovery %, dues over 90 days, the last 12 months, each Tally group, and whom to chase with one-click WhatsApp.",
+        "Connect B Edge's Tally PC once: open Debtors on that PC → Tally PCs → B Edge → enter its company name as in Tally → Connect this PC. Update the Tally extension to 1.2.0 on each Tally PC.",
+        "A failed update is no longer tried again on its own: press Refresh now once Tally is ready. Last month's recovery comes to you on the 1st.",
+      ],
+      hi: [
+        "Debtors में अब MVC और B Edge के देनदार अलग-अलग दिखते हैं, हर एक अपनी टैली कंपनी और अपने टैली कंप्यूटर से। ऊपर MVC, B Edge या Both चुनें।",
+        "Recovery में हर फ़र्म का महीना दिखता है: शुरुआत का बकाया, बिलिंग, प्राप्ति, TDS (वसूली में गिना), वसूली %, 90 दिन से पुराना बकाया, पिछले 12 महीने, हर टैली ग्रुप, और किससे वसूली करनी है, एक क्लिक WhatsApp के साथ।",
+        "B Edge का टैली कंप्यूटर एक बार जोड़ें: उस कंप्यूटर पर Debtors खोलें → Tally PCs → B Edge → टैली वाला कंपनी का नाम लिखें → Connect this PC। हर टैली कंप्यूटर पर टैली एक्सटेंशन 1.2.0 करें।",
+        "अपडेट फ़ेल होने पर अब अपने-आप दोबारा नहीं होता: टैली तैयार होने पर Refresh now दबाएँ। पिछले महीने की वसूली हर महीने की 1 तारीख़ को आपको मिलती है।",
+      ],
+    },
+    showMe: {
+      href: "/dashboard/debtors",
+      target: "debtors-refresh",
+      hint: { en: "Each firm's Tally time and Refresh now", hi: "हर फ़र्म का टैली समय और Refresh now" },
+    },
+    push: {
+      title: "New: B Edge debtors and recovery",
+      body: "Debtors → Recovery: each firm's month, recovery %, dues over 90 days and whom to chase.",
+    },
+  },
+  {
     id: "tally-debtors",
     date: "2026-11-20",
     audience: "admin",

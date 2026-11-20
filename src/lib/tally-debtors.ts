@@ -8,15 +8,20 @@ import { prisma } from "@/lib/prisma";
 import { redis } from "@/lib/redis";
 import { cacheDel, cacheGet, cacheSet, sha256 } from "@/lib/desk";
 import { connectorLedger } from "@/lib/connectors";
-import { keptPeriod, type LedgerEntry } from "@/lib/tally-debtors-shared";
+import { DEBTOR_ENTITIES, ENTITY_LABELS, istToday, keptPeriod, type DebtorEntity, type LedgerEntry } from "@/lib/tally-debtors-shared";
+import { addMonths, recovery, type Recovery } from "@/lib/tally-recovery";
 
 /**
  * Debtors from Tally (docs/TALLY_DEBTORS.md).
  *
- * The Tally extension on the office Tally PC reads the Sundry Debtors ledgers
- * (and nothing else) from TallyPrime and sends them here at 11:30, 13:00,
- * 16:00 and 19:00 IST, and when someone presses "Refresh now". It calls
- * /api/tally-sync/* with its own key (Authorization: Bearer mvct_…):
+ * Each firm (MVC, B Edge) has its own Tally company, on its own Tally PC or
+ * both on one. The Tally extension on that PC reads the Sundry Debtors
+ * ledgers (and nothing else) of the company it was connected for and sends
+ * them here at 11:30, 13:00, 16:00 and 19:00 IST (or as soon as the PC is on,
+ * if it was off then), and when someone presses "Refresh now". A failed
+ * update is not tried again on its own: someone presses Refresh now. Each
+ * firm's PC has its own key, so the key tells which firm the data is for.
+ * It calls /api/tally-sync/* (Authorization: Bearer mvct_…):
  *   GET  poll    every 30 seconds: is a refresh asked for? (Redis only)
  *   POST plan    which ledgers changed since the last time (their hashes)
  *   POST upload  the changed ledgers with their entries
@@ -29,12 +34,14 @@ import { keptPeriod, type LedgerEntry } from "@/lib/tally-debtors-shared";
  * not written again.
  */
 
-const KEY_CACHE = "tdebt:key:"; // + sha256 -> { company }
-const SEEN = "tdebt:seen"; // ISO time the Tally PC last checked in
-const REFRESH = "tdebt:refresh"; // { at, by } a refresh asked for
-const STATE = "tdebt:state"; // SyncState
-const ERROR = "tdebt:error"; // { at, message } the last failed update
-const SHARE = "tdebt:share:"; // + token -> { key, fileName }
+const KEY_CACHE = "tdebt:pc:"; // + sha256 -> { entity, company }
+// Per firm: + entity
+const SEEN = "tdebt:seen:"; // ISO time its Tally PC last checked in
+const REFRESH = "tdebt:refresh:"; // { at, by } a refresh asked for
+const STATE = "tdebt:state:"; // SyncState
+const ERROR = "tdebt:error:"; // { at, message } the last failed update
+const SHARE = "tdebt:share:";
+const RECOVERY_CACHE = "tdebt:recovery:"; // + entity:readAt:month -> recovery figures (10 minutes) // + token -> { key, fileName }
 const DAY = 24 * 60 * 60;
 export const SHARE_DAYS = 7;
 export const SHARE_PREFIX = "ledger-shares/";
@@ -48,20 +55,25 @@ export function newSyncKey() {
   return { key, keyHash: sha256(key), keyHint: key.slice(-6) };
 }
 
-/** The Tally PC a request comes from ("Authorization: Bearer mvct_…"); null = refuse. */
-export async function syncAgentFromRequest(request: Request): Promise<{ company: string } | null> {
+export interface SyncAgent {
+  entity: DebtorEntity;
+  company: string;
+}
+
+/** The Tally PC (and the firm it sends for) a request comes from ("Authorization: Bearer mvct_…"); null = refuse. */
+export async function syncAgentFromRequest(request: Request): Promise<SyncAgent | null> {
   const m = /^Bearer\s+(mvct_[A-Za-z0-9_-]{20,64})$/.exec((request.headers.get("authorization") ?? "").trim());
   if (!m) return null;
   const hash = sha256(m[1]);
-  let who = await cacheGet<{ company: string }>(KEY_CACHE + hash);
+  let who = await cacheGet<SyncAgent>(KEY_CACHE + hash);
   if (!who) {
-    const row = await prisma.tallyDebtorSync.findUnique({ where: { keyHash: hash }, select: { company: true } });
+    const row = await prisma.tallyDebtorSync.findUnique({ where: { keyHash: hash }, select: { entity: true, company: true } });
     if (!row) return null;
-    who = { company: row.company };
+    who = { entity: row.entity, company: row.company };
     await cacheSet(KEY_CACHE + hash, who, 30 * DAY);
   }
   try {
-    await redis.set(SEEN, new Date().toISOString(), "EX", 30 * DAY);
+    await redis.set(SEEN + who.entity, new Date().toISOString(), "EX", 30 * DAY);
   } catch {
     /* optional */
   }
@@ -75,6 +87,7 @@ export async function forgetSyncKey(keyHash: string | null | undefined) {
 // ─── Status (Redis first) ───────────────────────────────────────────────────
 
 export interface SyncState {
+  entity: DebtorEntity;
   connected: boolean;
   company: string | null;
   readAt: string | null;
@@ -92,9 +105,10 @@ export interface SyncStatus extends SyncState {
   error: { at: string; message: string } | null;
 }
 
-async function stateFromDb(): Promise<SyncState> {
-  const row = await prisma.tallyDebtorSync.findUnique({ where: { id: 1 } });
+async function stateFromDb(entity: DebtorEntity): Promise<SyncState> {
+  const row = await prisma.tallyDebtorSync.findUnique({ where: { entity } });
   const state: SyncState = {
+    entity,
     connected: !!row?.keyHash,
     company: row?.company ?? null,
     readAt: row?.readAt?.toISOString() ?? null,
@@ -102,21 +116,21 @@ async function stateFromDb(): Promise<SyncState> {
     trigger: row?.trigger ?? null,
     ledgerCount: row?.ledgerCount ?? 0,
   };
-  await cacheSet(STATE, state, 30 * DAY);
+  await cacheSet(STATE + entity, state, 30 * DAY);
   return state;
 }
 
-async function readState(): Promise<SyncState> {
-  return (await cacheGet<SyncState>(STATE)) ?? stateFromDb();
+async function readState(entity: DebtorEntity): Promise<SyncState> {
+  return (await cacheGet<SyncState>(STATE + entity)) ?? stateFromDb(entity);
 }
 
-export async function syncStatus(): Promise<SyncStatus> {
-  const state = await readState();
+export async function syncStatus(entity: DebtorEntity): Promise<SyncStatus> {
+  const state = await readState(entity);
   let seenAt: string | null = null;
   let refresh: SyncStatus["refresh"] = null;
   let error: SyncStatus["error"] = null;
   try {
-    const [seen, ref, err] = await redis.mget(SEEN, REFRESH, ERROR);
+    const [seen, ref, err] = await redis.mget(SEEN + entity, REFRESH + entity, ERROR + entity);
     seenAt = seen;
     refresh = ref ? JSON.parse(ref) : null;
     error = err ? JSON.parse(err) : null;
@@ -127,20 +141,26 @@ export async function syncStatus(): Promise<SyncStatus> {
   return { ...state, seenAt, refresh, error };
 }
 
-export async function askRefresh(by: string) {
+// Both firms' status (for the pages)
+export async function allSyncStatus() {
+  const list = await Promise.all(DEBTOR_ENTITIES.map((e) => syncStatus(e)));
+  return Object.fromEntries(list.map((s) => [s.entity, s])) as Record<DebtorEntity, SyncStatus>;
+}
+
+export async function askRefresh(entity: DebtorEntity, by: string) {
   const request = { at: new Date().toISOString(), by };
-  await redis.set(REFRESH, JSON.stringify(request), "EX", DAY);
+  await redis.set(REFRESH + entity, JSON.stringify(request), "EX", DAY);
   return request;
 }
 
-export async function pendingRefresh(): Promise<{ at: string; by: string } | null> {
-  return cacheGet(REFRESH);
+export async function pendingRefresh(entity: DebtorEntity): Promise<{ at: string; by: string } | null> {
+  return cacheGet(REFRESH + entity);
 }
 
-export async function reportSyncError(message: string) {
-  await cacheSet(ERROR, { at: new Date().toISOString(), message: message.slice(0, 500) }, 30 * DAY);
+export async function reportSyncError(entity: DebtorEntity, message: string) {
+  await cacheSet(ERROR + entity, { at: new Date().toISOString(), message: message.slice(0, 500) }, 30 * DAY);
   // The refresh asked for has been tried: the page shows the error instead of waiting
-  await cacheDel(REFRESH);
+  await cacheDel(REFRESH + entity);
 }
 
 // ─── Who may see Debtors ────────────────────────────────────────────────────
@@ -206,9 +226,11 @@ export const commitSchema = z.object({
 
 export const nameKey = (ledgerName: string) => ledgerName.trim().toLowerCase();
 
+export const entityParam = z.enum(DEBTOR_ENTITIES);
+
 // Which of the ledgers the Tally PC has differ from what is stored
-export async function ledgersNeeded(hashes: Record<string, string>) {
-  const stored = await prisma.tallyDebtorLedger.findMany({ select: { nameKey: true, hash: true } });
+export async function ledgersNeeded(entity: DebtorEntity, hashes: Record<string, string>) {
+  const stored = await prisma.tallyDebtorLedger.findMany({ where: { entity }, select: { nameKey: true, hash: true } });
   const have = new Map(stored.map((l) => [l.nameKey, l.hash]));
   return Object.entries(hashes)
     .filter(([n, h]) => have.get(nameKey(n)) !== h)
@@ -222,7 +244,7 @@ function lastReceipt(entries: LedgerEntry[]) {
   return found;
 }
 
-export async function saveLedgers(ledgers: z.infer<typeof uploadSchema>["ledgers"]) {
+export async function saveLedgers(entity: DebtorEntity, ledgers: z.infer<typeof uploadSchema>["ledgers"]) {
   const writes = ledgers.map((l) => {
     const receipt = lastReceipt(l.entries);
     const data = {
@@ -235,19 +257,20 @@ export async function saveLedgers(ledgers: z.infer<typeof uploadSchema>["ledgers
       entries: l.entries as unknown as Prisma.InputJsonValue,
       hash: l.hash,
     };
-    return prisma.tallyDebtorLedger.upsert({ where: { nameKey: nameKey(l.name) }, create: { nameKey: nameKey(l.name), ...data }, update: data });
+    const key = nameKey(l.name);
+    return prisma.tallyDebtorLedger.upsert({ where: { entity_nameKey: { entity, nameKey: key } }, create: { entity, nameKey: key, ...data }, update: data });
   });
   for (let i = 0; i < writes.length; i += 100) await prisma.$transaction(writes.slice(i, i + 100));
 }
 
-export async function commitSync(company: string, body: z.infer<typeof commitSchema>) {
+export async function commitSync({ entity, company }: SyncAgent, body: z.infer<typeof commitSchema>) {
   const keys = [...new Set(body.names.map(nameKey))];
   const readAt = new Date(body.readAt);
   const syncedAt = new Date();
   await prisma.$transaction([
-    prisma.tallyDebtorLedger.deleteMany({ where: { nameKey: { notIn: keys } } }),
+    prisma.tallyDebtorLedger.deleteMany({ where: { entity, nameKey: { notIn: keys } } }),
     prisma.tallyDebtorSync.update({
-      where: { id: 1 },
+      where: { entity },
       data: {
         rootGroup: body.rootGroup,
         groups: body.groups,
@@ -261,6 +284,7 @@ export async function commitSync(company: string, body: z.infer<typeof commitSch
     }),
   ]);
   const state: SyncState = {
+    entity,
     connected: true,
     company,
     readAt: readAt.toISOString(),
@@ -268,30 +292,30 @@ export async function commitSync(company: string, body: z.infer<typeof commitSch
     trigger: body.trigger,
     ledgerCount: keys.length,
   };
-  await cacheSet(STATE, state, 30 * DAY);
+  await cacheSet(STATE + entity, state, 30 * DAY);
   // The refresh asked for is done if it was asked before Tally was read
-  const asked = await pendingRefresh();
-  if (asked && new Date(asked.at) <= readAt) await cacheDel(REFRESH);
-  await cacheDel(ERROR);
+  const asked = await pendingRefresh(entity);
+  if (asked && new Date(asked.at) <= readAt) await cacheDel(REFRESH + entity);
+  await cacheDel(ERROR + entity);
 }
 
 // What the Tally PC needs to know at each check
-export async function pollAnswer(company: string) {
-  return { company, period: keptPeriod(), refresh: await pendingRefresh() };
+export async function pollAnswer({ entity, company }: SyncAgent) {
+  return { entity, company, period: keptPeriod(), refresh: await pendingRefresh(entity) };
 }
 
 // ─── Connecting the Tally PC (Admin) ────────────────────────────────────────
 
-export async function connectSyncPc(company: string, adminName: string) {
-  const before = await prisma.tallyDebtorSync.findUnique({ where: { id: 1 }, select: { keyHash: true, company: true } });
+export async function connectSyncPc(entity: DebtorEntity, company: string, adminName: string) {
+  const before = await prisma.tallyDebtorSync.findUnique({ where: { entity }, select: { keyHash: true, company: true } });
   const { key, keyHash, keyHint } = newSyncKey();
   const companyChanged = !!before && before.company.trim().toLowerCase() !== company.trim().toLowerCase();
   await prisma.$transaction([
-    // Another company's debtors must not stay
-    ...(companyChanged ? [prisma.tallyDebtorLedger.deleteMany({})] : []),
+    // Another Tally company's debtors must not stay under this firm
+    ...(companyChanged ? [prisma.tallyDebtorLedger.deleteMany({ where: { entity } })] : []),
     prisma.tallyDebtorSync.upsert({
-      where: { id: 1 },
-      create: { id: 1, company, keyHash, keyHint, connectedAt: new Date(), connectedBy: adminName },
+      where: { entity },
+      create: { entity, company, keyHash, keyHint, connectedAt: new Date(), connectedBy: adminName },
       update: {
         company,
         keyHash,
@@ -303,16 +327,16 @@ export async function connectSyncPc(company: string, adminName: string) {
     }),
   ]);
   await forgetSyncKey(before?.keyHash);
-  await cacheDel(STATE, ERROR);
+  await cacheDel(STATE + entity, ERROR + entity);
   return key;
 }
 
-export async function disconnectSyncPc() {
-  const before = await prisma.tallyDebtorSync.findUnique({ where: { id: 1 }, select: { keyHash: true } });
+export async function disconnectSyncPc(entity: DebtorEntity) {
+  const before = await prisma.tallyDebtorSync.findUnique({ where: { entity }, select: { keyHash: true } });
   if (!before) return;
-  await prisma.tallyDebtorSync.update({ where: { id: 1 }, data: { keyHash: null, keyHint: null } });
+  await prisma.tallyDebtorSync.update({ where: { entity }, data: { keyHash: null, keyHint: null } });
   await forgetSyncKey(before.keyHash);
-  await cacheDel(STATE, REFRESH);
+  await cacheDel(STATE + entity, REFRESH + entity);
 }
 
 // ─── Reading ────────────────────────────────────────────────────────────────
@@ -398,13 +422,16 @@ export async function partiesForLedgers(keys: string[]) {
 export const toNumber = (d: Prisma.Decimal | number | null | undefined) => (d == null ? 0 : Number(d));
 
 export async function loadLedger(id: string) {
-  const [ledger, sync] = await Promise.all([
-    prisma.tallyDebtorLedger.findUnique({ where: { id } }),
-    prisma.tallyDebtorSync.findUnique({ where: { id: 1 }, select: { company: true, readAt: true, periodFrom: true, periodTo: true } }),
-  ]);
-  if (!ledger || !sync) return null;
+  const ledger = await prisma.tallyDebtorLedger.findUnique({ where: { id } });
+  if (!ledger) return null;
+  const sync = await prisma.tallyDebtorSync.findUnique({
+    where: { entity: ledger.entity },
+    select: { company: true, readAt: true, periodFrom: true, periodTo: true },
+  });
+  if (!sync) return null;
   return {
     id: ledger.id,
+    entity: ledger.entity as DebtorEntity,
     name: ledger.name,
     group: ledger.groupName,
     opening: toNumber(ledger.opening),
@@ -440,4 +467,76 @@ export async function cleanupLedgerShares() {
   if (!r2Configured()) return { message: "R2 not set up" };
   const deleted = await deleteOlderThan(SHARE_PREFIX, new Date(Date.now() - (SHARE_DAYS + 1) * 86_400_000));
   return { message: `Deleted ${deleted} expired ledger PDF(s)` };
+}
+
+// ─── Recovery ───────────────────────────────────────────────────────────────
+
+export interface RecoveryAnswer {
+  entity: DebtorEntity;
+  company: string | null;
+  readAt: string | null;
+  periodFrom: string | null;
+  recovery: Recovery | null;
+}
+
+// A firm's recovery figures for a month (YYYY-MM), from the synced ledgers.
+// Kept 10 minutes in Redis (per update), so opening the page again is cheap.
+export async function recoveryFor(entity: DebtorEntity, month: string): Promise<RecoveryAnswer> {
+  const sync = await prisma.tallyDebtorSync.findUnique({ where: { entity } });
+  const base = { entity, company: sync?.company ?? null, readAt: sync?.readAt?.toISOString() ?? null };
+  if (!sync?.readAt || !sync.rootGroup || !sync.periodFrom) return { ...base, periodFrom: null, recovery: null };
+  const periodFrom = sync.periodFrom.toISOString().slice(0, 10);
+  const cacheKey = `${RECOVERY_CACHE}${entity}:${base.readAt}:${month}`;
+  const cached = await cacheGet<Recovery>(cacheKey);
+  if (cached) return { ...base, periodFrom, recovery: cached };
+
+  const [ledgers, sends] = await Promise.all([
+    prisma.tallyDebtorLedger.findMany({ where: { entity }, select: { id: true, name: true, groupName: true, opening: true, entries: true } }),
+    prisma.tallyLedgerEvent.findMany({ where: { entity, kind: "whatsapp", at: { gte: sync.periodFrom } }, select: { ledgerName: true, at: true } }),
+  ]);
+  const result = recovery({
+    ledgers: ledgers.map((l) => ({ id: l.id, name: l.name, group: l.groupName, opening: toNumber(l.opening), entries: l.entries as unknown as LedgerEntry[] })),
+    rootGroup: sync.rootGroup,
+    groups: (sync.groups as { name: string; parent: string }[] | null) ?? [],
+    periodFrom,
+    month,
+    sends: sends.map((e) => ({ ledgerName: e.ledgerName, at: e.at.toISOString() })),
+  });
+  await cacheSet(cacheKey, result, 600);
+  return { ...base, periodFrom, recovery: result };
+}
+
+const INR0 = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+export const monthName = (month: string) => `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
+
+// Daily job: on the first days of a month, last month's recovery for each
+// firm goes to Admin (bell + push), once
+export async function sendMonthlyRecoveryReport() {
+  const today = istToday();
+  if (Number(today.slice(8, 10)) > 3) return { message: "Not the start of a month" };
+  const month = addMonths(today.slice(0, 7), -1);
+  const title = `Recovery for ${monthName(month)}`;
+  const admins = await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } });
+  if (!admins.length) return { message: "No Admin" };
+  const already = await prisma.notification.findFirst({ where: { title, sentToId: admins[0].id }, select: { id: true } });
+  if (already) return { message: "Already sent" };
+  const lines: string[] = [];
+  for (const entity of DEBTOR_ENTITIES) {
+    const { recovery: r } = await recoveryFor(entity, month);
+    if (!r) continue;
+    const m = r.month;
+    lines.push(
+      `${ENTITY_LABELS[entity]}: recovered Rs. ${INR0.format(m.recovered)}` +
+        (m.recoveryPct == null ? "" : ` (${m.recoveryPct}%)`) +
+        ` of Rs. ${INR0.format(m.openingDue + m.billed)} due; billed Rs. ${INR0.format(m.billed)}; dues now Rs. ${INR0.format(m.closingDue)}, over 90 days Rs. ${INR0.format(m.over90)}.`
+    );
+  }
+  if (!lines.length) return { message: "No Tally data" };
+  const { sendPushForNotification } = await import("@/lib/web-push");
+  for (const a of admins) {
+    const n = await prisma.notification.create({ data: { title, content: `${lines.join("\n")}\nDebtors → Recovery shows the details.`, sentById: a.id, sentToId: a.id } });
+    await sendPushForNotification(n).catch(() => undefined);
+  }
+  return { message: `Sent to ${admins.length} Admin(s)` };
 }

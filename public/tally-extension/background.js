@@ -10,9 +10,10 @@
 // voucher type, any master) is refused, so nothing else is created in Tally.
 //
 // Debtors (docs/TALLY_DEBTORS.md, the end of this file): once Admin connects
-// this PC from the app's Debtors page, it reads the Sundry Debtors ledgers
-// (only those, with their entries) from Tally and sends them to the app at
-// 11:30, 13:00, 16:00 and 19:00 IST, and when someone presses Refresh now.
+// this PC for a firm (MVC or B Edge) from the app's Debtors page, it reads
+// that firm's company's Sundry Debtors ledgers (only those, with their
+// entries) from Tally and sends them to the app at 11:30, 13:00, 16:00 and
+// 19:00 IST, and when someone presses Refresh now.
 // It only reads from Tally (Export requests); it never changes anything there.
 
 const APP_ORIGIN = "__APP_ORIGIN__";
@@ -207,21 +208,27 @@ async function importVoucher(port, message) {
 }
 
 // ─── Debtors: sending the Sundry Debtors ledgers to the app ─────────────────
+//
+// This PC can send for MVC, for B Edge, or for both: one connection per firm
+// (its key, its company in Tally, Tally's port), each made by Admin from the
+// app's Debtors page on this PC. The key tells the app which firm it is.
+// A failed update is not tried again on its own (someone presses Refresh
+// now); an update time missed while the PC was off is sent once when it is on.
 
 const SLOTS = ["11:30", "13:00", "16:00", "19:00"]; // IST
 const ALARM = "mvc-debtors";
-const RETRY_AFTER_FAILURE_MS = 10 * 60_000;
+const ENTITIES = ["MVC", "BEDGE"];
 
 function handleSync(message) {
   switch (message.type) {
     case "tally-sync-connect":
       return syncConnect(message);
     case "tally-sync-disconnect":
-      return syncDisconnect();
+      return syncDisconnect(message);
     case "tally-sync-info":
       return syncInfo();
     case "tally-sync-now":
-      return syncNow();
+      return syncNow(message);
     default:
       return { ok: false, error: "Unknown request" };
   }
@@ -243,25 +250,66 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 const getLocal = async (k) => (await chrome.storage.local.get(k))[k];
 const setLocal = (k, v) => chrome.storage.local.set({ [k]: v });
 
+// { MVC: { key, company, port }, BEDGE: {…} }. Version 1.1.0 kept one
+// connection (MVC's) under "sync": it is moved here.
+async function connections() {
+  let list = (await getLocal("syncs")) ?? null;
+  if (!list) {
+    list = {};
+    const old = await getLocal("sync");
+    const oldState = await getLocal("syncState");
+    if (old?.key) {
+      list.MVC = old;
+      await setLocal("syncStates", { MVC: oldState ?? {} });
+    }
+    await setLocal("syncs", list);
+    await chrome.storage.local.remove(["sync", "syncState"]);
+  }
+  return list;
+}
+
+async function stateOf(entity) {
+  return ((await getLocal("syncStates")) ?? {})[entity] ?? {};
+}
+async function saveState(entity, state) {
+  const all = (await getLocal("syncStates")) ?? {};
+  all[entity] = state;
+  await setLocal("syncStates", all);
+}
+
+const validEntity = (e) => (ENTITIES.includes(e) ? e : null);
+
 async function syncConnect(message) {
+  const entity = validEntity(message.entity);
   const key = String(message.key ?? "");
   const company = String(message.company ?? "").trim();
-  if (!/^mvct_[A-Za-z0-9_-]{20,64}$/.test(key) || !company) return { ok: false, error: "The key or company is missing" };
-  await setLocal("sync", { key, company, port: validPort(message.port) });
-  await setLocal("syncState", {});
+  if (!entity || !/^mvct_[A-Za-z0-9_-]{20,64}$/.test(key) || !company) return { ok: false, error: "The firm, key or company is missing" };
+  const list = await connections();
+  list[entity] = { key, company, port: validPort(message.port) };
+  await setLocal("syncs", list);
+  await saveState(entity, {});
   ensureAlarm();
   return { ok: true };
 }
 
-async function syncDisconnect() {
-  await chrome.storage.local.remove(["sync", "syncState"]);
+async function syncDisconnect(message) {
+  const entity = validEntity(message.entity);
+  if (!entity) return { ok: false, error: "Choose MVC or B Edge" };
+  const list = await connections();
+  delete list[entity];
+  await setLocal("syncs", list);
+  await saveState(entity, {});
   return { ok: true };
 }
 
 async function syncInfo() {
-  const sync = await getLocal("sync");
-  const state = (await getLocal("syncState")) ?? {};
-  return { ok: true, version: chrome.runtime.getManifest().version, connected: !!sync?.key, company: sync?.company ?? null, port: sync?.port ?? null, last: state.lastResult ?? null, running };
+  const list = await connections();
+  const firms = {};
+  for (const entity of ENTITIES) {
+    if (!list[entity]) continue;
+    firms[entity] = { company: list[entity].company, port: list[entity].port, last: (await stateOf(entity)).lastResult ?? null, running: running.has(entity) };
+  }
+  return { ok: true, version: chrome.runtime.getManifest().version, firms };
 }
 
 // The time in India
@@ -271,11 +319,13 @@ function ist(date = new Date()) {
   return { day: `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`, hhmm: `${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}` };
 }
 
-// The latest update time already passed today ("2026-11-20 13:00"), or null
+// The latest update time already passed ("2026-11-20 13:00"); before 11:30 it
+// is the day before's 7 pm, so a PC switched on in the morning sends once
 function latestSlot(now = new Date()) {
   const { day, hhmm } = ist(now);
   const passed = SLOTS.filter((s) => s <= hhmm);
-  return passed.length ? `${day} ${passed[passed.length - 1]}` : null;
+  if (passed.length) return `${day} ${passed[passed.length - 1]}`;
+  return `${ist(new Date(now.getTime() - 86_400_000)).day} ${SLOTS[SLOTS.length - 1]}`;
 }
 
 async function api(sync, method, action, body) {
@@ -297,44 +347,62 @@ async function api(sync, method, action, body) {
   return data;
 }
 
-let running = false;
+// The firms being read now (one at a time per firm)
+const running = new Set();
+let ticking = false;
 
 async function tick() {
-  if (running) return;
-  const sync = await getLocal("sync");
-  if (!sync?.key) return;
-  const state = (await getLocal("syncState")) ?? {};
+  if (ticking) return;
+  ticking = true;
+  try {
+    const list = await connections();
+    for (const entity of ENTITIES) {
+      if (list[entity]?.key) await tickFirm(entity, list[entity]);
+    }
+  } finally {
+    ticking = false;
+  }
+}
+
+async function tickFirm(entity, sync) {
+  if (running.has(entity)) return;
+  const state = await stateOf(entity);
   let poll;
   try {
     poll = await api(sync, "GET", "poll");
   } catch (error) {
     if (error.status === 401) {
-      state.lastResult = { ok: false, at: new Date().toISOString(), message: "The app no longer accepts this PC's key: connect it again from Debtors" };
-      await setLocal("syncState", state);
+      state.lastResult = { ok: false, at: new Date().toISOString(), message: "The app no longer accepts this PC's key for this firm: connect it again from Debtors" };
+      await saveState(entity, state);
     }
-    return; // offline: try at the next tick
+    return; // offline: look again at the next tick
   }
   const slot = latestSlot();
   const refreshAt = poll.refresh?.at ?? null;
   let trigger = null;
   if (refreshAt && refreshAt !== state.handledRefresh) trigger = "refresh";
-  else if (slot && slot !== state.lastSlot && !(state.failedAt && Date.now() - state.failedAt < RETRY_AFTER_FAILURE_MS)) trigger = "scheduled";
-  if (trigger) await runSync(sync, poll, trigger, { slot, refreshAt });
+  else if (slot !== state.lastSlot) trigger = "scheduled";
+  if (trigger) await runSync(entity, sync, poll, trigger, { slot, refreshAt });
 }
 
-async function syncNow() {
-  const sync = await getLocal("sync");
-  if (!sync?.key) return { ok: false, error: "This PC is not connected yet" };
-  if (running) return { ok: false, error: "An update is already running; wait a minute" };
+async function syncNow(message) {
+  const entity = validEntity(message.entity);
+  const sync = entity && (await connections())[entity];
+  if (!sync?.key) return { ok: false, error: "This PC is not connected for that firm yet" };
+  if (running.has(entity)) return { ok: false, error: "An update is already running; wait a minute" };
   const poll = await api(sync, "GET", "poll");
-  return runSync(sync, poll, "manual", { slot: latestSlot(), refreshAt: poll.refresh?.at ?? null });
+  return runSync(entity, sync, poll, "manual", { slot: latestSlot(), refreshAt: poll.refresh?.at ?? null });
 }
 
-async function runSync(sync, poll, trigger, marks) {
-  running = true;
+async function runSync(entity, sync, poll, trigger, marks) {
+  running.add(entity);
   // Keeps the worker awake while Tally is read (it may take a minute)
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => undefined), 20_000);
-  const state = (await getLocal("syncState")) ?? {};
+  const state = await stateOf(entity);
+  // Whatever happens, this update time and this refresh request are done: a
+  // failure waits for someone to press Refresh now
+  state.lastSlot = marks.slot ?? state.lastSlot;
+  if (marks.refreshAt) state.handledRefresh = marks.refreshAt;
   try {
     const data = await readDebtors(sync.port ?? 9000, sync.company, poll.period);
     const hashes = {};
@@ -365,15 +433,10 @@ async function runSync(sync, poll, trigger, marks) {
       names: data.ledgers.map((l) => l.name),
       trigger,
     });
-    state.lastSlot = marks.slot ?? state.lastSlot;
-    if (marks.refreshAt) state.handledRefresh = marks.refreshAt;
-    delete state.failedAt;
     state.lastResult = { ok: true, at: data.readAt, ledgers: data.ledgers.length, changed: changed.length, trigger };
     return { ok: true, ledgers: data.ledgers.length, changed: changed.length, readAt: data.readAt };
   } catch (error) {
     const message = String(error?.message ?? error);
-    state.failedAt = Date.now();
-    if (marks.refreshAt) state.handledRefresh = marks.refreshAt;
     state.lastResult = { ok: false, at: new Date().toISOString(), message, trigger };
     try {
       await api(sync, "POST", "error", { message });
@@ -383,8 +446,8 @@ async function runSync(sync, poll, trigger, marks) {
     return { ok: false, error: message };
   } finally {
     clearInterval(keepAlive);
-    running = false;
-    await setLocal("syncState", state);
+    running.delete(entity);
+    await saveState(entity, state);
   }
 }
 
