@@ -22,6 +22,8 @@ const routePermissions = {
   // Restrict these routes to ADMIN only
   "/dashboard/partner/users/[id]/edit": ["ADMIN"],
   "/dashboard/partner/users/[id]/reset-password": ["ADMIN"],
+  // Debtors from Tally: Admin and the partners Admin allows (the API checks who)
+  "/dashboard/debtors": ["ADMIN", "PARTNER"],
   // Junior staff routes
   "/dashboard/junior": ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
   // Client management routes - accessible to all staff

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/components/language-provider";
+import { useSession } from "next-auth/react";
 import { navItems } from "@/components/layouts/nav-config";
 
 function Keys({ keys }: { keys: string[] }) {
@@ -19,13 +20,14 @@ function Keys({ keys }: { keys: string[] }) {
 
 export function ShortcutsDialog({ open, onOpenChange, role }: { open: boolean; onOpenChange: (open: boolean) => void; role: string }) {
   const { t } = useLanguage();
+  const { data: session } = useSession();
   const isManager = role === "ADMIN" || role === "PARTNER";
   const rows: { label: string; keys: string[] }[] = [
     { label: t("Search"), keys: ["Ctrl", "K"] },
     { label: `${t("Search")} (2)`, keys: ["/"] },
     ...(isManager ? [{ label: t("New task"), keys: ["N"] }] : []),
     { label: t("Keyboard shortcuts"), keys: ["?"] },
-    ...navItems(role)
+    ...navItems(role, { debtors: session?.user?.canViewDebtors })
       .filter((item) => item.shortcut)
       .map((item) => ({ label: t(item.title), keys: ["G", item.shortcut!.toUpperCase()] })),
   ];

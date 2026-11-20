@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/command";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useLanguage } from "@/components/language-provider";
+import { useSession } from "next-auth/react";
 import { navItems } from "@/components/layouts/nav-config";
 
 interface Hit {
@@ -36,6 +37,7 @@ const EMPTY: Results = { clients: [], tasks: [], bills: [], users: [] };
 export function GlobalSearch({ open, onOpenChange, role }: { open: boolean; onOpenChange: (open: boolean) => void; role: string }) {
   const router = useRouter();
   const { t } = useLanguage();
+  const { data: session } = useSession();
   const [query, setQuery] = useState("");
   const debounced = useDebounce(query.trim(), 250);
   const [results, setResults] = useState<Results>(EMPTY);
@@ -68,7 +70,7 @@ export function GlobalSearch({ open, onOpenChange, role }: { open: boolean; onOp
   };
 
   const lower = query.trim().toLowerCase();
-  const pages = navItems(role).filter((item) => !lower || t(item.title).toLowerCase().includes(lower) || item.title.toLowerCase().includes(lower));
+  const pages = navItems(role, { debtors: session?.user?.canViewDebtors }).filter((item) => !lower || t(item.title).toLowerCase().includes(lower) || item.title.toLowerCase().includes(lower));
   const isManager = role === "ADMIN" || role === "PARTNER";
   const actions = [
     ...(isManager ? [{ label: t("New task"), href: "/dashboard/tasks/create", shortcut: "N" }] : []),

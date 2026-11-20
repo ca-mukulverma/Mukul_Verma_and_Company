@@ -103,3 +103,19 @@ export async function deletePrefix(prefix: string): Promise<number> {
 export async function putObject(key: string, body: Buffer, contentType: string) {
   await r2().send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
 }
+
+// Deletes the objects under the prefix stored before `before`; returns how many
+export async function deleteOlderThan(prefix: string, before: Date): Promise<number> {
+  let deleted = 0;
+  let token: string | undefined;
+  do {
+    const page = await r2().send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }));
+    const keys = (page.Contents ?? []).flatMap((o) => (o.Key && o.LastModified && o.LastModified < before ? [{ Key: o.Key }] : []));
+    if (keys.length) {
+      await r2().send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys, Quiet: true } }));
+      deleted += keys.length;
+    }
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return deleted;
+}

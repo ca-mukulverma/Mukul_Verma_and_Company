@@ -35,6 +35,35 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "tally-debtors",
+    date: "2026-11-20",
+    audience: "admin",
+    title: { en: "Debtors from Tally", hi: "टैली से देनदार (Debtors)" },
+    steps: {
+      en: [
+        "Debtors shows the Sundry Debtors ledgers from Tally under the groups as made in Tally, with each client's details from the app. Each client's page has a Ledger tab too.",
+        "Open a ledger to see it as in Tally, download it as PDF or Excel, or send it on WhatsApp as a link that works for 7 days.",
+        "Set up once, on the Tally PC: open Debtors there and press Connect this PC. Tally then sends the debtors at 11:30, 1:00, 4:00 and 7:00, and on Refresh now. The time of the Tally data is shown large on every screen.",
+        "Choose which partners see Debtors in Settings → Permissions.",
+      ],
+      hi: [
+        "Debtors में टैली के Sundry Debtors लेजर, टैली में बने ग्रुप्स के अनुसार दिखते हैं, साथ में ऐप से हर क्लाइंट की जानकारी। हर क्लाइंट के पेज पर भी Ledger टैब है।",
+        "लेजर खोलकर उसे टैली जैसा देखें, PDF या Excel में डाउनलोड करें, या WhatsApp पर लिंक के रूप में भेजें जो 7 दिन चलता है।",
+        "एक बार सेटअप, टैली वाले कंप्यूटर पर: वहाँ Debtors खोलें और Connect this PC दबाएँ। फिर टैली 11:30, 1:00, 4:00 और 7:00 बजे और Refresh now दबाने पर देनदार भेजता है। टैली डेटा का समय हर स्क्रीन पर बड़े अक्षरों में दिखता है।",
+        "कौन से पार्टनर Debtors देखें, यह Settings → Permissions में चुनें।",
+      ],
+    },
+    showMe: {
+      href: "/dashboard/debtors",
+      target: "debtors-refresh",
+      hint: { en: "The time of the Tally data, and Refresh now", hi: "टैली डेटा का समय, और Refresh now" },
+    },
+    push: {
+      title: "New: Debtors from Tally",
+      body: "See debtors' ledgers from Tally, download PDF / Excel, send on WhatsApp. Connect the Tally PC from Debtors.",
+    },
+  },
+  {
     id: "work-corrections",
     date: "2026-11-19",
     audience: "admin",

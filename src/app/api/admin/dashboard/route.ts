@@ -146,6 +146,7 @@ export async function GET(request: NextRequest) {
         billingListTypes: true,
         canViewWorkDone: true,
         canFollowUpTasks: true,
+        canViewDebtors: true,
       },
     });
 
@@ -328,6 +329,7 @@ export async function POST(request: NextRequest) {
       billingListTypes?: BillType[];
       canViewWorkDone?: boolean;
       canFollowUpTasks?: boolean;
+      canViewDebtors?: boolean;
     }[];
   };
   if (updates.some((u) => u.billingListTypes?.some((t) => !(BILL_TYPES as string[]).includes(t)))) {
@@ -346,6 +348,7 @@ export async function POST(request: NextRequest) {
           billingListTypes: true,
           canViewWorkDone: true,
           canFollowUpTasks: true,
+          canViewDebtors: true,
         },
       });
       const updatedUser = await prisma.user.update({
@@ -369,6 +372,9 @@ export async function POST(request: NextRequest) {
           }),
           ...(update.canFollowUpTasks !== undefined && {
             canFollowUpTasks: update.canFollowUpTasks,
+          }),
+          ...(update.canViewDebtors !== undefined && {
+            canViewDebtors: update.canViewDebtors,
           }),
         },
       });
@@ -420,6 +426,9 @@ export async function POST(request: NextRequest) {
       }
       if (update.canViewWorkDone && !before?.canViewWorkDone) {
         granted.push("You can now see everyone's Work Done list: finished tasks, logged work and compliance, with who did each one.");
+      }
+      if (update.canViewDebtors && !before?.canViewDebtors) {
+        granted.push("You can now see Debtors: the Sundry Debtors ledgers from Tally, download them as PDF or Excel and send them on WhatsApp. Open Debtors from the menu (within a minute).");
       }
       for (const content of granted) {
         const notification = await prisma.notification.create({

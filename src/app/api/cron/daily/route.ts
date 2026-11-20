@@ -10,6 +10,7 @@ import {
 import { runAnnouncementPushes } from "@/lib/whats-new-server";
 import { sendAttendanceReminders } from "@/lib/attendance";
 import { alertMissingDeskReports } from "@/lib/desk";
+import { cleanupLedgerShares } from "@/lib/tally-debtors";
 
 export const maxDuration = 60;
 
@@ -44,6 +45,8 @@ export async function GET(request: Request) {
     // Control Centre: clients whose desktop software sent no report for the last weekday
     await runStep("desk-missing-reports", () => alertMissingDeskReports()),
     await runStep("cleanup-notifications", runCleanupNotifications),
+    // Debtors: ledger PDFs whose 7-day WhatsApp link has expired (R2 only, no database)
+    await runStep("ledger-share-cleanup", cleanupLedgerShares),
     await runStep("billing-email-delivery", runBillingEmailDelivery),
   ];
 

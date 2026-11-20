@@ -62,8 +62,9 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const role = session?.user?.role || "";
-  const groups = navGroups(role);
-  const items = navItems(role);
+  const navFlags = { debtors: session?.user?.canViewDebtors };
+  const groups = navGroups(role, navFlags);
+  const items = navItems(role, navFlags);
   const current = activeHref(pathname, items);
   const isManager = role === "ADMIN" || role === "PARTNER";
 

@@ -58,39 +58,39 @@ enum Company {
 
 // Each bill type has its own number series (see docs/BILLING.md)
 enum BillType {
-  GST         // MVC & Company
-  NON_GST     // CA Mukul Verma
-  NON_GST_HV  // CA Harsh Verma
+  GST // MVC & Company
+  NON_GST // CA Mukul Verma
+  NON_GST_HV // CA Harsh Verma
   NON_GST_VLA // Verma Law Associates
-  BEDGE       // B Edge
+  BEDGE // B Edge
 }
 
 enum BillStatus {
-  draft            // waiting for the billing manager
-  awaiting_amount  // sent to a partner/admin to enter the amount
-  amount_entered   // waiting for billing manager approval
+  draft // waiting for the billing manager
+  awaiting_amount // sent to a partner/admin to enter the amount
+  amount_entered // waiting for billing manager approval
   manager_approved // waiting for admin final approval
-  approved         // numbered and in the Billing List
+  approved // numbered and in the Billing List
   cancelled
   not_billable
 }
 
 // How a bill last went back a step (see docs/BILLING.md)
 enum BillReturnKind {
-  sent_back      // by the person asked for the amount: back to the billing manager
+  sent_back // by the person asked for the amount: back to the billing manager
   final_rejected // by Admin at final approval: back to the billing manager
 }
 
 // What happened to the last email of a bill (see docs/BILLING.md)
 enum BillEmailStatus {
-  sent    // accepted by Gmail; no failure reported
+  sent // accepted by Gmail; no failure reported
   delayed // the recipient's server is not accepting it yet; Gmail keeps trying
-  failed  // not delivered; the reason is in emailError
+  failed // not delivered; the reason is in emailError
 }
 
 enum BillChangeKind {
-  edit    // same number, new amount/details
-  cancel  // number stays in the series, marked cancelled
+  edit // same number, new amount/details
+  cancel // number stays in the series, marked cancelled
   reissue // old bill cancelled, new bill with a new number
 }
 
@@ -101,132 +101,136 @@ enum BillChangeStatus {
 }
 
 model User {
-  id                      String         @id @default(uuid()) @db.Char(36)
-  name                    String         @db.VarChar(50)  // 50 chars is enough for most names
-  email                   String         @unique @db.VarChar(75)  // Most emails are under 75 chars
-  phone                   String?        @db.VarChar(15)  // International format with country code
-  password                String?        @db.VarChar(100) // Keep 100 for secure hashes
-  passwordResetToken      String?        @db.VarChar(100)
-  passwordResetTokenExpiry DateTime?     
-  role                    UserRole       @default(BUSINESS_EXECUTIVE)
-  avatar                  String?        @db.VarChar(150) // Reduce from 255
-  isActive                Boolean        @default(true)
-  createdAt               DateTime       @default(now())
-  updatedAt               DateTime       @updatedAt
-  updatedById             String?        // ID of the user who last updated this user
-  roleVersion             Int            @default(1)
+  id                          String                     @id @default(uuid()) @db.Char(36)
+  name                        String                     @db.VarChar(50) // 50 chars is enough for most names
+  email                       String                     @unique @db.VarChar(75) // Most emails are under 75 chars
+  phone                       String?                    @db.VarChar(15) // International format with country code
+  password                    String?                    @db.VarChar(100) // Keep 100 for secure hashes
+  passwordResetToken          String?                    @db.VarChar(100)
+  passwordResetTokenExpiry    DateTime?
+  role                        UserRole                   @default(BUSINESS_EXECUTIVE)
+  avatar                      String?                    @db.VarChar(150) // Reduce from 255
+  isActive                    Boolean                    @default(true)
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  updatedById                 String? // ID of the user who last updated this user
+  roleVersion                 Int                        @default(1)
   // Relations
   // DEPRECATED: Legacy assignment field - use taskAssignments instead
-  createdTasks            Task[]         @relation("AssignedByUser")
+  createdTasks                Task[]                     @relation("AssignedByUser")
   // PRIMARY: Use this relation for all task assignments
-  taskAssignments         TaskAssignee[] @relation("UserTaskAssignments")
-  lastStatusUpdatedTasks  Task[]         @relation("LastStatusUpdater")
-  notificationsSent       Notification[] @relation("SentBy")
-  notificationsReceived   Notification[] @relation("SentTo")
-  activities              Activity[]
-  managedClients          Client[]       // Staff who manages clients
-  taskComments            TaskComment[]
-  clientHistories         ClientHistory[] @relation("CreatedBy")
-  canApproveBilling       Boolean        @default(false) // Whether this user can approve billing (also: MVC billing manager)
-  canManageBedgeBilling   Boolean        @default(false) // B Edge billing manager
-  canEnterBillAmounts     Boolean        @default(false) // Partner bills can be sent to for the amount
-  canViewBillingList      Boolean        @default(false) // Partner who sees the whole Billing List and emails bills
-  billingListTypes        BillType[]     @default([]) // Which Billing Lists that partner sees; empty = all
-  pushSubscriptions       PushSubscription[]
-  billsCreated            Bill[]         @relation("BillCreatedBy")
-  billsAmountRequested    Bill[]         @relation("BillAmountRequestedFrom")
-  billsAmountEntered      Bill[]         @relation("BillAmountEnteredBy")
-  billsGstReturnPushed    Bill[]         @relation("BillGstReturnPushedBy")
-  billsReturned           Bill[]         @relation("BillReturnedBy")
-  billEvents              BillEvent[]
-  billChangesRequested    BillChangeRequest[] @relation("BillChangeRequestedBy")
-  workCorrectionsMade      WorkCorrection[] @relation("WorkCorrectionBy")
-  workCorrectionsRequested WorkCorrection[] @relation("WorkCorrectionRequestedBy")
-  billChangesDecided      BillChangeRequest[] @relation("BillChangeDecidedBy")
-  tallyExports            TallyExport[]
-  complianceTeams         ComplianceTeamMember[]
-  complianceItemsUpdated  ComplianceItem[]      @relation("ComplianceItemUpdatedBy")
-  complianceEvents        ComplianceEvent[]
-  complianceDocuments     ComplianceDocument[]
-  complianceReminders     ComplianceReminder[]
-  complianceCompleted     ComplianceItem[]      @relation("ComplianceItemCompletedBy")
-  complianceChecked       ComplianceItem[]      @relation("ComplianceItemCheckedBy")
-  complianceAdjustments   ComplianceAdjustment[] @relation("ComplianceAdjustmentCreatedBy")
-  complianceAdjustmentsEdited ComplianceAdjustment[] @relation("ComplianceAdjustmentUpdatedBy")
-  gstWorkingChecks        GstWorkingCheck[]     @relation("GstWorkingCheckedBy")
-  obligationLinesResolved ComplianceObligationLine[]
-  clientDispatches        ClientDispatch[]
+  taskAssignments             TaskAssignee[]             @relation("UserTaskAssignments")
+  lastStatusUpdatedTasks      Task[]                     @relation("LastStatusUpdater")
+  notificationsSent           Notification[]             @relation("SentBy")
+  notificationsReceived       Notification[]             @relation("SentTo")
+  activities                  Activity[]
+  managedClients              Client[] // Staff who manages clients
+  taskComments                TaskComment[]
+  clientHistories             ClientHistory[]            @relation("CreatedBy")
+  canApproveBilling           Boolean                    @default(false) // Whether this user can approve billing (also: MVC billing manager)
+  canManageBedgeBilling       Boolean                    @default(false) // B Edge billing manager
+  canEnterBillAmounts         Boolean                    @default(false) // Partner bills can be sent to for the amount
+  canViewBillingList          Boolean                    @default(false) // Partner who sees the whole Billing List and emails bills
+  billingListTypes            BillType[]                 @default([]) // Which Billing Lists that partner sees; empty = all
+  pushSubscriptions           PushSubscription[]
+  billsCreated                Bill[]                     @relation("BillCreatedBy")
+  billsAmountRequested        Bill[]                     @relation("BillAmountRequestedFrom")
+  billsAmountEntered          Bill[]                     @relation("BillAmountEnteredBy")
+  billsGstReturnPushed        Bill[]                     @relation("BillGstReturnPushedBy")
+  billsReturned               Bill[]                     @relation("BillReturnedBy")
+  billEvents                  BillEvent[]
+  billChangesRequested        BillChangeRequest[]        @relation("BillChangeRequestedBy")
+  workCorrectionsMade         WorkCorrection[]           @relation("WorkCorrectionBy")
+  workCorrectionsRequested    WorkCorrection[]           @relation("WorkCorrectionRequestedBy")
+  billChangesDecided          BillChangeRequest[]        @relation("BillChangeDecidedBy")
+  tallyExports                TallyExport[]
+  complianceTeams             ComplianceTeamMember[]
+  complianceItemsUpdated      ComplianceItem[]           @relation("ComplianceItemUpdatedBy")
+  complianceEvents            ComplianceEvent[]
+  complianceDocuments         ComplianceDocument[]
+  complianceReminders         ComplianceReminder[]
+  complianceCompleted         ComplianceItem[]           @relation("ComplianceItemCompletedBy")
+  complianceChecked           ComplianceItem[]           @relation("ComplianceItemCheckedBy")
+  complianceAdjustments       ComplianceAdjustment[]     @relation("ComplianceAdjustmentCreatedBy")
+  complianceAdjustmentsEdited ComplianceAdjustment[]     @relation("ComplianceAdjustmentUpdatedBy")
+  gstWorkingChecks            GstWorkingCheck[]          @relation("GstWorkingCheckedBy")
+  obligationLinesResolved     ComplianceObligationLine[]
+  clientDispatches            ClientDispatch[]
   // Whether this person marks attendance on Today (admin turns it off for
   // selected partners). Admins never mark attendance.
-  marksAttendance         Boolean        @default(true)
+  marksAttendance             Boolean                    @default(true)
   // Partner gets a notification each time someone marks attendance
   // (admins always do)
-  attendanceAlerts        Boolean        @default(false)
-  attendances             Attendance[]
+  attendanceAlerts            Boolean                    @default(false)
+  attendances                 Attendance[]
   // Sees everyone's Work Done list (admins always do; staff see their own)
-  canViewWorkDone         Boolean        @default(false)
-  tasksCompleted          Task[]         @relation("TaskCompletedBy")
+  canViewWorkDone             Boolean                    @default(false)
+  tasksCompleted              Task[]                     @relation("TaskCompletedBy")
   // Partner who follows up tasks from the task cards (last comments and
   // one-click comments); Admins always do. Only the tasks they are on or created.
-  canFollowUpTasks        Boolean        @default(false)
-  credentialsUpdated      Credential[]   @relation("CredentialUpdatedBy")
-  taskDeletionsRequested  TaskDeletionRequest[] @relation("TaskDeletionRequestedBy")
-  taskDeletionsDecided    TaskDeletionRequest[] @relation("TaskDeletionDecidedBy")
-  replyRequestsOwed       TaskReplyRequest[]    @relation("TaskReplyOwedBy")
-  replyRequestsAsked      TaskReplyRequest[]    @relation("TaskReplyAskedBy")
-  taskDigests             TaskDigest[]
+  canFollowUpTasks            Boolean                    @default(false)
+  // Partner who sees Debtors: Sundry Debtors ledgers synced from Tally, and
+  // downloads / sends them (docs/TALLY_DEBTORS.md). Admins always do.
+  canViewDebtors              Boolean                    @default(false)
+  tallyLedgerEvents           TallyLedgerEvent[]
+  credentialsUpdated          Credential[]               @relation("CredentialUpdatedBy")
+  taskDeletionsRequested      TaskDeletionRequest[]      @relation("TaskDeletionRequestedBy")
+  taskDeletionsDecided        TaskDeletionRequest[]      @relation("TaskDeletionDecidedBy")
+  replyRequestsOwed           TaskReplyRequest[]         @relation("TaskReplyOwedBy")
+  replyRequestsAsked          TaskReplyRequest[]         @relation("TaskReplyAskedBy")
+  taskDigests                 TaskDigest[]
 
   // For frequently accessed active users
   @@index([isActive], name: "active_users_idx")
 }
 
 model Client {
-  id             String       @id @default(uuid()) @db.Char(36)
-  contactPerson  String       @db.VarChar(50)   // Owner's name
-  companyName    String?      @db.VarChar(75)   // Reduced from 150
-  email          String?      @db.VarChar(75)   // Reduced from 255
-  phone          String?      @db.VarChar(15)   // First of the owner's numbers (kept in step with phones)
+  id                 String     @id @default(uuid()) @db.Char(36)
+  contactPerson      String     @db.VarChar(50) // Owner's name
+  companyName        String?    @db.VarChar(75) // Reduced from 150
+  email              String?    @db.VarChar(75) // Reduced from 255
+  phone              String?    @db.VarChar(15) // First of the owner's numbers (kept in step with phones)
   // Owner's mobile numbers: [{ number, label, whatsapp }] (see lib/client-contacts.ts)
-  phones         Json?
+  phones             Json?
   // When false, compliance reminders go to the responsible person instead
-  ownerIsResponsible Boolean  @default(true)
-  responsibleName    String?  @db.VarChar(50)
-  responsiblePhone   String?  @db.VarChar(15)
-  responsibleEmail   String?  @db.VarChar(75)
+  ownerIsResponsible Boolean    @default(true)
+  responsibleName    String?    @db.VarChar(50)
+  responsiblePhone   String?    @db.VarChar(15)
+  responsibleEmail   String?    @db.VarChar(75)
   // The connector who brought the client: bills go to the connector's ledger
-  connectorId    String?      @db.Char(36)
-  connector      Connector?   @relation(fields: [connectorId], references: [id], onDelete: SetNull)
+  connectorId        String?    @db.Char(36)
+  connector          Connector? @relation(fields: [connectorId], references: [id], onDelete: SetNull)
   // Added without a Tally ledger by someone who may not set it: the billing
   // manager is reminded until they do
-  address        String?      @db.VarChar(150)  // Reduced from 255
-  notes          String?      @db.Text        // Keep as Text for longer content
-  gstin          String?      @db.VarChar(15) // Standard GSTIN is 15 chars
+  address            String?    @db.VarChar(150) // Reduced from 255
+  notes              String?    @db.Text // Keep as Text for longer content
+  gstin              String?    @db.VarChar(15) // Standard GSTIN is 15 chars
   // Registration numbers, sent to the client on request (Send to Client)
-  pan            String?      @db.VarChar(10)
-  tan            String?      @db.VarChar(10)
-  cin            String?      @db.VarChar(21) // CIN or LLPIN
-  udyamNumber    String?      @db.VarChar(19) // UDYAM-MP-12-0012345
-  iec            String?      @db.VarChar(10)
-  tallyLedgerPending Boolean  @default(false)
-  tallyLedgerName String?     @db.VarChar(100) // Party ledger in Tally, if not the client's name
+  pan                String?    @db.VarChar(10)
+  tan                String?    @db.VarChar(10)
+  cin                String?    @db.VarChar(21) // CIN or LLPIN
+  udyamNumber        String?    @db.VarChar(19) // UDYAM-MP-12-0012345
+  iec                String?    @db.VarChar(10)
+  tallyLedgerPending Boolean    @default(false)
+  tallyLedgerName    String?    @db.VarChar(100) // Party ledger in Tally, if not the client's name
   // Another state's GST registration of a party: its own GSTIN, returns and
   // GST working, under the party's main record (Compliance → Clients)
-  parentClientId String?      @db.Char(36)
-  parentClient   Client?      @relation("ClientRegistrations", fields: [parentClientId], references: [id], onDelete: SetNull)
-  registrations  Client[]     @relation("ClientRegistrations")
-  isGuest        Boolean      @default(false) // Whether this is a temporary guest client
-  accessExpiry   DateTime?    // When guest client access expires
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  
+  parentClientId     String?    @db.Char(36)
+  parentClient       Client?    @relation("ClientRegistrations", fields: [parentClientId], references: [id], onDelete: SetNull)
+  registrations      Client[]   @relation("ClientRegistrations")
+  isGuest            Boolean    @default(false) // Whether this is a temporary guest client
+  accessExpiry       DateTime? // When guest client access expires
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
   // Relations
-  managerId      String       @db.Char(36) // The staff member who manages this client
-  manager        User         @relation(fields: [managerId], references: [id])
-  tasks          Task[]       // Tasks associated with this client
-  attachments    Attachment[] // Attachments related to this client
-  history        ClientHistory[] // Client history entries
-  credentials    Credential[] //Credentials associated with this client
-  bills          Bill[]
+  managerId               String               @db.Char(36) // The staff member who manages this client
+  manager                 User                 @relation(fields: [managerId], references: [id])
+  tasks                   Task[] // Tasks associated with this client
+  attachments             Attachment[] // Attachments related to this client
+  history                 ClientHistory[] // Client history entries
+  credentials             Credential[] //Credentials associated with this client
+  bills                   Bill[]
   complianceSubscriptions ClientCompliance[]
   complianceItems         ComplianceItem[]
   complianceDocuments     ComplianceDocument[]
@@ -235,7 +239,7 @@ model Client {
   dispatches              ClientDispatch[]
   gstWorkingChecks        GstWorkingCheck[]
   deskClients             DeskClient[]
-  
+
   @@index([managerId])
   @@index([contactPerson]) // Index for searching by contact person name
   @@index([connectorId])
@@ -259,25 +263,25 @@ model Connector {
 }
 
 model Task {
-  id             String    @id @default(uuid()) @db.Char(36)
-  title          String    @db.VarChar(150) // Reduced from 255
-  description    String?   @db.Text        // Keep as Text for longer content
-  status         TaskStatus    @default(pending) // Changed from String
-  priority       TaskPriority  @default(medium)  // Changed from String
-  dueDate        DateTime?
-  billingStatus  BillingStatus? @default(pending_billing) // Changed from String?
-  billingDate    DateTime?
+  id                    String         @id @default(uuid()) @db.Char(36)
+  title                 String         @db.VarChar(150) // Reduced from 255
+  description           String?        @db.Text // Keep as Text for longer content
+  status                TaskStatus     @default(pending) // Changed from String
+  priority              TaskPriority   @default(medium) // Changed from String
+  dueDate               DateTime?
+  billingStatus         BillingStatus? @default(pending_billing) // Changed from String?
+  billingDate           DateTime?
   scheduledDeletionDate DateTime? // Add this field
-  company        Company   @default(MVC)
-  bill           Bill?
-  kind           TaskKind?
+  company               Company        @default(MVC)
+  bill                  Bill?
+  kind                  TaskKind?
   // false: completing the task makes no bill (it closes at once)
-  billable       Boolean   @default(true)
+  billable              Boolean        @default(true)
   // The task this one was created from on its completion, e.g. the GST bank
   // account task from the GST registration task. One of each kind per task.
-  parentTaskId   String?   @db.Char(36)
-  parentTask     Task?     @relation("TaskFollowOn", fields: [parentTaskId], references: [id], onDelete: SetNull)
-  followOnTasks  Task[]    @relation("TaskFollowOn")
+  parentTaskId          String?        @db.Char(36)
+  parentTask            Task?          @relation("TaskFollowOn", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  followOnTasks         Task[]         @relation("TaskFollowOn")
 
   // Add these new fields
   lastStatusUpdatedById String?   @db.Char(36)
@@ -290,47 +294,46 @@ model Task {
   completedById String?   @db.Char(36)
   completedBy   User?     @relation("TaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
   completedAt   DateTime?
-  
+
   // DEPRECATED: Legacy assignment fields - use assignees instead
   // These fields are kept for backward compatibility but should not be used for new code
-  assignedById   String    @db.Char(36)
-  assignedBy     User      @relation("AssignedByUser", fields: [assignedById], references: [id])
-  
-  // PRIMARY: Use this relation for all task assignments
-  assignees      TaskAssignee[]
-  
-  // Keep other existing relations
-  client         Client?   @relation(fields: [clientId], references: [id])
-  clientId       String?   @db.Char(36)
-  comments       TaskComment[]
-  deletionRequests TaskDeletionRequest[]
-  replyRequests  TaskReplyRequest[]
-  
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  assignedById String @db.Char(36)
+  assignedBy   User   @relation("AssignedByUser", fields: [assignedById], references: [id])
 
+  // PRIMARY: Use this relation for all task assignments
+  assignees TaskAssignee[]
+
+  // Keep other existing relations
+  client           Client?               @relation(fields: [clientId], references: [id])
+  clientId         String?               @db.Char(36)
+  comments         TaskComment[]
+  deletionRequests TaskDeletionRequest[]
+  replyRequests    TaskReplyRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([parentTaskId, kind])
   // For overdue tasks - frequently queried
   @@index([status, dueDate(sort: Asc)], name: "overdue_tasks_idx")
-
   @@index([assignedById])
   @@index([clientId])
   @@index([billingStatus])
   @@index([createdAt])
   @@index([completedAt])
-  @@unique([parentTaskId, kind])
 }
 
 // New join table for many-to-many task assignments
 model TaskAssignee {
-  id          String    @id @default(uuid()) @db.Char(36)
-  taskId      String    @db.Char(36)
-  userId      String    @db.Char(36)
-  assignedAt  DateTime  @default(now())
-  
+  id         String   @id @default(uuid()) @db.Char(36)
+  taskId     String   @db.Char(36)
+  userId     String   @db.Char(36)
+  assignedAt DateTime @default(now())
+
   // Relations
-  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user        User      @relation("UserTaskAssignments", fields: [userId], references: [id], onDelete: Cascade)
-  
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation("UserTaskAssignments", fields: [userId], references: [id], onDelete: Cascade)
+
   // Unique constraint
   @@unique([taskId, userId])
   // "Tasks assigned to me" lookups filter by userId alone
@@ -338,15 +341,15 @@ model TaskAssignee {
 }
 
 model Attachment {
-  id          String   @id @default(uuid()) @db.Char(36)
-  filename    String   @db.VarChar(150) // Reduced from 255
-  path        String   @db.VarChar(255) // Reduced from 512
-  mimetype    String   @db.VarChar(50)  // Reduced from 100
-  size        Int
-  clientId    String?  @db.Char(36) // Optional relation to client
-  client      Client?  @relation(fields: [clientId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid()) @db.Char(36)
+  filename  String   @db.VarChar(150) // Reduced from 255
+  path      String   @db.VarChar(255) // Reduced from 512
+  mimetype  String   @db.VarChar(50) // Reduced from 100
+  size      Int
+  clientId  String?  @db.Char(36) // Optional relation to client
+  client    Client?  @relation(fields: [clientId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
 }
@@ -366,21 +369,21 @@ model PushSubscription {
 }
 
 model Notification {
-  id          String   @id @default(uuid()) @db.Char(36)
-  title       String   @db.VarChar(75) // Reduced from 100
-  content     String?  @db.Text  // Keep as Text for longer content
-  isRead      Boolean  @default(false)
-  taskId      String?  @db.Char(36) // Optional relation to task
-  
+  id      String  @id @default(uuid()) @db.Char(36)
+  title   String  @db.VarChar(75) // Reduced from 100
+  content String? @db.Text // Keep as Text for longer content
+  isRead  Boolean @default(false)
+  taskId  String? @db.Char(36) // Optional relation to task
+
   // Who sent the notification
-  sentById    String   @db.Char(36)
-  sentBy      User     @relation("SentBy", fields: [sentById], references: [id])
-  
+  sentById String @db.Char(36)
+  sentBy   User   @relation("SentBy", fields: [sentById], references: [id])
+
   // Who received the notification
-  sentToId    String   @db.Char(36)
-  sentTo      User     @relation("SentTo", fields: [sentToId], references: [id])
-  
-  createdAt   DateTime @default(now())
+  sentToId String @db.Char(36)
+  sentTo   User   @relation("SentTo", fields: [sentToId], references: [id])
+
+  createdAt DateTime @default(now())
 
   @@index([sentById])
   @@index([sentToId, createdAt(sort: Desc)])
@@ -388,10 +391,10 @@ model Notification {
 
 model Activity {
   id        String   @id @default(uuid()) @db.Char(36)
-  type      String   // "client", "user", "task", "project", "document"
-  action    String   // "created", "updated", "deleted", "assigned", "completed", "role_changed"
-  target    String   // What was affected (name of client, user, task, etc.)
-  details   Json?    // Additional context as JSON (optional)
+  type      String // "client", "user", "task", "project", "document"
+  action    String // "created", "updated", "deleted", "assigned", "completed", "role_changed"
+  target    String // What was affected (name of client, user, task, etc.)
+  details   Json? // Additional context as JSON (optional)
   userId    String   @db.Char(36)
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
@@ -402,15 +405,15 @@ model Activity {
 }
 
 model TaskComment {
-  id          String    @id @default(uuid()) @db.Char(36)
-  content     String    @db.Text  // Keep as Text for longer content
-  taskId      String    @db.Char(36)
-  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId      String    @db.Char(36)
-  user        User      @relation(fields: [userId], references: [id])
-  attachments Json?     // Add this field to store attachment metadata
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String             @id @default(uuid()) @db.Char(36)
+  content       String             @db.Text // Keep as Text for longer content
+  taskId        String             @db.Char(36)
+  task          Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId        String             @db.Char(36)
+  user          User               @relation(fields: [userId], references: [id])
+  attachments   Json? // Add this field to store attachment metadata
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
   replyRequests TaskReplyRequest[]
 
   @@index([taskId])
@@ -481,20 +484,20 @@ model TaskDigest {
 }
 
 model ClientHistory {
-  id                String    @id @default(uuid()) @db.Char(36)
-  clientId          String    @db.Char(36)
-  client            Client    @relation(fields: [clientId], references: [id])
-  content           String    @db.Text  // Keep as Text for longer content
-  type              String    @default("general") @db.VarChar(50)
-  createdAt         DateTime  @default(now())
-  createdById       String    @db.Char(36)
-  createdBy         User      @relation("CreatedBy", fields: [createdById], references: [id])
-  pinned           Boolean   @default(false) // Whether this history entry is pinned for quick access
-  
+  id          String   @id @default(uuid()) @db.Char(36)
+  clientId    String   @db.Char(36)
+  client      Client   @relation(fields: [clientId], references: [id])
+  content     String   @db.Text // Keep as Text for longer content
+  type        String   @default("general") @db.VarChar(50)
+  createdAt   DateTime @default(now())
+  createdById String   @db.Char(36)
+  createdBy   User     @relation("CreatedBy", fields: [createdById], references: [id])
+  pinned      Boolean  @default(false) // Whether this history entry is pinned for quick access
+
   // Task related fields
   taskId            String?   @db.Char(36)
   taskTitle         String?   @db.VarChar(255)
-  taskDescription   String?   @db.Text  // Keep as Text for longer content
+  taskDescription   String?   @db.Text // Keep as Text for longer content
   taskStatus        String?   @db.VarChar(50)
   taskCompletedDate DateTime?
   taskBilledDate    DateTime?
@@ -519,18 +522,18 @@ enum CredentialKind {
 }
 
 model Credential {
-  id        String   @id @default(uuid()) @db.Char(36)
-  kind      CredentialKind @default(OTHER)
-  title     String   @db.VarChar(75) // Reduced from 100
-  username  String   @db.VarChar(75) // Reduced from 100
-  password  String   @db.VarChar(100) // Keep 100 for secure hashes
-  clientId  String   @db.Char(36)
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id          String         @id @default(uuid()) @db.Char(36)
+  kind        CredentialKind @default(OTHER)
+  title       String         @db.VarChar(75) // Reduced from 100
+  username    String         @db.VarChar(75) // Reduced from 100
+  password    String         @db.VarChar(100) // Keep 100 for secure hashes
+  clientId    String         @db.Char(36)
+  client      Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
   // Who last added or changed the login (any staff member can)
-  updatedById String? @db.Char(36)
-  updatedBy   User?   @relation("CredentialUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedById String?        @db.Char(36)
+  updatedBy   User?          @relation("CredentialUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   @@index([clientId])
 }
@@ -546,19 +549,19 @@ model Bill {
   remark      String?    @db.Text
 
   // Set when the bill comes from a task; null for directly logged work
-  taskId      String? @unique @db.Char(36)
-  task        Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  clientId    String? @db.Char(36)
-  client      Client? @relation(fields: [clientId], references: [id])
-  createdById String  @db.Char(36)
-  createdBy   User    @relation("BillCreatedBy", fields: [createdById], references: [id])
+  taskId          String?    @unique @db.Char(36)
+  task            Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  clientId        String?    @db.Char(36)
+  client          Client?    @relation(fields: [clientId], references: [id])
+  createdById     String     @db.Char(36)
+  createdBy       User       @relation("BillCreatedBy", fields: [createdById], references: [id])
   // "Other": billed to someone who is not a saved client
-  billToName    String? @db.VarChar(150)
-  billToAddress String? @db.Text
-  billToGstin   String? @db.VarChar(15)
+  billToName      String?    @db.VarChar(150)
+  billToAddress   String?    @db.Text
+  billToGstin     String?    @db.VarChar(15)
   // Clients of a connector: the client's GSTIN is printed (and the bill
   // reported as B2B) only when this is ticked; otherwise it is B2C
-  showGstin     Boolean @default(false)
+  showGstin       Boolean    @default(false)
   // Set at final approval, so a later change of the client's connector or
   // ledger doesn't move a numbered bill to another ledger
   connectorId     String?    @db.Char(36)
@@ -613,16 +616,16 @@ model Bill {
   reissuedAs     Bill?   @relation("BillReissue")
 
   // Tally: when the bill was last sent, and whether a later change still has to be sent
-  tallyExportedAt  DateTime?
-  tallyNeedsUpdate Boolean      @default(false)
-  tallyExportId    String?      @db.Char(36)
-  tallyExport      TallyExport? @relation(fields: [tallyExportId], references: [id])
+  tallyExportedAt      DateTime?
+  tallyNeedsUpdate     Boolean            @default(false)
+  tallyExportId        String?            @db.Char(36)
+  tallyExport          TallyExport?       @relation(fields: [tallyExportId], references: [id])
   // The income ledger in Tally (the service) and the description on its line;
   // compliance bills start with their work type's ledger. Changeable until
   // the bill is in Tally; after that a change makes it "Tally update due".
   // Why Tally refused the bill the last time it was sent straight into it
-  tallyError   String?   @db.Text
-  tallyErrorAt DateTime?
+  tallyError           String?            @db.Text
+  tallyErrorAt         DateTime?
   incomeLedgerId       String?            @db.Char(36)
   incomeLedger         TallyIncomeLedger? @relation(fields: [incomeLedgerId], references: [id])
   tallyLineDescription String?            @db.VarChar(250)
@@ -641,8 +644,8 @@ model Bill {
   corrections    WorkCorrection[]
   // Set when the bill comes from a completed compliance item
   complianceItem ComplianceItem?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
   @@unique([type, financialYear, sequence])
   @@unique([gstReturnFinancialYear, gstReturnSequence])
@@ -712,9 +715,9 @@ model BillChangeRequest {
 
 // Who asked for a correction of logged work
 enum WorkCorrectionRequester {
-  staff  // a member of staff (requestedById)
+  staff // a member of staff (requestedById)
   client // the client
-  self   // nobody: the manager or Admin found the mistake
+  self // nobody: the manager or Admin found the mistake
 }
 
 // A correction of logged work (a directly logged bill) by Admin or a partner
@@ -756,51 +759,51 @@ model GstReturnSeries {
 // Letterhead and payment details printed on each type of bill; Admin edits
 // these in Billing → Company profiles
 model BillingEntity {
-  type        BillType @id
-  name        String   @db.VarChar(100)
-  address     String?  @db.Text
-  phone       String?  @db.VarChar(30)
-  email       String?  @db.VarChar(75)
-  pan         String?  @db.VarChar(10)
-  gstin       String?  @db.VarChar(15)
+  type                BillType @id
+  name                String   @db.VarChar(100)
+  address             String?  @db.Text
+  phone               String?  @db.VarChar(30)
+  email               String?  @db.VarChar(75)
+  pan                 String?  @db.VarChar(10)
+  gstin               String?  @db.VarChar(15)
   // GST state code, e.g. "23" for Madhya Pradesh; decides CGST+SGST or IGST
-  stateCode   String?  @db.VarChar(2)
-  sacCode     String?  @db.VarChar(10)
-  bankName    String?  @db.VarChar(100)
-  bankAccount String?  @db.VarChar(30)
-  bankIfsc    String?  @db.VarChar(11)
-  bankBranch  String?  @db.VarChar(100)
-  signatory   String?  @db.VarChar(100)
-  footerNote  String?  @db.Text
+  stateCode           String?  @db.VarChar(2)
+  sacCode             String?  @db.VarChar(10)
+  bankName            String?  @db.VarChar(100)
+  bankAccount         String?  @db.VarChar(30)
+  bankIfsc            String?  @db.VarChar(11)
+  bankBranch          String?  @db.VarChar(100)
+  signatory           String?  @db.VarChar(100)
+  footerNote          String?  @db.Text
   // Names as they are in Tally; defaults are used while these are empty
-  tallyCompany     String? @db.VarChar(100)
-  tallyVoucherType String? @db.VarChar(50)
-  tallySalesLedger String? @db.VarChar(100)
-  tallyCgstLedger  String? @db.VarChar(100)
-  tallySgstLedger  String? @db.VarChar(100)
-  tallyIgstLedger  String? @db.VarChar(100)
-  tallyRoundOffLedger String? @db.VarChar(100)
-  updatedAt   DateTime @updatedAt
+  tallyCompany        String?  @db.VarChar(100)
+  tallyVoucherType    String?  @db.VarChar(50)
+  tallySalesLedger    String?  @db.VarChar(100)
+  tallyCgstLedger     String?  @db.VarChar(100)
+  tallySgstLedger     String?  @db.VarChar(100)
+  tallyIgstLedger     String?  @db.VarChar(100)
+  tallyRoundOffLedger String?  @db.VarChar(100)
+  updatedAt           DateTime @updatedAt
 }
 
 // How bills are emailed to clients; a single row (id 1) that Admin edits in
 // Billing → Bill emails
 model BillingEmailSetting {
-  id           Int      @id @default(1)
+  id               Int       @id @default(1)
   // Off: the email asks clients to write to the firm's contact address, and
   // replies go there
-  allowReplies Boolean  @default(false)
+  allowReplies     Boolean   @default(false)
   // Where replies go when they are allowed
-  replyTo      String?  @db.VarChar(75)
+  replyTo          String?   @db.VarChar(75)
   // Gets a hidden copy (BCC) of every bill email
-  copyTo       String?  @db.VarChar(75)
+  copyTo           String?   @db.VarChar(75)
   // Reading bounce notices from the billing mailboxes: when they were last
   // read, how far ("MVC=<uidValidity>:<last uid>;BEDGE=…"), and why the last
   // read failed
   bounceCheckedAt  DateTime?
   bounceCheckpoint String?   @db.VarChar(60)
   bounceCheckError String?   @db.Text
-  updatedAt    DateTime @updatedAt
+  updatedAt        DateTime  @updatedAt
 }
 
 // One Tally XML file that was downloaded; kept so the same file can be
@@ -943,23 +946,23 @@ model ComplianceTeamMember {
 
 // A client's recurring work, from startPeriod on
 model ClientCompliance {
-  id          String              @id @default(uuid()) @db.Char(36)
-  clientId    String              @db.Char(36)
-  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  workTypeId  String              @db.Char(36)
-  workType    ComplianceWorkType  @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
-  frequency   ComplianceFrequency
+  id                String               @id @default(uuid()) @db.Char(36)
+  clientId          String               @db.Char(36)
+  client            Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workTypeId        String               @db.Char(36)
+  workType          ComplianceWorkType   @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  frequency         ComplianceFrequency
   // A change between monthly and quarterly applies from frequencyFrom;
   // earlier periods keep previousFrequency
   previousFrequency ComplianceFrequency?
-  frequencyFrom     DateTime?           @db.Date
-  startPeriod DateTime            @db.Date
-  endPeriod   DateTime?           @db.Date
-  feeNil      Decimal?            @db.Decimal(12, 2)
-  feeNonNil   Decimal?            @db.Decimal(12, 2)
-  active      Boolean             @default(true)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  frequencyFrom     DateTime?            @db.Date
+  startPeriod       DateTime             @db.Date
+  endPeriod         DateTime?            @db.Date
+  feeNil            Decimal?             @db.Decimal(12, 2)
+  feeNonNil         Decimal?             @db.Decimal(12, 2)
+  active            Boolean              @default(true)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   @@unique([clientId, workTypeId])
   @@index([workTypeId, active])
@@ -1012,12 +1015,12 @@ model ComplianceItem {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
-  documents ComplianceDocument[]
-  lines     ComplianceObligationLine[]
-  challans  TdsChallan[]
-  reminders ComplianceReminder[]
-  events    ComplianceEvent[]
-  notes     ComplianceNote[]
+  documents   ComplianceDocument[]
+  lines       ComplianceObligationLine[]
+  challans    TdsChallan[]
+  reminders   ComplianceReminder[]
+  events      ComplianceEvent[]
+  notes       ComplianceNote[]
   adjustments ComplianceAdjustment[]
 
   @@unique([clientId, workTypeId, periodStart])
@@ -1043,30 +1046,30 @@ model ComplianceEvent {
 // A file kept in Cloudflare R2 (see lib/r2.ts). Files with the same content
 // share one stored object (storageKey is derived from the SHA-256).
 model ComplianceDocument {
-  id           String            @id @default(uuid()) @db.Char(36)
-  clientId     String            @db.Char(36)
-  client       Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  itemId       String?           @db.Char(36)
-  item         ComplianceItem?   @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  kind         ComplianceDocKind
-  fileName     String            @db.VarChar(150)
-  contentType  String            @db.VarChar(80)
-  storageKey   String            @db.VarChar(200)
-  sha256       String            @db.Char(64)
-  size         Int // bytes as stored (after compression)
-  gzipped      Boolean           @default(false)
-  uploadedById String?           @db.Char(36)
-  uploadedBy   User?             @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  id            String            @id @default(uuid()) @db.Char(36)
+  clientId      String            @db.Char(36)
+  client        Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  itemId        String?           @db.Char(36)
+  item          ComplianceItem?   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  kind          ComplianceDocKind
+  fileName      String            @db.VarChar(150)
+  contentType   String            @db.VarChar(80)
+  storageKey    String            @db.VarChar(200)
+  sha256        String            @db.Char(64)
+  size          Int // bytes as stored (after compression)
+  gzipped       Boolean           @default(false)
+  uploadedById  String?           @db.Char(36)
+  uploadedBy    User?             @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   // The client's own documents (Client → Documents), not tied to a period:
   // the type (lib/client-documents.ts) and, for yearly ones, the financial
   // year it belongs to (2025 = FY 2025-26)
-  docType       String?          @db.VarChar(40)
+  docType       String?           @db.VarChar(40)
   financialYear Int?
   // GST returns: the figures read from the file when it was uploaded (see
   // lib/gst-read) and the month they are for (a quarter's last month)
-  gst          Json?
-  gstMonth     DateTime?         @db.Date
-  createdAt    DateTime          @default(now())
+  gst           Json?
+  gstMonth      DateTime?         @db.Date
+  createdAt     DateTime          @default(now())
 
   @@index([clientId, createdAt])
   @@index([clientId, gstMonth])
@@ -1382,4 +1385,64 @@ model DeskSupportFile {
   receivedAt   DateTime   @default(now())
 
   @@index([receivedAt(sort: Desc)])
+}
+
+// ---------------------------------------------------------------------------
+// Debtors from Tally (docs/TALLY_DEBTORS.md). The Tally extension on the
+// office Tally PC reads the Sundry Debtors ledgers (only those) and sends them
+// here at 11:30, 13:00, 16:00 and 19:00 IST and on "Refresh now".
+// ---------------------------------------------------------------------------
+
+// The one Tally PC that sends debtors, and the latest data it sent (one row, id 1)
+model TallyDebtorSync {
+  id          Int       @id @default(1)
+  company     String    @db.VarChar(100) // company in Tally
+  keyHash     String?   @unique @db.Char(64) // SHA-256 of the PC's key; null = not connected
+  keyHint     String?   @db.VarChar(8)
+  connectedAt DateTime?
+  connectedBy String?   @db.VarChar(50)
+  rootGroup   String?   @db.VarChar(150) // the Sundry Debtors group as named in Tally
+  groups      Json? // [{ name, parent }] every group under it, in Tally's order
+  periodFrom  DateTime? @db.Date // entries kept from (start of the previous financial year)
+  periodTo    DateTime? @db.Date // to (end of the current financial year)
+  readAt      DateTime? // when the data was read from Tally: the "as of" time shown everywhere
+  syncedAt    DateTime?
+  trigger     String?   @db.VarChar(20) // scheduled / refresh / manual
+  ledgerCount Int       @default(0)
+  updatedAt   DateTime  @updatedAt
+}
+
+// One Sundry Debtors ledger with its entries for the kept period
+model TallyDebtorLedger {
+  id              String    @id @default(uuid()) @db.Char(36)
+  name            String    @db.VarChar(150)
+  nameKey         String    @unique @db.VarChar(150) // lower case, for matching clients
+  groupName       String    @db.VarChar(150)
+  opening         Decimal   @db.Decimal(14, 2) // balance at periodFrom, debit positive
+  closing         Decimal   @db.Decimal(14, 2) // balance at periodTo, debit positive
+  lastReceiptDate DateTime? @db.Date
+  lastReceiptAmt  Decimal?  @db.Decimal(14, 2)
+  // [{ d: "2026-04-01", p: particulars, t: voucher type, n: voucher no., dr, cr, r: narration }]
+  entries         Json
+  hash            String    @db.Char(64) // of what the Tally PC sent, so unchanged ledgers aren't written again
+  updatedAt       DateTime  @updatedAt
+
+  @@index([groupName])
+}
+
+// Who downloaded or sent which ledger, and when
+model TallyLedgerEvent {
+  id         Int       @id @default(autoincrement())
+  ledgerName String    @db.VarChar(150)
+  kind       String    @db.VarChar(20) // pdf / excel / whatsapp
+  periodFrom DateTime  @db.Date
+  periodTo   DateTime  @db.Date
+  dataAsOf   DateTime? // the Tally data's time
+  recipient  String?   @db.VarChar(30) // WhatsApp number
+  userId     String    @db.Char(36)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  at         DateTime  @default(now())
+
+  @@index([ledgerName, at(sort: Desc)])
+  @@index([at])
 }

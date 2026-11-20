@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "MV Company Tally",
-  "version": "1.0.0",
-  "description": "Sends the bills you choose in the MV Company app into TallyPrime on this computer, and reports back what Tally answered. It only adds or changes bills (vouchers); it never creates ledgers or voucher types.",
+  "version": "1.1.0",
+  "description": "Sends the bills you choose in the MV Company app into TallyPrime on this computer, and sends the Sundry Debtors ledgers (only those) from Tally to the app at set times and on Refresh now. It never creates ledgers or voucher types.",
   "minimum_chrome_version": "116",
-  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "permissions": ["alarms", "storage"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "__APP_MATCH__"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [{ "matches": ["__APP_MATCH__"], "js": ["bridge.js"], "run_at": "document_start" }]
 }
