@@ -5,6 +5,7 @@ import { GST_RATE_PERCENT } from "@/lib/billing-constants";
 import { BILL_FORMATS, MVC_GST_STATE_CODE } from "@/lib/bill-formats";
 import { billShowsGstin } from "@/lib/connectors";
 import { GST_STATES } from "@/lib/gst-states";
+import { clientPhones } from "@/lib/client-contacts";
 
 // Everything printed on one bill (PDF or Word). Built only for bills in a
 // Billing List the user may see, so amounts never reach anyone else.
@@ -25,7 +26,8 @@ export interface BillDocument {
   total: number;
   totalInWords: string;
   placeOfSupply: string | null;
-  client: { name: string; contactPerson: string; address: string | null; gstin: string | null; email: string | null };
+  // contact: the client's mobile number(s), printed against "Contact:"
+  client: { name: string; contact: string | null; address: string | null; gstin: string | null; email: string | null };
   entity: {
     name: string;
     address: string | null;
@@ -126,7 +128,7 @@ export function billTotals(type: BillType, fee: number, stateCode: string | null
 }
 
 const documentInclude = {
-  client: { select: { contactPerson: true, companyName: true, address: true, gstin: true, email: true, connectorId: true } },
+  client: { select: { contactPerson: true, companyName: true, address: true, gstin: true, email: true, connectorId: true, phone: true, phones: true } },
   reissuedFrom: { select: { billNumber: true } },
 } satisfies Prisma.BillInclude;
 
@@ -151,12 +153,13 @@ export async function loadBillDocuments(ids: string[], access: BillingAccess): P
     const party = bill.client
       ? {
           name: bill.client.companyName || bill.client.contactPerson,
-          contactPerson: bill.client.contactPerson,
+          // The first two numbers saved for the client
+          contact: clientPhones(bill.client).slice(0, 2).map((p) => p.number).join(", ") || null,
           address: bill.client.address || null,
           gstin: bill.client.gstin || null,
           email: bill.client.email?.trim() || null,
         }
-      : { name: bill.billToName || "", contactPerson: bill.billToName || "", address: bill.billToAddress, gstin: bill.billToGstin, email: null };
+      : { name: bill.billToName || "", contact: null, address: bill.billToAddress, gstin: bill.billToGstin, email: null };
     // Place of supply and CGST + SGST / IGST follow the client's GSTIN even when
     // it isn't printed (a connector's client, billed as B2C)
     const { taxLines, placeOfSupply, roundOff, total } = billTotals(bill.type, fee, entity?.stateCode || null, party.gstin);
