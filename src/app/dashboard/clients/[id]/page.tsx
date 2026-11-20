@@ -45,6 +45,7 @@ import { UnifiedHistoryTab } from "@/components/clients/unified-history-tab";
 import { RecentActivity } from "@/components/clients/recent-activity";
 import { canCreateTask, canEditClient, canModifyClient } from "@/lib/permissions";
 import { CredentialsTab } from "@/components/clients/credentials-tab";
+import { ClientLedgerTab } from "@/components/clients/client-ledger-tab";
 import { ClientDocumentsTab } from "@/components/clients/client-documents-tab";
 import { REGISTRATION_FIELDS, RegistrationField } from "@/lib/client-documents";
 import { clientPhones } from "@/lib/client-contacts";
@@ -93,6 +94,8 @@ interface Client {
 export default function ClientDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { data: session } = useSession();
+  // Admin and the partners allowed see the client's ledger from Tally
+  const seesDebtors = session?.user?.role === "ADMIN" || (session?.user?.role === "PARTNER" && !!session.user.canViewDebtors);
 
   // Correctly unwrap the params promise
   const resolvedParams = use(params);
@@ -264,6 +267,7 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="credentials">Credentials</TabsTrigger>
+          {seesDebtors && <TabsTrigger value="ledger">Ledger</TabsTrigger>}
         </TabsList>
 
         {/* Details Tab */}
@@ -553,6 +557,13 @@ export default function ClientDetailsPage({ params }: { params: Promise<{ id: st
         <TabsContent value="credentials" className="space-y-4">
           <CredentialsTab clientId={client.id} />
         </TabsContent>
+
+        {/* The client's Sundry Debtors ledger from Tally (docs/TALLY_DEBTORS.md) */}
+        {seesDebtors && (
+          <TabsContent value="ledger" className="space-y-4">
+            <ClientLedgerTab clientId={client.id} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

@@ -29,6 +29,8 @@ export default function PermissionsPage() {
     canViewWorkDone: boolean;
     // Follows up tasks from the cards (last comments, one-click comments)
     canFollowUpTasks: boolean;
+    // Sees Debtors: the Sundry Debtors ledgers from Tally
+    canViewDebtors: boolean;
   }
 
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -61,6 +63,7 @@ export default function PermissionsPage() {
           billingListTypes: user.billingListTypes?.length ? user.billingListTypes : [...BILL_TYPES],
           canViewWorkDone: user.canViewWorkDone || false,
           canFollowUpTasks: user.canFollowUpTasks || false,
+          canViewDebtors: user.canViewDebtors || false,
         }))
       );
       setLoading(false);
@@ -74,7 +77,7 @@ export default function PermissionsPage() {
   // Toggle a billing permission for a partner
   const handleToggle = (
     id: string,
-    permission: "canApproveBilling" | "canManageBedgeBilling" | "canEnterBillAmounts" | "canViewBillingList" | "canViewWorkDone" | "canFollowUpTasks"
+    permission: "canApproveBilling" | "canManageBedgeBilling" | "canEnterBillAmounts" | "canViewBillingList" | "canViewWorkDone" | "canFollowUpTasks" | "canViewDebtors"
   ) => {
     setPartners((prev) =>
       prev.map((partner) =>
@@ -111,7 +114,7 @@ export default function PermissionsPage() {
     try {
       setError(null);
       const updates = partners.map(
-        ({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts, canViewBillingList, billingListTypes, canViewWorkDone, canFollowUpTasks }) => ({
+        ({ id, canApproveBilling, canManageBedgeBilling, canEnterBillAmounts, canViewBillingList, billingListTypes, canViewWorkDone, canFollowUpTasks, canViewDebtors }) => ({
           id,
           canApproveBilling,
           canManageBedgeBilling,
@@ -121,6 +124,7 @@ export default function PermissionsPage() {
           billingListTypes: billingListTypes.length === BILL_TYPES.length ? [] : billingListTypes,
           canViewWorkDone,
           canFollowUpTasks,
+          canViewDebtors,
         })
       );
       await axios.post("/api/admin/dashboard", { updates });
@@ -157,6 +161,10 @@ export default function PermissionsPage() {
             Partners with Follow up tasks on see the last comments and one-click comments on the cards of the tasks they
             created or are on, and their comments ask the others on the task for a reply. Admins always can.
           </p>
+          <p className="text-sm text-muted-foreground">
+            Partners with Debtors on see the Sundry Debtors ledgers from Tally (under Tally&apos;s groups, and in each client&apos;s Ledger
+            tab), download them as PDF or Excel and send them on WhatsApp. Admins always can.
+          </p>
         </CardHeader>
         <CardContent>
           {error && <p className="text-red-500 mb-4">{error}</p>}
@@ -177,6 +185,7 @@ export default function PermissionsPage() {
                         <TableHead className="text-center">Billing List</TableHead>
                         <TableHead className="text-center">Work Done</TableHead>
                         <TableHead className="text-center">Follow up tasks</TableHead>
+                        <TableHead className="text-center">Debtors</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -232,10 +241,17 @@ export default function PermissionsPage() {
                               aria-label={`${partner.name}: follows up tasks from the cards`}
                             />
                           </TableCell>
+                          <TableCell className="text-center">
+                            <Switch
+                              checked={partner.canViewDebtors}
+                              onCheckedChange={() => handleToggle(partner.id, "canViewDebtors")}
+                              aria-label={`${partner.name}: sees Debtors from Tally`}
+                            />
+                          </TableCell>
                         </TableRow>
                         {partner.canViewBillingList && (
                           <TableRow>
-                            <TableCell colSpan={8} className="pt-0">
+                            <TableCell colSpan={9} className="pt-0">
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md bg-muted/40 px-3 py-2 text-sm">
                                 <span className="font-medium">{partner.name} sees:</span>
                                 {BILL_TYPES.map((type) => (

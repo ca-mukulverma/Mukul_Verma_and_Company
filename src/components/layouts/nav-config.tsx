@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Fingerprint,
   HelpCircle,
+  Landmark,
   LayoutDashboard,
   ListChecks,
   ListTodo,
@@ -27,6 +28,13 @@ export interface NavItem {
   roles: string[];
   // "g" then this key opens the page
   shortcut?: string;
+  // Partners see it only when Admin switched it on for them (Admins always do)
+  partnerNeeds?: keyof NavFlags;
+}
+
+// Per-person switches from the session that show more pages
+export interface NavFlags {
+  debtors?: boolean;
 }
 
 export interface NavGroup {
@@ -45,7 +53,7 @@ export function roleDashboardPath(role: string) {
   }
 }
 
-export function navGroups(role: string): NavGroup[] {
+export function navGroups(role: string, flags: NavFlags = {}): NavGroup[] {
   const groups: NavGroup[] = [
     {
       title: "My work",
@@ -63,6 +71,8 @@ export function navGroups(role: string): NavGroup[] {
       title: "Office",
       items: [
         { title: "Billing", href: "/dashboard/billing", icon: Receipt, roles: STAFF_ROLES, shortcut: "b" },
+        // Sundry Debtors from Tally (docs/TALLY_DEBTORS.md)
+        { title: "Debtors", href: "/dashboard/debtors", icon: Landmark, roles: MANAGERS, shortcut: "r", partnerNeeds: "debtors" },
         // Everyone sees their own work; Admin and the partners allowed see everyone's
         { title: "Work done", href: "/dashboard/work-done", icon: ListChecks, roles: STAFF_ROLES, shortcut: "k" },
         { title: "Dashboard", href: roleDashboardPath(role), icon: LayoutDashboard, roles: STAFF_ROLES, shortcut: "d" },
@@ -93,12 +103,15 @@ export function navGroups(role: string): NavGroup[] {
   ];
 
   return groups
-    .map((group) => ({ ...group, items: group.items.filter((item) => item.roles.includes(role)) }))
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.roles.includes(role) && (!item.partnerNeeds || role !== "PARTNER" || !!flags[item.partnerNeeds])),
+    }))
     .filter((group) => group.items.length > 0);
 }
 
-export function navItems(role: string) {
-  return navGroups(role).flatMap((group) => group.items);
+export function navItems(role: string, flags: NavFlags = {}) {
+  return navGroups(role, flags).flatMap((group) => group.items);
 }
 
 // The four pages on the phone's bottom bar (the fifth button opens the menu)

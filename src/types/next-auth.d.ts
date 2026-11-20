@@ -8,6 +8,7 @@ declare module "next-auth" {
     avatar: string | null
     canApproveBilling?: boolean 
     canFollowUpTasks?: boolean
+    canViewDebtors?: boolean
     roleVersion: number
   }
 
@@ -19,6 +20,8 @@ declare module "next-auth" {
       roleVersion: number
       // Admins, and partners switched on to follow up tasks (docs/TASKS.md)
       canFollowUpTasks?: boolean
+      // Admins, and partners switched on to see Debtors (docs/TALLY_DEBTORS.md)
+      canViewDebtors?: boolean
     } & DefaultSession["user"]
   }
 }

@@ -4,7 +4,7 @@
 
 document.documentElement.setAttribute("data-mvc-tally", chrome.runtime.getManifest().version);
 
-const REQUESTS = ["tally-status", "tally-check", "tally-import"];
+const REQUESTS = ["tally-status", "tally-check", "tally-import", "tally-sync-connect", "tally-sync-disconnect", "tally-sync-info", "tally-sync-now"];
 const reply = (data) => window.postMessage({ source: "mvc-tally-ext", ...data }, location.origin);
 
 window.addEventListener("message", (event) => {

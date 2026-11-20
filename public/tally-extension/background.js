@@ -8,6 +8,12 @@
 //   tally-import  send one bill (one sales voucher) and read Tally's answer
 // It only ever sends vouchers: a request holding anything else (a ledger, a
 // voucher type, any master) is refused, so nothing else is created in Tally.
+//
+// Debtors (docs/TALLY_DEBTORS.md, the end of this file): once Admin connects
+// this PC from the app's Debtors page, it reads the Sundry Debtors ledgers
+// (only those, with their entries) from Tally and sends them to the app at
+// 11:30, 13:00, 16:00 and 19:00 IST, and when someone presses Refresh now.
+// It only reads from Tally (Export requests); it never changes anything there.
 
 const APP_ORIGIN = "__APP_ORIGIN__";
 const HOSTS = ["127.0.0.1", "localhost"];
@@ -23,6 +29,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
 });
 
 async function handle(message) {
+  if (typeof message?.type === "string" && message.type.startsWith("tally-sync-")) return handleSync(message);
   const port = validPort(message?.port);
   switch (message?.type) {
     case "tally-status":
@@ -197,4 +204,369 @@ async function importVoucher(port, message) {
     return { ok: true, imported: false, error: why, counts };
   }
   return { ok: true, imported: true, counts };
+}
+
+// ─── Debtors: sending the Sundry Debtors ledgers to the app ─────────────────
+
+const SLOTS = ["11:30", "13:00", "16:00", "19:00"]; // IST
+const ALARM = "mvc-debtors";
+const RETRY_AFTER_FAILURE_MS = 10 * 60_000;
+
+function handleSync(message) {
+  switch (message.type) {
+    case "tally-sync-connect":
+      return syncConnect(message);
+    case "tally-sync-disconnect":
+      return syncDisconnect();
+    case "tally-sync-info":
+      return syncInfo();
+    case "tally-sync-now":
+      return syncNow();
+    default:
+      return { ok: false, error: "Unknown request" };
+  }
+}
+
+// Every 30 seconds while Chrome runs on this PC
+function ensureAlarm() {
+  chrome.alarms.get(ALARM, (alarm) => {
+    if (!alarm) chrome.alarms.create(ALARM, { periodInMinutes: 0.5 });
+  });
+}
+chrome.runtime.onInstalled.addListener(ensureAlarm);
+chrome.runtime.onStartup.addListener(ensureAlarm);
+ensureAlarm();
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM) tick().catch(() => undefined);
+});
+
+const getLocal = async (k) => (await chrome.storage.local.get(k))[k];
+const setLocal = (k, v) => chrome.storage.local.set({ [k]: v });
+
+async function syncConnect(message) {
+  const key = String(message.key ?? "");
+  const company = String(message.company ?? "").trim();
+  if (!/^mvct_[A-Za-z0-9_-]{20,64}$/.test(key) || !company) return { ok: false, error: "The key or company is missing" };
+  await setLocal("sync", { key, company, port: validPort(message.port) });
+  await setLocal("syncState", {});
+  ensureAlarm();
+  return { ok: true };
+}
+
+async function syncDisconnect() {
+  await chrome.storage.local.remove(["sync", "syncState"]);
+  return { ok: true };
+}
+
+async function syncInfo() {
+  const sync = await getLocal("sync");
+  const state = (await getLocal("syncState")) ?? {};
+  return { ok: true, version: chrome.runtime.getManifest().version, connected: !!sync?.key, company: sync?.company ?? null, port: sync?.port ?? null, last: state.lastResult ?? null, running };
+}
+
+// The time in India
+function ist(date = new Date()) {
+  const t = new Date(date.getTime() + 330 * 60_000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return { day: `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`, hhmm: `${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}` };
+}
+
+// The latest update time already passed today ("2026-11-20 13:00"), or null
+function latestSlot(now = new Date()) {
+  const { day, hhmm } = ist(now);
+  const passed = SLOTS.filter((s) => s <= hhmm);
+  return passed.length ? `${day} ${passed[passed.length - 1]}` : null;
+}
+
+async function api(sync, method, action, body) {
+  const headers = { Authorization: `Bearer ${sync.key}` };
+  let payload;
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    headers["X-MVC-Gzip"] = "1";
+    const stream = new Blob([JSON.stringify(body)]).stream().pipeThrough(new CompressionStream("gzip"));
+    payload = await new Response(stream).arrayBuffer();
+  }
+  const response = await fetch(`${APP_ORIGIN}/api/tally-sync/${action}`, { method, headers, body: payload, credentials: "omit", cache: "no-store" });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data?.error || `The app answered ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+let running = false;
+
+async function tick() {
+  if (running) return;
+  const sync = await getLocal("sync");
+  if (!sync?.key) return;
+  const state = (await getLocal("syncState")) ?? {};
+  let poll;
+  try {
+    poll = await api(sync, "GET", "poll");
+  } catch (error) {
+    if (error.status === 401) {
+      state.lastResult = { ok: false, at: new Date().toISOString(), message: "The app no longer accepts this PC's key: connect it again from Debtors" };
+      await setLocal("syncState", state);
+    }
+    return; // offline: try at the next tick
+  }
+  const slot = latestSlot();
+  const refreshAt = poll.refresh?.at ?? null;
+  let trigger = null;
+  if (refreshAt && refreshAt !== state.handledRefresh) trigger = "refresh";
+  else if (slot && slot !== state.lastSlot && !(state.failedAt && Date.now() - state.failedAt < RETRY_AFTER_FAILURE_MS)) trigger = "scheduled";
+  if (trigger) await runSync(sync, poll, trigger, { slot, refreshAt });
+}
+
+async function syncNow() {
+  const sync = await getLocal("sync");
+  if (!sync?.key) return { ok: false, error: "This PC is not connected yet" };
+  if (running) return { ok: false, error: "An update is already running; wait a minute" };
+  const poll = await api(sync, "GET", "poll");
+  return runSync(sync, poll, "manual", { slot: latestSlot(), refreshAt: poll.refresh?.at ?? null });
+}
+
+async function runSync(sync, poll, trigger, marks) {
+  running = true;
+  // Keeps the worker awake while Tally is read (it may take a minute)
+  const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(() => undefined), 20_000);
+  const state = (await getLocal("syncState")) ?? {};
+  try {
+    const data = await readDebtors(sync.port ?? 9000, sync.company, poll.period);
+    const hashes = {};
+    for (const l of data.ledgers) hashes[l.name] = l.hash;
+    const { need } = await api(sync, "POST", "plan", { hashes });
+    const wanted = new Set(need);
+    const changed = data.ledgers.filter((l) => wanted.has(l.name));
+    // In parts of about 6 MB of JSON (well under 1 MB gzipped)
+    let part = [];
+    let size = 0;
+    for (const l of changed) {
+      const s = JSON.stringify(l.entries).length + 300;
+      if (part.length && size + s > 6_000_000) {
+        await api(sync, "POST", "upload", { ledgers: part });
+        part = [];
+        size = 0;
+      }
+      part.push(l);
+      size += s;
+    }
+    if (part.length) await api(sync, "POST", "upload", { ledgers: part });
+    await api(sync, "POST", "commit", {
+      readAt: data.readAt,
+      periodFrom: poll.period.from,
+      periodTo: poll.period.to,
+      rootGroup: data.rootGroup,
+      groups: data.groups,
+      names: data.ledgers.map((l) => l.name),
+      trigger,
+    });
+    state.lastSlot = marks.slot ?? state.lastSlot;
+    if (marks.refreshAt) state.handledRefresh = marks.refreshAt;
+    delete state.failedAt;
+    state.lastResult = { ok: true, at: data.readAt, ledgers: data.ledgers.length, changed: changed.length, trigger };
+    return { ok: true, ledgers: data.ledgers.length, changed: changed.length, readAt: data.readAt };
+  } catch (error) {
+    const message = String(error?.message ?? error);
+    state.failedAt = Date.now();
+    if (marks.refreshAt) state.handledRefresh = marks.refreshAt;
+    state.lastResult = { ok: false, at: new Date().toISOString(), message, trigger };
+    try {
+      await api(sync, "POST", "error", { message });
+    } catch {
+      /* the app is out of reach too */
+    }
+    return { ok: false, error: message };
+  } finally {
+    clearInterval(keepAlive);
+    running = false;
+    await setLocal("syncState", state);
+  }
+}
+
+// ─── Reading the Sundry Debtors from Tally ──────────────────────────────────
+
+const tallyDay = (day) => day.replace(/-/g, ""); // 2026-04-01 → 20260401
+const isoDay = (d) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// A collection of Group, Ledger or Voucher with only the fields asked for.
+// Export only: nothing is changed in Tally.
+async function exportCollection(port, company, type, fetchList, from, to) {
+  const xml =
+    "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>MVCDebtors</ID></HEADER>" +
+    "<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>" +
+    `<SVCURRENTCOMPANY>${escape(company)}</SVCURRENTCOMPANY>` +
+    `<SVFROMDATE TYPE="Date">${tallyDay(from)}</SVFROMDATE><SVTODATE TYPE="Date">${tallyDay(to)}</SVTODATE>` +
+    "</STATICVARIABLES><TDL><TDLMESSAGE>" +
+    `<COLLECTION NAME="MVCDebtors" ISMODIFY="No"><TYPE>${type}</TYPE><FETCH>${fetchList}</FETCH></COLLECTION>` +
+    "</TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>";
+  const text = await post(port, xml, 180_000);
+  const lineError = /<LINEERROR>([\s\S]*?)<\/LINEERROR>/.exec(text);
+  if (lineError) throw new Error(`Tally: ${unescape(lineError[1]).trim()}`);
+  return text;
+}
+
+// Removes nested lists (bill allocations, bank details…) so only the object's own fields remain
+function withoutLists(body) {
+  let out = body;
+  for (let i = 0; i < 6; i++) {
+    const next = out.replace(/<([A-Z0-9_.]+\.LIST)\b[^>]*>[\s\S]*?<\/\1>/g, "").replace(/<[A-Z0-9_.]+\.LIST\b[^>]*\/>/g, "");
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+function field(body, tag) {
+  const m = new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`).exec(body);
+  return m ? unescape(m[1]).trim() : "";
+}
+
+const attr = (attrs, name) => {
+  const m = new RegExp(`\\b${name}="([^"]*)"`).exec(attrs);
+  return m ? unescape(m[1]).trim() : "";
+};
+
+// Tally amounts: negative is debit
+function money(text) {
+  const n = parseFloat(String(text).replace(/[^0-9.\-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function objects(text, tag) {
+  const out = [];
+  for (const m of text.matchAll(new RegExp(`<${tag}\\b([^>]*)>([\\s\\S]*?)</${tag}>`, "g"))) {
+    const own = withoutLists(m[2]);
+    out.push({ attrs: m[1], body: m[2], own, name: attr(m[1], "NAME") || field(own, "NAME") });
+  }
+  return out;
+}
+
+function quarters(from, to) {
+  const out = [];
+  let [y, m] = from.split("-").map(Number);
+  while (true) {
+    const start = `${y}-${String(m).padStart(2, "0")}-01`;
+    if (start > to) break;
+    let ey = y;
+    let em = m + 3;
+    if (em > 12) {
+      em -= 12;
+      ey += 1;
+    }
+    const endDate = new Date(Date.UTC(ey, em - 1, 1) - 86_400_000).toISOString().slice(0, 10);
+    out.push({ from: start, to: endDate < to ? endDate : to });
+    y = ey;
+    m = em;
+  }
+  return out;
+}
+
+async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function readDebtors(port, company, period) {
+  const readAt = new Date().toISOString();
+  const companies = await names(port, "Company", null);
+  if (![...companies].some((c) => key(c) === key(company))) {
+    throw new Error(`The company "${company}" is not open in TallyPrime on the Tally PC.` + (companies.size ? ` Open now: ${[...companies].join(", ")}.` : ""));
+  }
+
+  // Groups: the Sundry Debtors group and every group under it
+  const groupText = await exportCollection(port, company, "Group", "Name, Parent, ReservedName", period.from, period.to);
+  const allGroups = objects(groupText, "GROUP").map((g) => ({ name: g.name, parent: field(g.own, "PARENT"), reserved: attr(g.attrs, "RESERVEDNAME") || field(g.own, "RESERVEDNAME") }));
+  const root =
+    allGroups.find((g) => key(g.reserved) === "sundry debtors") ?? allGroups.find((g) => key(g.name) === "sundry debtors" || key(g.name) === "sundry debtor");
+  if (!root) throw new Error("The Sundry Debtors group was not found in Tally");
+  const debtorGroups = new Set([key(root.name)]);
+  const groups = [];
+  for (let added = true; added; ) {
+    added = false;
+    for (const g of allGroups) {
+      if (!debtorGroups.has(key(g.name)) && debtorGroups.has(key(g.parent))) {
+        debtorGroups.add(key(g.name));
+        groups.push({ name: g.name, parent: g.parent });
+        added = true;
+      }
+    }
+  }
+
+  // Ledgers under those groups, with the balance at the end of the period
+  const ledgerText = await exportCollection(port, company, "Ledger", "Name, Parent, ClosingBalance", period.from, period.to);
+  const ledgers = new Map();
+  for (const l of objects(ledgerText, "LEDGER")) {
+    const parent = field(l.own, "PARENT");
+    if (!l.name || !debtorGroups.has(key(parent))) continue;
+    ledgers.set(key(l.name), { name: l.name, group: parent, closing: round2(-money(field(l.own, "CLOSINGBALANCE"))), entries: [] });
+  }
+
+  // Vouchers of the period, a quarter at a time; only the debtors' lines are kept
+  const seen = new Set();
+  for (const q of quarters(period.from, period.to)) {
+    const text = await exportCollection(
+      port,
+      company,
+      "Voucher",
+      "Date, VoucherTypeName, VoucherNumber, Narration, IsCancelled, IsOptional, IsDeleted, MasterId, AllLedgerEntries.LedgerName, AllLedgerEntries.Amount, LedgerEntries.LedgerName, LedgerEntries.Amount",
+      q.from,
+      q.to
+    );
+    for (const v of objects(text, "VOUCHER")) {
+      const own = v.own;
+      const rawDate = field(own, "DATE");
+      if (!/^\d{8}$/.test(rawDate)) continue;
+      const date = isoDay(rawDate);
+      if (date < q.from || date > q.to) continue;
+      if (/^yes$/i.test(field(own, "ISCANCELLED")) || /^yes$/i.test(field(own, "ISOPTIONAL")) || /^yes$/i.test(field(own, "ISDELETED"))) continue;
+      const lines = (tag) =>
+        [...v.body.matchAll(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, "g"))]
+          .map((m) => withoutLists(m[1]))
+          .map((b) => ({ ledger: field(b, "LEDGERNAME"), amount: money(field(b, "AMOUNT")) }))
+          .filter((e) => e.ledger);
+      let entries = lines("ALLLEDGERENTRIES\\.LIST");
+      if (!entries.length) entries = lines("LEDGERENTRIES\\.LIST");
+      if (!entries.length) continue;
+      const type = field(own, "VOUCHERTYPENAME") || attr(v.attrs, "VCHTYPE");
+      const number = field(own, "VOUCHERNUMBER");
+      const id = field(own, "MASTERID") || attr(v.attrs, "REMOTEID") || attr(v.attrs, "VCHKEY") || `${date}|${type}|${number}|${entries.map((e) => `${e.ledger}:${e.amount}`).join(",")}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const narration = field(own, "NARRATION").replace(/\s+/g, " ").slice(0, 300);
+
+      // One line per debtor ledger in the voucher, as Tally's Ledger Vouchers shows it
+      const nets = new Map();
+      for (const e of entries) if (ledgers.has(key(e.ledger))) nets.set(key(e.ledger), round2((nets.get(key(e.ledger)) ?? 0) - e.amount));
+      for (const [k, net] of nets) {
+        if (!net) continue;
+        const ledger = ledgers.get(k);
+        // Particulars: the first ledger on the other side
+        const other = entries.find((e) => key(e.ledger) !== k && (net > 0 ? e.amount > 0 : e.amount < 0)) ?? entries.find((e) => key(e.ledger) !== k);
+        ledger.entries.push({
+          d: date,
+          p: (other?.ledger ?? ledger.name).slice(0, 150),
+          t: type.slice(0, 60),
+          n: number.slice(0, 60),
+          dr: net > 0 ? net : 0,
+          cr: net < 0 ? -net : 0,
+          ...(narration && { r: narration }),
+        });
+      }
+    }
+  }
+
+  const out = [];
+  for (const l of ledgers.values()) {
+    l.entries.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+    const moved = l.entries.reduce((sum, e) => sum + e.dr - e.cr, 0);
+    const opening = round2(l.closing - moved);
+    out.push({ name: l.name.slice(0, 150), group: l.group.slice(0, 150), opening, closing: l.closing, entries: l.entries, hash: await sha256Hex(JSON.stringify([l.group, opening, l.closing, l.entries])) });
+  }
+  return { readAt, rootGroup: root.name, groups, ledgers: out };
 }

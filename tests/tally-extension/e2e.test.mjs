@@ -93,7 +93,7 @@ before(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "tally-ext-test-"));
   const ext = path.join(dir, "ext");
   await cp(path.join(root, "public/tally-extension"), ext, { recursive: true });
-  const fill = async (name, from, to) => writeFile(path.join(ext, name), (await readFile(path.join(ext, name), "utf8")).replace(from, to));
+  const fill = async (name, from, to) => writeFile(path.join(ext, name), (await readFile(path.join(ext, name), "utf8")).replaceAll(from, to));
   await fill("manifest.json", "__APP_MATCH__", "http://127.0.0.1/*");
   await fill("background.js", "__APP_ORIGIN__", `http://127.0.0.1:${app.port}`);
   context = await chromium.launchPersistentContext(path.join(dir, "profile"), {
@@ -116,7 +116,7 @@ after(async () => {
 const ask = (message, page = appPage) => page.evaluate((m) => window.ask(m), message);
 
 test("the app page sees the extension", async () => {
-  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-tally")), "1.0.0");
+  assert.equal(await appPage.evaluate(() => document.documentElement.getAttribute("data-mvc-tally")), "1.1.0");
 });
 
 test("status: Tally running, with its open companies", async () => {
