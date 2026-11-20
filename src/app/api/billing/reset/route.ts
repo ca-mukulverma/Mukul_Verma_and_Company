@@ -77,7 +77,10 @@ export async function POST(request: NextRequest) {
           data: {
             company: task.company,
             type: task.company === "BEDGE" ? "BEDGE" : null,
-            description: task.description ? `${task.title}\n${task.description}` : task.title,
+            // Only the title goes on the bill; the task's description (period, notes)
+            // is a remark shown to whoever enters the amount
+            description: task.title,
+            remark: task.description?.trim() || null,
             workDate: new Date(),
             taskId: task.id,
             clientId: task.clientId,

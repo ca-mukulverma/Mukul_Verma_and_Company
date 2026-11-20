@@ -135,7 +135,7 @@ function billTo(doc: BillDocument, format: BillFormat, width: number) {
     [label, value ?? ""] as [string, string];
   const top = [field("Name", client.name), field("Add.", client.address)];
   const bottom = [
-    field("Contact:", client.contactPerson !== client.name ? client.contactPerson : null),
+    field("Contact:", client.contact),
     field("Email:", client.email),
     field("GST No.:", client.gstin),
   ];

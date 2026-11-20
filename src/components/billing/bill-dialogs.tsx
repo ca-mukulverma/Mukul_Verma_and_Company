@@ -95,6 +95,17 @@ function BillSummary({ bill }: { bill: Bill }) {
       <div className="rounded-md bg-muted/50 p-3 text-sm">
         <p className="font-medium">{client}</p>
         <p className="text-muted-foreground whitespace-pre-line line-clamp-3">{bill.description}</p>
+        {/* Not printed on the bill: details for whoever enters the amount (e.g. the period) */}
+        {bill.remark && (
+          <p className="mt-1 whitespace-pre-line break-words rounded bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            <span className="font-medium">Remark:</span> {bill.remark}
+          </p>
+        )}
+        {bill.status === "awaiting_amount" && bill.amountRequestNote && (
+          <p className="mt-1 whitespace-pre-line break-words text-xs">
+            <span className="font-medium">Remark for the amount:</span> {bill.amountRequestNote}
+          </p>
+        )}
         <p className="mt-1 text-xs text-muted-foreground">
           {billRaisedBy(bill).viaTask ? "Task created by" : "Logged by"}{" "}
           <span className="font-medium text-foreground">{billRaisedBy(bill).name}</span>

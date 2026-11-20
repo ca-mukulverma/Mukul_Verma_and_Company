@@ -105,7 +105,7 @@ function drawBill(pdf: jsPDF, doc: BillDocument) {
   const { client } = doc;
   field("Name", client.name, Y_BILLTO + 6, 1);
   field("Add.", client.address, Y_BILLTO + 12, 5);
-  field("Contact:", client.contactPerson !== client.name ? client.contactPerson : null, Y_TABLE - 17, 1);
+  field("Contact:", client.contact, Y_TABLE - 17, 1);
   field("Email:", client.email, Y_TABLE - 11.5, 1);
   field("GST No.:", client.gstin, Y_TABLE - 6, 1);
 
