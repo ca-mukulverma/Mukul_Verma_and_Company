@@ -8,8 +8,9 @@ import { prisma } from "@/lib/prisma";
 import { redis } from "@/lib/redis";
 import { cacheDel, cacheGet, cacheSet, sha256 } from "@/lib/desk";
 import { connectorLedger } from "@/lib/connectors";
-import { DEBTOR_ENTITIES, ENTITY_LABELS, istToday, keptPeriod, type DebtorEntity, type LedgerEntry } from "@/lib/tally-debtors-shared";
+import { DEBTOR_ENTITIES, ENTITY_LABELS, istToday, keptPeriod, salesFrom, type DebtorEntity, type LedgerEntry } from "@/lib/tally-debtors-shared";
 import { addMonths, recovery, type Recovery } from "@/lib/tally-recovery";
+import { salesPeriod, salesReport, type FirmSales, type Period, type SalesLine, type SalesReport } from "@/lib/tally-sales";
 
 /**
  * Debtors from Tally (docs/TALLY_DEBTORS.md).
@@ -195,11 +196,27 @@ const entrySchema = z.object({
   r: z.string().max(300).optional(),
 });
 
+const hash = z.string().regex(/^[0-9a-f]{64}$/);
+const monthKey = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
 export const planSchema = z.object({
-  hashes: z.record(z.string().max(150), z.string().regex(/^[0-9a-f]{64}$/)),
+  hashes: z.record(z.string().max(150), hash),
+  // Sales months (extension 1.3.0 on): { "2026-04": sha256 }
+  salesHashes: z.record(monthKey, hash).optional(),
+});
+
+// One line to an income ledger (Sales page)
+const salesLineSchema = z.object({
+  d: day,
+  l: z.string().max(150), // income ledger
+  p: z.string().max(150), // party
+  t: z.string().max(60), // voucher type
+  n: z.string().max(60), // voucher number
+  a: money, // credit positive; a debit (credit note, return) negative
 });
 
 export const uploadSchema = z.object({
+  salesMonths: z.array(z.object({ month: monthKey, hash, lines: z.array(salesLineSchema).max(50_000) })).max(60).default([]),
   ledgers: z
     .array(
       z.object({
@@ -211,7 +228,8 @@ export const uploadSchema = z.object({
         entries: z.array(entrySchema).max(20_000),
       })
     )
-    .max(5000),
+    .max(5000)
+    .default([]),
 });
 
 export const commitSchema = z.object({
@@ -222,19 +240,46 @@ export const commitSchema = z.object({
   groups: z.array(z.object({ name, parent: name })).max(2000),
   names: z.array(name).max(20_000),
   trigger: z.enum(["scheduled", "refresh", "manual"]),
+  // Sales Accounts: groups, income ledgers, every month sent (extension 1.3.0 on)
+  sales: z
+    .object({
+      from: day,
+      root: name,
+      groups: z.array(z.object({ name, parent: name })).max(2000),
+      ledgers: z.record(z.string().max(150), z.string().max(150)),
+      months: z.array(monthKey).max(60),
+    })
+    .optional(),
 });
 
 export const nameKey = (ledgerName: string) => ledgerName.trim().toLowerCase();
 
 export const entityParam = z.enum(DEBTOR_ENTITIES);
 
-// Which of the ledgers the Tally PC has differ from what is stored
+// Which of the ledgers (and sales months) the Tally PC has differ from what is stored
 export async function ledgersNeeded(entity: DebtorEntity, hashes: Record<string, string>) {
   const stored = await prisma.tallyDebtorLedger.findMany({ where: { entity }, select: { nameKey: true, hash: true } });
   const have = new Map(stored.map((l) => [l.nameKey, l.hash]));
   return Object.entries(hashes)
     .filter(([n, h]) => have.get(nameKey(n)) !== h)
     .map(([n]) => n);
+}
+
+export async function salesMonthsNeeded(entity: DebtorEntity, hashes: Record<string, string> | undefined) {
+  if (!hashes) return [];
+  const stored = await prisma.tallySalesMonth.findMany({ where: { entity }, select: { month: true, hash: true } });
+  const have = new Map(stored.map((m) => [m.month, m.hash]));
+  return Object.entries(hashes)
+    .filter(([m, h]) => have.get(m) !== h)
+    .map(([m]) => m);
+}
+
+export async function saveSalesMonths(entity: DebtorEntity, months: z.infer<typeof uploadSchema>["salesMonths"]) {
+  const writes = months.map((m) => {
+    const data = { lines: m.lines as unknown as Prisma.InputJsonValue, hash: m.hash };
+    return prisma.tallySalesMonth.upsert({ where: { entity_month: { entity, month: m.month } }, create: { entity, month: m.month, ...data }, update: data });
+  });
+  for (let i = 0; i < writes.length; i += 20) await prisma.$transaction(writes.slice(i, i + 20));
 }
 
 // The last receipt in the entries (latest date)
@@ -280,8 +325,15 @@ export async function commitSync({ entity, company }: SyncAgent, body: z.infer<t
         syncedAt,
         trigger: body.trigger,
         ledgerCount: keys.length,
+        ...(body.sales && {
+          salesFrom: new Date(`${body.sales.from}T00:00:00Z`),
+          salesRoot: body.sales.root,
+          salesGroups: body.sales.groups,
+          salesLedgers: body.sales.ledgers,
+        }),
       },
     }),
+    ...(body.sales ? [prisma.tallySalesMonth.deleteMany({ where: { entity, month: { notIn: body.sales.months } } })] : []),
   ]);
   const state: SyncState = {
     entity,
@@ -301,7 +353,7 @@ export async function commitSync({ entity, company }: SyncAgent, body: z.infer<t
 
 // What the Tally PC needs to know at each check
 export async function pollAnswer({ entity, company }: SyncAgent) {
-  return { entity, company, period: keptPeriod(), refresh: await pendingRefresh(entity) };
+  return { entity, company, period: keptPeriod(), salesFrom: salesFrom(), refresh: await pendingRefresh(entity) };
 }
 
 // ─── Connecting the Tally PC (Admin) ────────────────────────────────────────
@@ -516,7 +568,7 @@ export async function sendMonthlyRecoveryReport() {
   const today = istToday();
   if (Number(today.slice(8, 10)) > 3) return { message: "Not the start of a month" };
   const month = addMonths(today.slice(0, 7), -1);
-  const title = `Recovery for ${monthName(month)}`;
+  const title = `Recovery and sales for ${monthName(month)}`;
   const admins = await prisma.user.findMany({ where: { role: "ADMIN", isActive: true }, select: { id: true } });
   if (!admins.length) return { message: "No Admin" };
   const already = await prisma.notification.findFirst({ where: { title, sentToId: admins[0].id }, select: { id: true } });
@@ -532,11 +584,87 @@ export async function sendMonthlyRecoveryReport() {
         ` of Rs. ${INR0.format(m.openingDue + m.billed)} due; billed Rs. ${INR0.format(m.billed)}; dues now Rs. ${INR0.format(m.closingDue)}, over 90 days Rs. ${INR0.format(m.over90)}.`
     );
   }
+  // Last month's sales against the same month a year before (Sales page)
+  const sales = await salesFor([...DEBTOR_ENTITIES], salesPeriod("month", `${month}-01`, today));
+  const fmt = (c: { now: { sales: number }; before: { sales: number }; growthPct: number | null }) =>
+    `Rs. ${INR0.format(c.now.sales)}` + (c.growthPct == null ? "" : ` (${c.growthPct > 0 ? "+" : ""}${c.growthPct}% on Rs. ${INR0.format(c.before.sales)} a year before)`);
+  const withSales = sales.firms.filter((f) => f.hasSales).map((f) => f.entity);
+  if (withSales.length) {
+    lines.push(
+      `Sales: ${withSales.map((e) => `${ENTITY_LABELS[e]} ${fmt(sales.report.firms[e]!)}`).join("; ")}` +
+        (withSales.length > 1 ? `; total ${fmt(sales.report.total)}.` : ".")
+    );
+  }
   if (!lines.length) return { message: "No Tally data" };
   const { sendPushForNotification } = await import("@/lib/web-push");
   for (const a of admins) {
-    const n = await prisma.notification.create({ data: { title, content: `${lines.join("\n")}\nDebtors → Recovery shows the details.`, sentById: a.id, sentToId: a.id } });
+    const n = await prisma.notification.create({ data: { title, content: `${lines.join("\n")}\nDebtors → Recovery and Sales show the details.`, sentById: a.id, sentToId: a.id } });
     await sendPushForNotification(n).catch(() => undefined);
   }
   return { message: `Sent to ${admins.length} Admin(s)` };
 }
+
+// ─── Sales (Admin) ──────────────────────────────────────────────────────────
+
+const SALES_CACHE = "tdebt:sales:"; // + firms:readAts:period -> report (10 minutes)
+
+export interface SalesAnswer {
+  report: SalesReport;
+  firms: { entity: DebtorEntity; company: string | null; readAt: string | null; hasSales: boolean; salesFrom: string | null }[];
+}
+
+// The firms' synced sales lines, with each income ledger's group and each
+// party's Sundry Debtors group
+async function loadFirmSales(entities: DebtorEntity[]) {
+  const [syncs, months, debtors] = await Promise.all([
+    prisma.tallyDebtorSync.findMany({ where: { entity: { in: entities } } }),
+    prisma.tallySalesMonth.findMany({ where: { entity: { in: entities } }, orderBy: { month: "asc" } }),
+    prisma.tallyDebtorLedger.findMany({ where: { entity: { in: entities } }, select: { entity: true, nameKey: true, groupName: true } }),
+  ]);
+  const firms: FirmSales[] = entities.map((entity) => {
+    const sync = syncs.find((s) => s.entity === entity);
+    return {
+      entity,
+      lines: months.filter((m) => m.entity === entity).flatMap((m) => m.lines as unknown as SalesLine[]),
+      ledgerGroups: (sync?.salesLedgers as Record<string, string> | null) ?? {},
+      partyGroups: Object.fromEntries(debtors.filter((d) => d.entity === entity).map((d) => [d.nameKey, d.groupName])),
+    };
+  });
+  const info = entities.map((entity) => {
+    const sync = syncs.find((s) => s.entity === entity);
+    return {
+      entity,
+      company: sync?.company ?? null,
+      readAt: sync?.readAt?.toISOString() ?? null,
+      hasSales: !!sync?.salesFrom,
+      salesFrom: sync?.salesFrom?.toISOString().slice(0, 10) ?? null,
+    };
+  });
+  return { firms, info };
+}
+
+export async function salesFor(entities: DebtorEntity[], period: Period): Promise<SalesAnswer> {
+  const today = istToday();
+  const states = await Promise.all(entities.map((e) => readState(e)));
+  const cacheKey = `${SALES_CACHE}${entities.join("+")}:${states.map((s) => s.readAt).join("+")}:${period.kind}:${period.from}:${period.to}`;
+  const cached = await cacheGet<SalesAnswer>(cacheKey);
+  if (cached) return cached;
+  const { firms, info } = await loadFirmSales(entities);
+  const answer = { report: salesReport(firms, period, today), firms: info };
+  await cacheSet(cacheKey, answer, 600);
+  return answer;
+}
+
+// The lines of a period and of the same period a year before (Excel)
+export async function salesLines(entities: DebtorEntity[], period: Period) {
+  const { firms } = await loadFirmSales(entities);
+  const rows = (from: string, to: string) =>
+    firms.flatMap((f) =>
+      f.lines
+        .filter((l) => l.d >= from && l.d <= to)
+        .map((l) => ({ ...l, firm: ENTITY_LABELS[f.entity], group: f.ledgerGroups[l.l] ?? "", partyGroup: f.partyGroups[l.p.trim().toLowerCase()] ?? "" }))
+    );
+  return { now: rows(period.from, period.to), before: rows(period.lyFrom, period.lyTo) };
+}
+
+export const adminOnly = () => NextResponse.json({ error: "Only Admin sees Sales" }, { status: 403 });

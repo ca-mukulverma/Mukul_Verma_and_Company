@@ -404,12 +404,29 @@ async function runSync(entity, sync, poll, trigger, marks) {
   state.lastSlot = marks.slot ?? state.lastSlot;
   if (marks.refreshAt) state.handledRefresh = marks.refreshAt;
   try {
-    const data = await readDebtors(sync.port ?? 9000, sync.company, poll.period);
+    const data = await readDebtors(sync.port ?? 9000, sync.company, poll.period, poll.salesFrom ?? poll.period.from);
     const hashes = {};
     for (const l of data.ledgers) hashes[l.name] = l.hash;
-    const { need } = await api(sync, "POST", "plan", { hashes });
+    const salesHashes = {};
+    for (const m of data.sales?.months ?? []) salesHashes[m.month] = m.hash;
+    const { need, needMonths = [] } = await api(sync, "POST", "plan", { hashes, ...(data.sales && { salesHashes }) });
     const wanted = new Set(need);
     const changed = data.ledgers.filter((l) => wanted.has(l.name));
+    // Sales months that changed, in parts of about 6 MB of JSON
+    const monthsWanted = new Set(needMonths);
+    let monthPart = [];
+    let monthSize = 0;
+    for (const m of (data.sales?.months ?? []).filter((x) => monthsWanted.has(x.month))) {
+      const s = JSON.stringify(m.lines).length + 100;
+      if (monthPart.length && monthSize + s > 6_000_000) {
+        await api(sync, "POST", "upload", { salesMonths: monthPart });
+        monthPart = [];
+        monthSize = 0;
+      }
+      monthPart.push(m);
+      monthSize += s;
+    }
+    if (monthPart.length) await api(sync, "POST", "upload", { salesMonths: monthPart });
     // In parts of about 6 MB of JSON (well under 1 MB gzipped)
     let part = [];
     let size = 0;
@@ -432,6 +449,15 @@ async function runSync(entity, sync, poll, trigger, marks) {
       groups: data.groups,
       names: data.ledgers.map((l) => l.name),
       trigger,
+      ...(data.sales && {
+        sales: {
+          from: poll.salesFrom ?? poll.period.from,
+          root: data.sales.root,
+          groups: data.sales.groups,
+          ledgers: data.sales.ledgers,
+          months: data.sales.months.map((m) => m.month),
+        },
+      }),
     });
     state.lastResult = { ok: true, at: data.readAt, ledgers: data.ledgers.length, changed: changed.length, trigger };
     return { ok: true, ledgers: data.ledgers.length, changed: changed.length, readAt: data.readAt };
@@ -535,7 +561,27 @@ async function sha256Hex(text) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function readDebtors(port, company, period) {
+// The groups under `root` (any depth), in Tally's order
+function groupsUnder(allGroups, root) {
+  const inside = new Set([key(root.name)]);
+  const out = [];
+  for (let added = true; added; ) {
+    added = false;
+    for (const g of allGroups) {
+      if (!inside.has(key(g.name)) && inside.has(key(g.parent))) {
+        inside.add(key(g.name));
+        out.push({ name: g.name, parent: g.parent });
+        added = true;
+      }
+    }
+  }
+  return { inside, groups: out };
+}
+
+// The Sundry Debtors ledgers with their lines (period.from to period.to), and
+// the sales: every line to an income ledger under Sales Accounts from
+// `salesFrom`, by month (for Admin's Sales page)
+async function readDebtors(port, company, period, salesFrom) {
   const readAt = new Date().toISOString();
   const companies = await names(port, "Company", null);
   if (![...companies].some((c) => key(c) === key(company))) {
@@ -548,31 +594,28 @@ async function readDebtors(port, company, period) {
   const root =
     allGroups.find((g) => key(g.reserved) === "sundry debtors") ?? allGroups.find((g) => key(g.name) === "sundry debtors" || key(g.name) === "sundry debtor");
   if (!root) throw new Error("The Sundry Debtors group was not found in Tally");
-  const debtorGroups = new Set([key(root.name)]);
-  const groups = [];
-  for (let added = true; added; ) {
-    added = false;
-    for (const g of allGroups) {
-      if (!debtorGroups.has(key(g.name)) && debtorGroups.has(key(g.parent))) {
-        debtorGroups.add(key(g.name));
-        groups.push({ name: g.name, parent: g.parent });
-        added = true;
-      }
-    }
-  }
+  const { inside: debtorGroups, groups } = groupsUnder(allGroups, root);
+  // Sales Accounts and the groups under it (the income ledgers)
+  const salesRoot = allGroups.find((g) => key(g.reserved) === "sales accounts") ?? allGroups.find((g) => key(g.name) === "sales accounts");
+  const sales = salesRoot ? groupsUnder(allGroups, salesRoot) : null;
 
   // Ledgers under those groups, with the balance at the end of the period
   const ledgerText = await exportCollection(port, company, "Ledger", "Name, Parent, ClosingBalance", period.from, period.to);
   const ledgers = new Map();
+  const incomeLedgers = new Map(); // key -> { name, group }
   for (const l of objects(ledgerText, "LEDGER")) {
     const parent = field(l.own, "PARENT");
+    if (l.name && sales?.inside.has(key(parent))) incomeLedgers.set(key(l.name), { name: l.name.slice(0, 150), group: parent.slice(0, 150) });
     if (!l.name || !debtorGroups.has(key(parent))) continue;
     ledgers.set(key(l.name), { name: l.name, group: parent, closing: round2(-money(field(l.own, "CLOSINGBALANCE"))), entries: [] });
   }
 
-  // Vouchers of the period, a quarter at a time; only the debtors' lines are kept
+  // Vouchers of the period (and the sales period before it), a quarter at a
+  // time; only the debtors' lines and the income ledgers' lines are kept
   const seen = new Set();
-  for (const q of quarters(period.from, period.to)) {
+  const salesByMonth = new Map(); // "2026-04" -> lines
+  const readFrom = sales && salesFrom < period.from ? salesFrom : period.from;
+  for (const q of quarters(readFrom, period.to)) {
     const text = await exportCollection(
       port,
       company,
@@ -603,6 +646,27 @@ async function readDebtors(port, company, period) {
       seen.add(id);
       const narration = field(own, "NARRATION").replace(/\s+/g, " ").slice(0, 300);
 
+      // Sales: each line to an income ledger, with the party (the debtor in the voucher)
+      if (sales && date >= salesFrom) {
+        const party = entries.find((e) => ledgers.has(key(e.ledger))) ?? entries.find((e) => e.amount < 0 && !incomeLedgers.has(key(e.ledger)));
+        for (const e of entries) {
+          const income = incomeLedgers.get(key(e.ledger));
+          if (!income || !e.amount) continue;
+          const month = date.slice(0, 7);
+          if (!salesByMonth.has(month)) salesByMonth.set(month, []);
+          salesByMonth.get(month).push({
+            d: date,
+            l: income.name,
+            p: (party ? ledgers.get(key(party.ledger))?.name ?? party.ledger : "").slice(0, 150),
+            t: type.slice(0, 60),
+            n: number.slice(0, 60),
+            a: round2(e.amount),
+          });
+        }
+      }
+      // The debtors' lines are kept from the start of the debtors' period
+      if (date < period.from) continue;
+
       // One line per debtor ledger in the voucher, as Tally's Ledger Vouchers shows it
       const nets = new Map();
       for (const e of entries) if (ledgers.has(key(e.ledger))) nets.set(key(e.ledger), round2((nets.get(key(e.ledger)) ?? 0) - e.amount));
@@ -631,5 +695,16 @@ async function readDebtors(port, company, period) {
     const opening = round2(l.closing - moved);
     out.push({ name: l.name.slice(0, 150), group: l.group.slice(0, 150), opening, closing: l.closing, entries: l.entries, hash: await sha256Hex(JSON.stringify([l.group, opening, l.closing, l.entries])) });
   }
-  return { readAt, rootGroup: root.name, groups, ledgers: out };
+  let salesOut = null;
+  if (sales) {
+    const months = [];
+    for (const [month, lines] of [...salesByMonth.entries()].sort()) {
+      lines.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+      months.push({ month, lines, hash: await sha256Hex(JSON.stringify(lines)) });
+    }
+    const ledgerGroups = {};
+    for (const l of incomeLedgers.values()) ledgerGroups[l.name] = l.group;
+    salesOut = { root: salesRoot.name, groups: sales.groups, ledgers: ledgerGroups, months };
+  }
+  return { readAt, rootGroup: root.name, groups, ledgers: out, sales: salesOut };
 }

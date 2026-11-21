@@ -8,6 +8,8 @@ import {
   pollAnswer,
   reportSyncError,
   saveLedgers,
+  saveSalesMonths,
+  salesMonthsNeeded,
   syncAgentFromRequest,
   uploadSchema,
 } from "@/lib/tally-debtors";
@@ -59,14 +61,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ act
     case "plan": {
       const parsed = planSchema.safeParse(body);
       if (!parsed.success) return NextResponse.json({ error: "Bad list of ledgers" }, { status: 400 });
-      return NextResponse.json({ need: await ledgersNeeded(who.entity, parsed.data.hashes) });
+      const [need, needMonths] = await Promise.all([ledgersNeeded(who.entity, parsed.data.hashes), salesMonthsNeeded(who.entity, parsed.data.salesHashes)]);
+      return NextResponse.json({ need, needMonths });
     }
     // The changed ledgers with their entries
     case "upload": {
       const parsed = uploadSchema.safeParse(body);
       if (!parsed.success) return NextResponse.json({ error: `Bad ledgers: ${parsed.error.issues[0]?.message ?? ""}` }, { status: 400 });
       await saveLedgers(who.entity, parsed.data.ledgers);
-      return NextResponse.json({ ok: true, saved: parsed.data.ledgers.length });
+      await saveSalesMonths(who.entity, parsed.data.salesMonths);
+      return NextResponse.json({ ok: true, saved: parsed.data.ledgers.length, months: parsed.data.salesMonths.length });
     }
     // The update is complete: groups, every ledger's name, and when Tally was read
     case "commit": {

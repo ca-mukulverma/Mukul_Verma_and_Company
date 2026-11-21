@@ -12,6 +12,7 @@ import {
   RadioTower,
   Settings,
   Sparkles,
+  TrendingUp,
   Users,
 } from "lucide-react";
 
@@ -73,6 +74,8 @@ export function navGroups(role: string, flags: NavFlags = {}): NavGroup[] {
         { title: "Billing", href: "/dashboard/billing", icon: Receipt, roles: STAFF_ROLES, shortcut: "b" },
         // Sundry Debtors from Tally (docs/TALLY_DEBTORS.md)
         { title: "Debtors", href: "/dashboard/debtors", icon: Landmark, roles: MANAGERS, shortcut: "r", partnerNeeds: "debtors" },
+        // Sales from MVC's and B Edge's Tally, with the year before (docs/TALLY_DEBTORS.md)
+        { title: "Sales", href: "/dashboard/sales", icon: TrendingUp, roles: ["ADMIN"], shortcut: "l" },
         // Everyone sees their own work; Admin and the partners allowed see everyone's
         { title: "Work done", href: "/dashboard/work-done", icon: ListChecks, roles: STAFF_ROLES, shortcut: "k" },
         { title: "Dashboard", href: roleDashboardPath(role), icon: LayoutDashboard, roles: STAFF_ROLES, shortcut: "d" },
