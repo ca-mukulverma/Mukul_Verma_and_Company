@@ -58,6 +58,14 @@ export function keptPeriod(now = new Date()) {
   return { from: isoDay(fy - 1, 4, 1), to: isoDay(fy + 1, 3, 31) };
 }
 
+// Sales lines are kept two financial years further back than the debtors'
+// entries, so every month of the last financial year has its year-before
+// to compare with (Admin's Sales page)
+export function salesFrom(now = new Date()) {
+  const fy = fyStartYear(istToday(now));
+  return isoDay(fy - 2, 4, 1);
+}
+
 // The scheduled update times that were due by `now`, latest first (up to 8 days back)
 function dueSlots(now: Date) {
   const out: Date[] = [];

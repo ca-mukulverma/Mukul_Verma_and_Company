@@ -24,6 +24,8 @@ const routePermissions = {
   "/dashboard/partner/users/[id]/reset-password": ["ADMIN"],
   // Debtors from Tally: Admin and the partners Admin allows (the API checks who)
   "/dashboard/debtors": ["ADMIN", "PARTNER"],
+  // Sales from Tally: Admin only
+  "/dashboard/sales": ["ADMIN"],
   // Junior staff routes
   "/dashboard/junior": ["ADMIN", "PARTNER", "BUSINESS_EXECUTIVE", "BUSINESS_CONSULTANT"],
   // Client management routes - accessible to all staff

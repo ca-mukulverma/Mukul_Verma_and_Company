@@ -51,13 +51,17 @@ const mvcData = {
     { name: "Sundry Debtor - Harsh", parent: "Sundry Debtors" },
     { name: "Sundry Creditors", parent: "Current Liabilities", reserved: "Sundry Creditors" },
     { name: "Sales Accounts", parent: "", reserved: "Sales Accounts" },
+    { name: "Gst", parent: "Sales Accounts" },
+    { name: "Income Tax Returns", parent: "Sales Accounts" },
   ],
   ledgers: [
     { name: "CITY MOTORS", parent: "Sundry Debtor - Mukul", closing: -2040 },
+    { name: "ITR Individual", parent: "Income Tax Returns", closing: 1100 },
+    { name: "Cash", parent: "Cash-in-Hand", closing: -300 },
     { name: "Sharma Traders", parent: "Via Connectors", closing: -590 },
     { name: "Old Client & Sons", parent: "Sundry Debtor - Harsh", closing: 0 },
     { name: "Paper Supplier", parent: "Sundry Creditors", closing: 5000 },
-    { name: "Gst Return Monthly", parent: "Sales Accounts", closing: 4000 },
+    { name: "Gst Return Monthly", parent: "Gst", closing: 4000 },
     { name: "HDFC Bank", parent: "Bank Accounts", closing: -2000 },
   ],
   vouchers: [
@@ -75,6 +79,17 @@ const mvcData = {
     { id: 4, date: "20260601", type: "Sales", no: "MVC/26-27/009", cancelled: true, list: "LEDGERENTRIES.LIST", entries: [["CITY MOTORS", -500], ["Gst Return Monthly", 500]] },
     { id: 5, date: "20260701", type: "Sales", no: "MVC/26-27/020", list: "LEDGERENTRIES.LIST", entries: [["Sharma Traders", -590], ["Gst Return Monthly", 500], ["CGST", 45], ["SGST", 45]] },
     { id: 6, date: "20260705", type: "Purchase", no: "P-1", list: "ALLLEDGERENTRIES.LIST", entries: [["Paper Supplier", 5000], ["Office Expenses", -5000]] },
+    // Sales (Admin's Sales page). Two years back: before the debtors' entries, kept for sales only
+    { id: 21, date: "20241108", type: "Sales", no: "MVC/24-25/050", list: "LEDGERENTRIES.LIST", entries: [["Old Client & Sons", -400], ["Gst Return Monthly", 400]] },
+    { id: 22, date: "20241108", type: "Receipt", no: "R-1", list: "ALLLEDGERENTRIES.LIST", entries: [["HDFC Bank", -400], ["Old Client & Sons", 400]] },
+    // November 2025: Old Client & Sons billed (not billed in November 2026)
+    { id: 23, date: "20251112", type: "Sales", no: "MVC/25-26/300", list: "LEDGERENTRIES.LIST", entries: [["Old Client & Sons", -700], ["ITR Individual", 700]] },
+    { id: 24, date: "20251120", type: "Receipt", no: "R-5", list: "ALLLEDGERENTRIES.LIST", entries: [["HDFC Bank", -700], ["Old Client & Sons", 700]] },
+    // November 2026: Sharma Traders and a cash sale; a credit note; Sharma pays the rest
+    { id: 25, date: "20261110", type: "Sales", no: "MVC/26-27/400", list: "LEDGERENTRIES.LIST", entries: [["Sharma Traders", -900], ["ITR Individual", 900]] },
+    { id: 26, date: "20261112", type: "Sales", no: "MVC/26-27/401", list: "LEDGERENTRIES.LIST", entries: [["Cash", -300], ["ITR Individual", 300]] },
+    { id: 27, date: "20261115", type: "Credit Note", no: "CN-1", list: "ALLLEDGERENTRIES.LIST", entries: [["ITR Individual", -100], ["Sharma Traders", 100]] },
+    { id: 28, date: "20261118", type: "Receipt", no: "R-40", list: "ALLLEDGERENTRIES.LIST", entries: [["HDFC Bank", -800], ["Sharma Traders", 800]] },
   ],
 };
 
@@ -83,8 +98,10 @@ const bedgeData = {
   groups: [
     { name: "Sundry Debtors", parent: "Current Assets", reserved: "Sundry Debtors" },
     { name: "BE - Direct", parent: "Sundry Debtors" },
+    { name: "Sales Accounts", parent: "", reserved: "Sales Accounts" },
   ],
   ledgers: [
+    { name: "Consultancy", parent: "Sales Accounts", closing: 15000 },
     { name: "CITY MOTORS", parent: "BE - Direct", closing: 0 },
     { name: "Gupta & Co", parent: "BE - Direct", closing: -5000 },
   ],
@@ -436,6 +453,71 @@ test("Recovery: each firm's month worked out from its own ledgers (TDS counts as
     await page.getByText("Recovery: MVC and B Edge").waitFor({ timeout: 60_000 });
     await page.getByText("Recovery %").nth(1).waitFor();
     await page.screenshot({ path: path.join(process.env.SHOTS, "debtors-recovery-both.png"), fullPage: true });
+  }
+});
+
+test("Sales (Admin): each firm and the total against the same period a year before, and why it moved", async () => {
+  assert.equal((await api("/api/sales?firm=ALL&period=month&date=2026-11-21", { as: "partnerAllowed" })).status, 403);
+  const status = (e) => api(`/api/debtors/status?entity=${e}`);
+  assert.ok((await status("MVC")).json.readAt);
+
+  // MVC, November 2026 to the 21st: 900 + 300 − 100 (credit note) = 1,100, against 700 (1–21 Nov 2025)
+  const nov = (await api("/api/sales?firm=MVC&period=month&date=2026-11-21")).json.report;
+  assert.equal(nov.period.from, "2026-11-01");
+  assert.equal(nov.period.lyFrom, "2025-11-01");
+  assert.equal(nov.period.lyTo, nov.period.to.replace("2026", "2025"));
+  assert.deepEqual([nov.total.now.sales, nov.total.before.sales, nov.total.change, nov.total.growthPct], [1100, 700, 400, 57.1]);
+  assert.deepEqual([nov.total.now.bills, nov.total.now.parties, nov.total.before.bills, nov.total.before.parties], [2, 2, 1, 1]);
+  assert.deepEqual(nov.byService.map((r) => [r.name, r.now, r.before]), [["ITR Individual", 1100, 700]]);
+  assert.deepEqual(nov.byIncomeGroup.map((r) => r.name), ["Income Tax Returns"]);
+  assert.deepEqual(nov.byVoucherType.map((r) => [r.name, r.now, r.before]).sort(), [["Credit Note", -100, 0], ["Sales", 1200, 700]]);
+  assert.deepEqual(
+    nov.byDebtorGroup.map((r) => [r.name, r.now, r.before]).sort(),
+    [["Not a Sundry Debtor now", 300, 0], ["Sundry Debtor - Harsh", 0, 700], ["Via Connectors", 800, 0]]
+  );
+  // 700 a year before + 1,100 new clients − 700 not billed this time ± 0 = 1,100
+  assert.deepEqual(nov.clients.bridge, { before: 700, fromNew: 1100, fromLost: -700, fromContinuing: 0, now: 1100 });
+  assert.deepEqual(nov.clients.topNew.map((c) => [c.party, c.now]), [["Sharma Traders", 800], ["Cash", 300]]);
+  assert.deepEqual(nov.clients.topLost.map((c) => [c.party, c.before]), [["Old Client & Sons", 700]]);
+
+  // The financial year to date: MVC 2,000 + 500 + 1,100 = 3,600 against 1,000 + 700 = 1,700; B Edge 15,000 against nothing
+  const fy = (await api("/api/sales?firm=ALL&period=fy&date=2026-11-21")).json;
+  assert.deepEqual([fy.report.firms.MVC.now.sales, fy.report.firms.MVC.before.sales], [3600, 1700]);
+  assert.deepEqual([fy.report.firms.BEDGE.now.sales, fy.report.firms.BEDGE.before.sales, fy.report.firms.BEDGE.growthPct], [15000, 0, null]);
+  assert.deepEqual([fy.report.total.now.sales, fy.report.total.before.sales, fy.report.total.growthPct], [18600, 1700, 994.1]);
+  assert.ok(fy.report.byService.some((r) => r.name === "Consultancy (B Edge)"));
+  assert.deepEqual(fy.firms.map((f) => [f.entity, f.hasSales]), [["MVC", true], ["BEDGE", true]]);
+  const apr = fy.report.trend.find((t) => t.month === "2026-04");
+  assert.deepEqual([apr.now, apr.before], [2000, 0]);
+  assert.equal(fy.report.trend.find((t) => t.month === "2027-01").now, null);
+
+  // Two years back is kept: November 2025 against November 2024 (400)
+  const nov25 = (await api("/api/sales?firm=MVC&period=month&date=2025-11-30")).json.report;
+  assert.deepEqual([nov25.total.now.sales, nov25.total.before.sales, nov25.total.growthPct], [700, 400, 75]);
+  // A day, and a week against the same weekdays 52 weeks before
+  const day = (await api("/api/sales?firm=MVC&period=day&date=2026-11-10")).json.report;
+  assert.deepEqual([day.total.now.sales, day.period.lyFrom], [900, "2025-11-10"]);
+  const week = (await api("/api/sales?firm=MVC&period=week&date=2026-11-12")).json.report;
+  assert.deepEqual([week.period.from, week.period.to, week.period.lyFrom], ["2026-11-09", "2026-11-15", "2025-11-10"]);
+  assert.equal(week.total.now.sales, 1100);
+  const quarter = (await api("/api/sales?firm=MVC&period=quarter&date=2026-11-21")).json.report;
+  assert.equal(quarter.period.from, "2026-10-01");
+  assert.equal((await api("/api/sales?firm=MVC&period=month&date=2031-01-01")).status, 400);
+
+  const xlsx = await api("/api/sales/export?firm=ALL&period=month&date=2026-11-21", { raw: true });
+  assert.equal(xlsx.status, 200);
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(Buffer.from(await xlsx.arrayBuffer()));
+  assert.equal(book.worksheets.length, 2);
+  const totalOf = (ws) => ws.getRow(ws.rowCount).getCell(9).value;
+  assert.deepEqual(book.worksheets.map(totalOf), [1100, 700]);
+
+  if (process.env.SHOTS) {
+    const { page } = mvcPc;
+    await page.goto(`${BASE}/dashboard/sales?firm=ALL&period=fy&date=2026-11-21`);
+    await page.getByText("Where the change came from").waitFor({ timeout: 60_000 });
+    await closePopups(page);
+    await page.screenshot({ path: path.join(process.env.SHOTS, "sales.png"), fullPage: true });
   }
 });
 

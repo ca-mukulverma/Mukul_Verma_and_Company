@@ -58,6 +58,38 @@ Below the summary:
 On the 1st of each month (or the next day or two, if the daily job missed it),
 Admin gets last month's recovery for both firms as a notification.
 
+## Sales (Admin only)
+
+**Sales** (menu → Office → Sales, Admin only) shows each firm's sales from its
+Tally. Choose **MVC + B Edge**, **MVC** or **B Edge**, and a **Day**, **Week**
+(Monday–Sunday), **Month**, **Quarter** (April–June …), **Year (FY)** or your
+own **Dates**. The arrows step to the period before or after. A running period
+is counted to today.
+
+- **Sales** = credits to the income ledgers under *Sales Accounts*, less debits
+  to them (credit notes, returns). GST and other tax ledgers are not in it.
+- Every figure is set against **the same period a year before**: the same
+  dates, or for a week the same weekdays 52 weeks before. Sales lines are kept
+  from two financial years back, so last year's months also have their year
+  before.
+- For each firm and the total: sales, change, growth %, bills, average bill and
+  clients billed, now and a year before.
+- **Where the change came from:**
+  - **clients:** a year before + new clients − clients not billed this time ±
+    the same clients billing more or less = now, with the top new, lost,
+    grown and fallen clients. Clients are matched by Tally ledger name, across
+    both firms when both are shown;
+  - **by service** (income ledger), **by income group** in Tally, **by voucher
+    type** (e.g. *Sales*, *Sales - CA Mukul Verma*: the names billed under),
+    and **by who brings the client** (the party's Sundry Debtors group).
+- **Month by month:** the financial year against the one before.
+- **Excel:** every sales line of the period and of the year before.
+- Last month's sales against the same month a year before are also in Admin's
+  notification on the 1st.
+
+Sales come with Tally extension **1.3.0**. Until a firm's PC has it, the page
+says so.
+
 ## The update time
 
 Every Debtors screen shows each firm's **"Tally data as of …"** in large
@@ -74,7 +106,7 @@ to refresh first, or to confirm.
 ## How the data gets here
 
 Each firm's Tally PC sends that firm's data. The **MV Company Tally** Chrome
-extension (`public/tally-extension`, **version 1.2.0** or later, the same one
+extension (`public/tally-extension`, **version 1.3.0** or later, the same one
 used to send bills into Tally) does this:
 
 - **at 11:30 am, 1:00 pm, 4:00 pm and 7:00 pm IST**. If the PC was off at
@@ -135,6 +167,7 @@ data already here stays.
 | Pages | `/dashboard/debtors?firm=MVC\|BEDGE\|BOTH&view=recovery\|ledgers&month=YYYY-MM`, `/dashboard/debtors/[id]` (`?send=whatsapp`), client page → Ledger tab |
 | APIs | `/api/debtors` (both firms), `/status?entity=` (Redis only), `/refresh` `{entity}`, `/connect` (Admin), `/recovery?entity=&month=`, `/[id]`, `/[id]/file`, `/[id]/share`, `/api/clients/[id]/ledger`, `/api/ledger-link/[token]` (public, 7 days) |
 | Code | `src/lib/tally-debtors.ts` (server), `src/lib/tally-recovery.ts` (recovery figures), `src/lib/tally-debtors-shared.ts`, `src/lib/tally-ledger-files.ts` (PDF / Excel), `src/components/debtors/*`, `public/tally-extension/background.js` (end of file) |
-| Tables | `TallyDebtorSync` (one row per firm, `Company` enum), `TallyDebtorLedger` (unique per firm + name), `TallyLedgerEvent`; `User.canViewDebtors` |
+| Sales | `/dashboard/sales?firm=ALL\|MVC\|BEDGE&period=day\|week\|month\|quarter\|fy\|custom&date=&to=`; `/api/sales`, `/api/sales/export` (Admin); `src/lib/tally-sales.ts` |
+| Tables | `TallyDebtorSync` (one row per firm, `Company` enum; sales groups and ledgers), `TallyDebtorLedger` (unique per firm + name), `TallySalesMonth` (a firm's sales lines per month), `TallyLedgerEvent`; `User.canViewDebtors` |
 | Daily job steps | `ledger-share-cleanup`, `recovery-report` |
 | Test | `tests/tally-debtors/e2e.test.mjs`: two Tally PCs (two Chromiums with the extension) beside two stand-in TallyPrimes, the app on a test database |

@@ -1396,21 +1396,39 @@ model DeskSupportFile {
 // Each firm's Tally company (MVC, B Edge): the Tally PC that sends its
 // debtors, and the latest data it sent. Each can be on its own PC.
 model TallyDebtorSync {
-  entity      Company   @id // MVC / BEDGE
-  company     String    @db.VarChar(100) // company in Tally
-  keyHash     String?   @unique @db.Char(64) // SHA-256 of the PC's key; null = not connected
-  keyHint     String?   @db.VarChar(8)
-  connectedAt DateTime?
-  connectedBy String?   @db.VarChar(50)
-  rootGroup   String?   @db.VarChar(150) // the Sundry Debtors group as named in Tally
-  groups      Json? // [{ name, parent }] every group under it, in Tally's order
-  periodFrom  DateTime? @db.Date // entries kept from (start of the previous financial year)
-  periodTo    DateTime? @db.Date // to (end of the current financial year)
-  readAt      DateTime? // when the data was read from Tally: the "as of" time shown everywhere
-  syncedAt    DateTime?
-  trigger     String?   @db.VarChar(20) // scheduled / refresh / manual
-  ledgerCount Int       @default(0)
-  updatedAt   DateTime  @updatedAt
+  entity       Company   @id // MVC / BEDGE
+  company      String    @db.VarChar(100) // company in Tally
+  keyHash      String?   @unique @db.Char(64) // SHA-256 of the PC's key; null = not connected
+  keyHint      String?   @db.VarChar(8)
+  connectedAt  DateTime?
+  connectedBy  String?   @db.VarChar(50)
+  rootGroup    String?   @db.VarChar(150) // the Sundry Debtors group as named in Tally
+  groups       Json? // [{ name, parent }] every group under it, in Tally's order
+  periodFrom   DateTime? @db.Date // entries kept from (start of the previous financial year)
+  periodTo     DateTime? @db.Date // to (end of the current financial year)
+  readAt       DateTime? // when the data was read from Tally: the "as of" time shown everywhere
+  syncedAt     DateTime?
+  trigger      String?   @db.VarChar(20) // scheduled / refresh / manual
+  ledgerCount  Int       @default(0)
+  // Sales (Admin's Sales page): the income ledgers under Sales Accounts
+  salesFrom    DateTime? @db.Date // sales lines kept from (two financial years before the current one)
+  salesRoot    String?   @db.VarChar(150) // the Sales Accounts group as named in Tally
+  salesGroups  Json? // [{ name, parent }] every group under it
+  salesLedgers Json? // { ledger name: its group }
+  updatedAt    DateTime  @updatedAt
+}
+
+// A firm's sales for one month, from its Tally: every line to an income
+// ledger under Sales Accounts (Admin's Sales page, docs/TALLY_DEBTORS.md)
+model TallySalesMonth {
+  entity    Company
+  month     String   @db.Char(7) // YYYY-MM
+  // [{ d: "2026-04-01", l: income ledger, p: party, t: voucher type, n: voucher no., a: amount (credit positive) }]
+  lines     Json
+  hash      String   @db.Char(64) // of what the Tally PC sent, so unchanged months aren't written again
+  updatedAt DateTime @updatedAt
+
+  @@id([entity, month])
 }
 
 // One Sundry Debtors ledger with its entries for the kept period
