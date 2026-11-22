@@ -15,8 +15,8 @@ import type { SyncStatus } from "@/lib/tally-debtors";
 // ledger isn't sent. Each firm has its own Tally PC, time and Refresh now.
 
 const POLL_MS = 5000;
-const GIVE_UP_MS = 6 * 60_000;
-// The Tally PC checks in every 30 seconds while it is on
+const GIVE_UP_MS = 8 * 60_000;
+// The Tally PC checks in once a minute while it is on
 const PC_AWAY_MS = 3 * 60_000;
 
 export function useSyncStatus(entity: DebtorEntity, initial: SyncStatus | null, onUpdated: () => void) {
@@ -154,7 +154,7 @@ export function UpdateBanner({ sync, className, compact = false }: { sync: SyncS
       </div>
       {waiting && (
         <p className="mt-3 text-sm">
-          Asking the Tally PC. It checks every 30 seconds, then reads Tally; this usually takes 1–3 minutes. You can keep working.
+          Asking the Tally PC. It checks once a minute, then reads Tally; this usually takes 1–4 minutes. You can keep working.
         </p>
       )}
       {status.connected && pcAway && (

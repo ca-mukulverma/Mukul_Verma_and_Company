@@ -218,7 +218,7 @@ async function closePopups(page) {
   }
 }
 
-let mvcTally, bedgeTally, dir, mvcPc, bedgePc, admin, partner, client, connector;
+let mvcTally, bedgeTally, dir, mvcPc, bedgePc, admin, partner, mvcManager, client, connector;
 
 before(async () => {
   await clearRedis();
@@ -242,6 +242,15 @@ before(async () => {
   cookies.admin = await sessionFor(admin);
   cookies.partner = await sessionFor(partner);
   cookies.partnerAllowed = await sessionFor(partner, { canViewDebtors: true });
+  // MVC's billing manager (sees MVC's income ledgers only)
+  mvcManager = await prisma.user.create({
+    data: { name: `MVC Billing ${RUN}`, email: `dmvcbill-${RUN.toLowerCase()}@test.invalid`, role: "PARTNER", canApproveBilling: true },
+  });
+  cookies.mvcManager = await sessionFor(mvcManager);
+  // Income ledgers already in the app: one spelled differently from Tally, one no longer in Tally
+  await prisma.tallyIncomeLedger.deleteMany({ where: { name: { in: ["gst return monthly", "Gst Return Monthly", "Old Service", "ITR Individual", "Consultancy", "Payroll Services"] } } });
+  await prisma.tallyIncomeLedger.create({ data: { entity: "MVC", name: "gst return monthly" } });
+  await prisma.tallyIncomeLedger.create({ data: { entity: "MVC", name: "Old Service" } });
 
   // Two Tally PCs: MVC's (with a client's company open too) and B Edge's
   mvcTally = await startTally([MVC_COMPANY, OTHER_COMPANY], mvcData);
@@ -260,10 +269,14 @@ after(async () => {
   await prisma.tallyLedgerEvent.deleteMany({});
   await prisma.tallyDebtorLedger.deleteMany({});
   await prisma.tallyDebtorSync.deleteMany({});
+  await prisma.bill.deleteMany({ where: { createdById: admin.id } });
+  await prisma.tallyIncomeLedger.deleteMany({ where: { name: { in: ["Gst Return Monthly", "Old Service", "ITR Individual", "Consultancy", "Payroll Services"] } } });
+  await prisma.client.deleteMany({ where: { companyName: { contains: RUN }, id: { not: client.id } } });
+  await prisma.activity.deleteMany({ where: { userId: { in: [admin.id, partner.id, mvcManager.id] } } });
   await prisma.client.delete({ where: { id: client.id } });
   await prisma.connector.delete({ where: { id: connector.id } });
-  await prisma.notification.deleteMany({ where: { OR: [{ sentToId: { in: [admin.id, partner.id] } }, { sentById: { in: [admin.id, partner.id] } }] } });
-  await prisma.user.deleteMany({ where: { id: { in: [admin.id, partner.id] } } });
+  await prisma.notification.deleteMany({ where: { OR: [{ sentToId: { in: [admin.id, partner.id, mvcManager.id] } }, { sentById: { in: [admin.id, partner.id, mvcManager.id] } }] } });
+  await prisma.user.deleteMany({ where: { id: { in: [admin.id, partner.id, mvcManager.id] } } });
   await prisma.$disconnect();
   await clearRedis();
 });
@@ -345,6 +358,98 @@ test("B Edge's company on another Tally PC: its debtors arrive separately, the s
     await page.getByRole("button", { name: "Expand all" }).click();
     await page.screenshot({ path: path.join(process.env.SHOTS, "debtors-both.png"), fullPage: true });
   }
+});
+
+test("income ledgers come from each firm's Tally and are kept apart; bills take only their firm's", async () => {
+  const mvc = await prisma.tallyIncomeLedger.findMany({ where: { entity: "MVC", name: { in: ["Gst Return Monthly", "ITR Individual", "Old Service"] } }, orderBy: { name: "asc" } });
+  // The spelling and group follow Tally; a ledger no longer there can't be picked
+  assert.deepEqual(mvc.map((l) => [l.name, l.groupName, l.inTally]), [["Gst Return Monthly", "Gst", true], ["ITR Individual", "Income Tax Returns", true], ["Old Service", null, false]]);
+  const bedge = await prisma.tallyIncomeLedger.findMany({ where: { entity: "BEDGE" } });
+  assert.deepEqual(bedge.map((l) => [l.name, l.groupName, l.inTally]), [["Consultancy", "Sales Accounts", true]]);
+  // Ledgers of other kinds (debtors, banks, taxes) never come in
+  assert.equal(await prisma.tallyIncomeLedger.count({ where: { name: { in: ["CITY MOTORS", "HDFC Bank", "CGST"] } } }), 0);
+
+  // Admin sees both firms' lists; MVC's billing manager only MVC's
+  const asAdmin = (await api("/api/billing/tally/income-ledgers")).json;
+  assert.deepEqual(asAdmin.firms, ["MVC", "BEDGE"]);
+  const asMvc = (await api("/api/billing/tally/income-ledgers", { as: "mvcManager" })).json;
+  assert.deepEqual(asMvc.firms, ["MVC"]);
+  assert.ok(asMvc.ledgers.every((l) => l.entity === "MVC"));
+  assert.ok(!asMvc.ledgers.some((l) => l.name === "Consultancy"));
+
+  // Excel into B Edge's list (Admin); MVC's billing manager can't
+  const book = new ExcelJS.Workbook();
+  const ws = book.addWorksheet("Ledgers");
+  ws.addRow(["Tally income ledger", "Tally group"]);
+  ws.addRow(["Payroll Services", "Services"]);
+  const upload = async (as, entity) => {
+    const form = new FormData();
+    form.append("entity", entity);
+    form.append("file", new Blob([await book.xlsx.writeBuffer()]), "ledgers.xlsx");
+    const r = await fetch(`${BASE}/api/billing/tally/income-ledgers/file`, { method: "POST", headers: { cookie: `next-auth.session-token=${cookies[as]}` }, body: form });
+    return { status: r.status, json: await r.json() };
+  };
+  assert.equal((await upload("mvcManager", "BEDGE")).status, 403);
+  const added = await upload("admin", "BEDGE");
+  assert.equal(added.status, 200);
+  assert.equal(added.json.added, 1);
+  assert.equal((await prisma.tallyIncomeLedger.findFirst({ where: { name: "Payroll Services" } })).entity, "BEDGE");
+
+  // A B Edge bill takes only B Edge's ledgers; an MVC bill not one missing from Tally
+  const byName = async (entity, name) => (await prisma.tallyIncomeLedger.findFirst({ where: { entity, name } })).id;
+  const bill = (company) =>
+    prisma.bill.create({ data: { company, type: company === "BEDGE" ? "BEDGE" : "GST", description: `Test ${RUN}`, workDate: new Date(), createdById: admin.id, clientId: client.id } });
+  const bedgeBill = await bill("BEDGE");
+  const setLedger = (b, id) => api(`/api/bills/${b.id}`, { method: "POST", body: { action: "set_income_ledger", incomeLedgerId: id } });
+  assert.equal((await setLedger(bedgeBill, await byName("MVC", "Gst Return Monthly"))).status, 400);
+  assert.equal((await setLedger(bedgeBill, await byName("BEDGE", "Consultancy"))).status, 200);
+  const mvcBill = await bill("MVC");
+  assert.equal((await setLedger(mvcBill, await byName("MVC", "Old Service"))).status, 400);
+  assert.equal((await setLedger(mvcBill, await byName("MVC", "ITR Individual"))).status, 200);
+
+  if (process.env.SHOTS) {
+    const { page } = mvcPc;
+    await page.goto(`${BASE}/dashboard/billing?tab=tally`);
+    await page.getByText("Services (Tally income ledgers)").waitFor({ timeout: 60_000 });
+    await closePopups(page);
+    await page.getByText("Services (Tally income ledgers)").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(process.env.SHOTS, "services.png"), fullPage: true });
+  }
+});
+
+test("Create Task: a new client is added from the client box, checked against existing clients, and chosen", async () => {
+  const { page } = mvcPc;
+  await page.goto(`${BASE}/dashboard/tasks/create`);
+  await page.getByRole("button", { name: "Add a new client" }).waitFor({ timeout: 60_000 });
+  await closePopups(page);
+  // Typed in the client search: "Add … as a new client"
+  await page.getByRole("combobox").filter({ hasText: "Select client" }).click();
+  await page.getByPlaceholder("Search...").fill(`Gupta Steel ${RUN}`);
+  await page.getByText(`Add “Gupta Steel ${RUN}” as a new client`).click();
+  await page.getByLabel("Owner's name *").fill(`Asha Gupta ${RUN}`);
+  assert.equal(await page.getByLabel("Company / firm name").inputValue(), `Gupta Steel ${RUN}`);
+  await page.getByLabel("Mobile").fill("98765 43210");
+  if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, "quick-client.png") });
+  await page.getByRole("button", { name: "Add client" }).click();
+  await page.getByText(`Gupta Steel ${RUN} added as a client`).waitFor({ timeout: 30_000 });
+  // Chosen for the task
+  await page.getByRole("combobox").filter({ hasText: `Gupta Steel ${RUN}` }).waitFor();
+  const created = await prisma.client.findFirst({ where: { companyName: `Gupta Steel ${RUN}` } });
+  assert.equal(created.managerId, admin.id);
+  assert.deepEqual(created.phones, [{ number: "98765 43210", label: "Owner", whatsapp: true }]);
+
+  // The same mobile again: offered the existing client instead
+  await page.getByRole("button", { name: "Add a new client" }).click();
+  await page.getByLabel("Owner's name *").fill("Someone Else");
+  await page.getByLabel("Mobile").fill("9876543210");
+  await page.getByRole("button", { name: "Add client" }).click();
+  await page.getByText("This may already be a client").waitFor();
+  await page.getByText("same mobile").waitFor();
+  await page.getByRole("button", { name: "Use this one" }).click();
+  assert.equal(await prisma.client.count({ where: { phone: { contains: "43210" }, companyName: { contains: RUN } } }), 1);
+  await page.getByRole("combobox").filter({ hasText: `Gupta Steel ${RUN}` }).waitFor();
+  // Only Admin and partners may ask
+  assert.equal((await api("/api/clients/similar?name=x", { as: null })).status, 403);
 });
 
 test("the ledger is as in Tally: entries, particulars, opening and closing; the firm is shown", async () => {

@@ -41,7 +41,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.complianceWorkType.update({ where: { id }, data });
+    // Moved to the other firm: its default income ledger was the old firm's
+    const moved = data.company !== undefined && data.company !== workType.company;
+    await tx.complianceWorkType.update({ where: { id }, data: { ...data, ...(moved && { incomeLedgerId: null }) } });
     if (teamUserIds) {
       const users = await tx.user.findMany({ where: { id: { in: teamUserIds }, isActive: true }, select: { id: true } });
       const wanted = new Set(users.map((u) => u.id));

@@ -363,6 +363,8 @@ export async function syncBillCompanyForTask(taskId: string, company: Company, u
       amountRequestedFromId: null,
       amountEnteredById: null,
       amountEnteredAt: null,
+      // The other firm's Tally has its own income ledgers
+      incomeLedgerId: null,
       events: { create: { action: "company_changed", userId, remark: `Moved to ${company === "BEDGE" ? "B Edge" : "MVC"}` } },
     },
   });

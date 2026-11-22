@@ -664,15 +664,24 @@ model Bill {
 // mapping sheet; hidden ledgers can't be picked for new bills but stay on
 // the bills that have them. See docs/TALLY_DIRECT_IMPORT.md.
 model TallyIncomeLedger {
-  id        String   @id @default(uuid()) @db.Char(36)
-  name      String   @unique @db.VarChar(100)
-  groupName String?  @db.VarChar(100) // its group in Tally, shown when picking
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(uuid()) @db.Char(36)
+  // Whose Tally company the ledger is in: MVC's ledgers are for MVC bills
+  // (GST and the Non-GST names), B Edge's for B Edge bills
+  entity      Company   @default(MVC)
+  name        String    @db.VarChar(100)
+  groupName   String?   @db.VarChar(100) // its group in Tally, shown when picking
+  active      Boolean   @default(true) // hidden by the billing manager when false
+  // Seen under Sales Accounts at the firm's last update from Tally
+  // (null: not checked yet); not in Tally = can't be picked
+  inTally     Boolean?
+  tallySeenAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   bills     Bill[]
   workTypes ComplianceWorkType[]
+
+  @@unique([entity, name])
 }
 
 // History of everything done to a bill

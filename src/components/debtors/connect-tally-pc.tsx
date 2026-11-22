@@ -88,7 +88,7 @@ export function TallyPcPanel({ setups, onChanged }: { setups: Record<DebtorEntit
         {version && !extensionCanSync(version) && (
           <div className="space-y-2 rounded-md bg-amber-50 p-3 text-amber-950 dark:bg-amber-950/40 dark:text-amber-50">
             <p>
-              The Tally extension on this PC is version {version}; sending debtors and sales for MVC and B Edge needs 1.3.0 or later. Download it,
+              The Tally extension on this PC is version {version}; sending debtors and sales for MVC and B Edge needs 1.3.1 or later. Download it,
               replace the files in the <code>mvc-tally</code> folder, then press the reload button on the extension in chrome://extensions
               and reload this page.
             </p>

@@ -234,10 +234,12 @@ function handleSync(message) {
   }
 }
 
-// Every 30 seconds while Chrome runs on this PC
+// Once a minute while Chrome runs on this PC (an older version's 30-second
+// alarm is replaced)
+const CHECK_MINUTES = 1;
 function ensureAlarm() {
   chrome.alarms.get(ALARM, (alarm) => {
-    if (!alarm) chrome.alarms.create(ALARM, { periodInMinutes: 0.5 });
+    if (!alarm || alarm.periodInMinutes !== CHECK_MINUTES) chrome.alarms.create(ALARM, { periodInMinutes: CHECK_MINUTES });
   });
 }
 chrome.runtime.onInstalled.addListener(ensureAlarm);
@@ -328,6 +330,8 @@ function latestSlot(now = new Date()) {
   return `${ist(new Date(now.getTime() - 86_400_000)).day} ${SLOTS[SLOTS.length - 1]}`;
 }
 
+// Every request to the app has a time limit, so one that hangs can't stop
+// the checks (an upload gets longer)
 async function api(sync, method, action, body) {
   const headers = { Authorization: `Bearer ${sync.key}` };
   let payload;
@@ -337,7 +341,16 @@ async function api(sync, method, action, body) {
     const stream = new Blob([JSON.stringify(body)]).stream().pipeThrough(new CompressionStream("gzip"));
     payload = await new Response(stream).arrayBuffer();
   }
-  const response = await fetch(`${APP_ORIGIN}/api/tally-sync/${action}`, { method, headers, body: payload, credentials: "omit", cache: "no-store" });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), action === "upload" ? 120_000 : 45_000);
+  let response;
+  try {
+    response = await fetch(`${APP_ORIGIN}/api/tally-sync/${action}`, { method, headers, body: payload, credentials: "omit", cache: "no-store", signal: controller.signal });
+  } catch (error) {
+    throw new Error(error?.name === "AbortError" ? "The app didn't answer in time" : `The app is out of reach (${error?.message ?? error})`);
+  } finally {
+    clearTimeout(timer);
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data?.error || `The app answered ${response.status}`);
@@ -351,32 +364,57 @@ async function api(sync, method, action, body) {
 const running = new Set();
 let ticking = false;
 
+// One check-in a minute for every firm this PC sends for
 async function tick() {
   if (ticking) return;
   ticking = true;
   try {
     const list = await connections();
-    for (const entity of ENTITIES) {
-      if (list[entity]?.key) await tickFirm(entity, list[entity]);
+    const firms = ENTITIES.filter((e) => list[e]?.key);
+    if (!firms.length) return;
+    let answers;
+    try {
+      answers = await pollAll(firms.map((e) => list[e].key));
+    } catch {
+      return; // offline: look again at the next tick
+    }
+    for (const entity of firms) {
+      const answer = answers.find((a) => a.key === list[entity].key);
+      if (answer) await tickFirm(entity, list[entity], answer);
     }
   } finally {
     ticking = false;
   }
 }
 
-async function tickFirm(entity, sync) {
+async function pollAll(keys) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const response = await fetch(`${APP_ORIGIN}/api/tally-sync/poll-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keys }),
+      credentials: "omit",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`The app answered ${response.status}`);
+    return (await response.json()).firms ?? [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function tickFirm(entity, sync, answer) {
   if (running.has(entity)) return;
   const state = await stateOf(entity);
-  let poll;
-  try {
-    poll = await api(sync, "GET", "poll");
-  } catch (error) {
-    if (error.status === 401) {
-      state.lastResult = { ok: false, at: new Date().toISOString(), message: "The app no longer accepts this PC's key for this firm: connect it again from Debtors" };
-      await saveState(entity, state);
-    }
-    return; // offline: look again at the next tick
+  if (!answer.ok) {
+    state.lastResult = { ok: false, at: new Date().toISOString(), message: "The app no longer accepts this PC's key for this firm: connect it again from Debtors" };
+    await saveState(entity, state);
+    return;
   }
+  const poll = answer;
   const slot = latestSlot();
   const refreshAt = poll.refresh?.at ?? null;
   let trigger = null;

@@ -71,9 +71,10 @@ export const tallyStatus = () => ask({ type: "tally-status" }, 20_000);
 
 // ─── Debtors sync (docs/TALLY_DEBTORS.md) ───────────────────────────────────
 
-// The extension sends debtors for MVC and B Edge from version 1.2.0, and the
-// sales ledgers' lines (Sales page) from 1.3.0
-export const SYNC_EXTENSION_VERSION = "1.3.0";
+// The extension sends debtors for MVC and B Edge from version 1.2.0, the
+// sales ledgers' lines (Sales page) from 1.3.0, and checks in once a minute
+// for all its firms in one request from 1.3.1
+export const SYNC_EXTENSION_VERSION = "1.3.1";
 export function extensionCanSync(version: string | null) {
   if (!version) return false;
   const [a = 0, b = 0] = version.split(".").map(Number);

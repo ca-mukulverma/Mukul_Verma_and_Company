@@ -5,7 +5,7 @@ import { ENTITY_LABELS } from "@/lib/tally-debtors-shared";
 export const dynamic = "force-dynamic";
 
 // POST /api/debtors/refresh { entity } – "Refresh now" for one firm: its Tally
-// PC picks this up within 30 seconds and sends that firm's debtors again.
+// PC picks this up within a minute and sends that firm's debtors again.
 // Redis only.
 export async function POST(request: Request) {
   const user = await debtorsUser();

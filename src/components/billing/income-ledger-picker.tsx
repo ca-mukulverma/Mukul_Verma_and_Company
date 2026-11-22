@@ -10,10 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-// The Tally income ledgers (services) bills go to; see Billing → Tally → Services
+// The Tally income ledgers (services) bills go to; see Billing → Tally → Services.
+// Each firm has its own: MVC bills go to MVC's ledgers, B Edge bills to B Edge's.
+
+export type LedgerFirm = "MVC" | "BEDGE";
 
 export interface IncomeLedger {
   id: string;
+  entity: LedgerFirm;
+  // false: not under Sales Accounts at the firm's last update from Tally
+  inTally: boolean | null;
   name: string;
   groupName: string | null;
   active: boolean;
@@ -29,13 +35,19 @@ export interface WorkTypeDefault {
   canEdit: boolean;
 }
 
+interface LedgerData {
+  firms: LedgerFirm[];
+  ledgers: IncomeLedger[];
+  workTypes: WorkTypeDefault[];
+}
+
 // Loaded once per page and shared by every picker on it
-let cache: Promise<{ ledgers: IncomeLedger[]; workTypes: WorkTypeDefault[] }> | null = null;
+let cache: Promise<LedgerData> | null = null;
 const listeners = new Set<() => void>();
 
 function fetchLedgers() {
   cache ??= axios
-    .get<{ ledgers: IncomeLedger[]; workTypes: WorkTypeDefault[] }>("/api/billing/tally/income-ledgers")
+    .get<LedgerData>("/api/billing/tally/income-ledgers")
     .then((r) => r.data)
     .catch((error) => {
       cache = null;
@@ -51,7 +63,7 @@ export function reloadIncomeLedgers() {
 }
 
 export function useIncomeLedgers() {
-  const [data, setData] = useState<{ ledgers: IncomeLedger[]; workTypes: WorkTypeDefault[] } | null>(null);
+  const [data, setData] = useState<LedgerData | null>(null);
   const [failed, setFailed] = useState(false);
   const load = useCallback(() => {
     fetchLedgers()
@@ -68,7 +80,7 @@ export function useIncomeLedgers() {
       listeners.delete(load);
     };
   }, [load]);
-  return { ledgers: data?.ledgers ?? null, workTypes: data?.workTypes ?? null, failed };
+  return { firms: data?.firms ?? null, ledgers: data?.ledgers ?? null, workTypes: data?.workTypes ?? null, failed };
 }
 
 const SHOWN = 60;
@@ -99,10 +111,11 @@ export function IncomeLedgerPicker({
 
   const selected = ledgers.find((l) => l.id === value) ?? null;
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  // Hidden ledgers can't be picked, but the one already chosen stays visible
+  // Hidden ledgers, and ledgers no longer in Tally, can't be picked, but the
+  // one already chosen stays visible
   const matches = ledgers.filter(
     (l) =>
-      (l.active || l.id === value) &&
+      ((l.active && l.inTally !== false) || l.id === value) &&
       words.every((w) => l.name.toLowerCase().includes(w) || (l.groupName ?? "").toLowerCase().includes(w))
   );
   const pick = (ledgerId: string | null) => {
@@ -142,7 +155,7 @@ export function IncomeLedgerPicker({
           <CommandList>
             <CommandEmpty>
               {ledgers.length === 0
-                ? "No income ledgers yet: load them in Billing → Tally → Services"
+                ? "No income ledgers for this firm yet: they come from its Tally, or load them in Billing → Tally → Services"
                 : "No ledger matches. Ledgers are added in Billing → Tally → Services."}
             </CommandEmpty>
             {allowNone && words.length === 0 && (
@@ -160,7 +173,7 @@ export function IncomeLedgerPicker({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{l.name}</span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {[l.groupName, !l.active && "hidden", l.billCount > 0 && `${l.billCount} bill${l.billCount === 1 ? "" : "s"}`]
+                        {[l.groupName, !l.active && "hidden", l.inTally === false && "not in Tally", l.billCount > 0 && `${l.billCount} bill${l.billCount === 1 ? "" : "s"}`]
                           .filter(Boolean)
                           .join(" · ") || " "}
                       </span>
@@ -185,23 +198,27 @@ export function IncomeLedgerPicker({
 // The ledger and the description on its line, as on the amount screen and
 // the bill's "Tally ledger" window
 export function IncomeLedgerFields({
+  entity,
   ledgerId,
   onLedgerChange,
   description,
   onDescriptionChange,
   descriptionPlaceholder,
 }: {
+  // The bill's firm: only its ledgers are offered
+  entity: LedgerFirm;
   ledgerId: string | null;
   onLedgerChange: (id: string | null) => void;
   description: string;
   onDescriptionChange: (value: string) => void;
   descriptionPlaceholder: string;
 }) {
-  const { ledgers, failed } = useIncomeLedgers();
+  const { ledgers: all, failed } = useIncomeLedgers();
+  const ledgers = all?.filter((l) => l.entity === entity) ?? null;
   return (
     <div className="space-y-3 rounded-md border p-3">
       <div className="space-y-2">
-        <Label htmlFor="income-ledger">Tally income ledger (service)</Label>
+        <Label htmlFor="income-ledger">Tally income ledger (service) – {entity === "BEDGE" ? "B Edge" : "MVC"}</Label>
         {ledgers ? (
           <IncomeLedgerPicker id="income-ledger" value={ledgerId} onChange={onLedgerChange} ledgers={ledgers} />
         ) : (

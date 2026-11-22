@@ -14,6 +14,7 @@ import { BILL_TYPE_LABELS, BillTypeValue, formatRupees } from "@/lib/billing-con
 import { apiErrorMessage, blobErrorMessage, downloadBillFile, runBillAction } from "./bill-types";
 import { IncomeLedgerFields } from "./income-ledger-picker";
 import { TallyServices } from "./tally-services";
+import { TallyExtensionCard } from "./tally-extension-card";
 import { TallySendDialog } from "./tally-send";
 import { TallyLedgerFile } from "./tally-ledger-file";
 import { PendingLedgers } from "./pending-ledgers";
@@ -105,6 +106,7 @@ export function TallyExport({ isAdmin }: { isAdmin: boolean }) {
         ))}
       </div>
       <TallyServices />
+      <TallyExtensionCard />
     </div>
   );
 }
@@ -292,6 +294,7 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
       )}
       {ledgerFor && (
         <WaitingBillLedger
+          entity={series.type === "BEDGE" ? "BEDGE" : "MVC"}
           bill={ledgerFor}
           onClose={() => setLedgerFor(null)}
           onSaved={() => {
@@ -305,7 +308,7 @@ function SeriesCard({ series, isAdmin, onChanged }: { series: Series; isAdmin: b
 }
 
 // The income ledger of a bill waiting for Tally
-function WaitingBillLedger({ bill, onClose, onSaved }: { bill: WaitingBill; onClose: () => void; onSaved: () => void }) {
+function WaitingBillLedger({ bill, entity, onClose, onSaved }: { bill: WaitingBill; entity: "MVC" | "BEDGE"; onClose: () => void; onSaved: () => void }) {
   const [ledgerId, setLedgerId] = useState<string | null>(bill.incomeLedgerId);
   const [line, setLine] = useState(bill.savedLineDescription ?? "");
   const [saving, setSaving] = useState(false);
@@ -339,6 +342,7 @@ function WaitingBillLedger({ bill, onClose, onSaved }: { bill: WaitingBill; onCl
           }}
         >
           <IncomeLedgerFields
+            entity={entity}
             ledgerId={ledgerId}
             onLedgerChange={setLedgerId}
             description={line}

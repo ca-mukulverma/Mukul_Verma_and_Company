@@ -17,7 +17,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import axios from "axios";
 import { useDebounce } from "@/hooks/use-debounce";
 import { getRecentClients, rememberClient } from "@/lib/recent-clients";
@@ -35,6 +35,8 @@ interface SearchableSelectProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  // Offers "Add … as a new client" with what was typed (Create Task)
+  onCreate?: (typed: string) => void;
 }
 
 export function SearchableSelect({
@@ -44,6 +46,7 @@ export function SearchableSelect({
   placeholder = "Select an option",
   disabled = false,
   className,
+  onCreate,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
@@ -123,12 +126,12 @@ export function SearchableSelect({
           className={cn("w-full justify-between", className)}
         >
           {selectedOption ? (
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <Avatar className="h-5 w-5">
                 <AvatarImage src={selectedOption.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${selectedOption.label}`} />
                 <AvatarFallback className="text-[10px]">{getInitials(selectedOption.label)}</AvatarFallback>
               </Avatar>
-              <span>{selectedOption.label}</span>
+              <span className="truncate">{selectedOption.label}</span>
             </div>
           ) : (
             <span className="text-muted-foreground">{placeholder}</span>
@@ -185,6 +188,22 @@ export function SearchableSelect({
                 </CommandItem>
               ))}
             </CommandGroup>
+            {onCreate && (
+              <CommandGroup forceMount>
+                <CommandItem
+                  forceMount
+                  value={`__create ${searchInput}`}
+                  onSelect={() => {
+                    setOpen(false);
+                    onCreate(searchInput.trim());
+                  }}
+                  className="text-primary"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {searchInput.trim() ? `Add “${searchInput.trim()}” as a new client` : "Add a new client"}
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
