@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
-import { BillStatus, Prisma } from "@prisma/client";
+import { BillStatus, Company, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authOptions, getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -75,11 +75,14 @@ const actionSchema = z.discriminatedUnion("action", [
 
 // A Tally income ledger that may be put on a bill: hidden ones only if the
 // bill already has it
-async function pickableLedger(id: string, currentId: string | null) {
-  const ledger = await prisma.tallyIncomeLedger.findUnique({ where: { id }, select: { id: true, name: true, active: true } });
-  return ledger && (ledger.active || ledger.id === currentId) ? ledger : null;
+// A ledger of the bill's own firm (MVC's for MVC bills, B Edge's for B Edge
+// bills), shown in the list or already on the bill
+async function pickableLedger(id: string, currentId: string | null, company: Company) {
+  const ledger = await prisma.tallyIncomeLedger.findUnique({ where: { id }, select: { id: true, name: true, active: true, inTally: true, entity: true } });
+  if (!ledger || ledger.entity !== company) return null;
+  return ledger.id === currentId || (ledger.active && ledger.inTally !== false) ? ledger : null;
 }
-const LEDGER_NOT_FOUND = { error: "That income ledger is not in the list. Refresh and pick it again." };
+const LEDGER_NOT_FOUND = { error: "That income ledger is not in this firm's list. Refresh and pick it again." };
 
 async function loadContext(id: string) {
   const session = await getServerSession(authOptions);
@@ -280,7 +283,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (!hasBillTo(bill)) return NextResponse.json({ error: "Select the client or enter the name to bill first" }, { status: 400 });
       // Only the billing manager or Admin chooses the Tally income ledger
       if ((input.incomeLedgerId !== undefined || input.lineDescription !== undefined) && !isManager) return forbidden();
-      if (input.incomeLedgerId && !(await pickableLedger(input.incomeLedgerId, bill.incomeLedgerId))) {
+      if (input.incomeLedgerId && !(await pickableLedger(input.incomeLedgerId, bill.incomeLedgerId, bill.company))) {
         return NextResponse.json(LEDGER_NOT_FOUND, { status: 400 });
       }
 
@@ -487,7 +490,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (["cancelled", "not_billable"].includes(bill.status)) {
         return NextResponse.json({ error: "This bill doesn't go to Tally" }, { status: 400 });
       }
-      const ledger = await pickableLedger(input.incomeLedgerId, bill.incomeLedgerId);
+      const ledger = await pickableLedger(input.incomeLedgerId, bill.incomeLedgerId, bill.company);
       if (!ledger) return NextResponse.json(LEDGER_NOT_FOUND, { status: 400 });
       const description = input.lineDescription === undefined ? bill.tallyLineDescription : input.lineDescription || null;
       if (ledger.id === bill.incomeLedgerId && description === bill.tallyLineDescription) break;

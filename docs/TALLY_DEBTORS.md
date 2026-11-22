@@ -90,6 +90,22 @@ is counted to today.
 Sales come with Tally extension **1.3.0**. Until a firm's PC has it, the page
 says so.
 
+## Income ledgers for billing, per firm
+
+Each firm's **income ledgers** (Billing → Tally → Services) come from its own
+Tally company: at every update above, the ledgers under *Sales Accounts* are
+added to that firm's list, with their group and spelling as in Tally. A ledger
+no longer in Tally is marked *Not in Tally* and can't be picked for new bills
+(bills keep it). Lists can also be loaded from Excel or added by hand, per
+firm. MVC bills (GST and the Non-GST names) take only MVC's ledgers, B Edge
+bills only B Edge's; a compliance work type's default ledger is from its own
+firm's list. The MVC billing manager sees MVC's list, the B Edge billing
+manager B Edge's, Admin both. Client (party) ledgers are shared by both firms.
+
+**Any manager** (Admin and the billing managers in Billing → Tally; everyone
+with Debtors) can download the Tally extension from their own login.
+Connecting a Tally PC for Debtors stays with Admin.
+
 ## The update time
 
 Every Debtors screen shows each firm's **"Tally data as of …"** in large
@@ -106,13 +122,14 @@ to refresh first, or to confirm.
 ## How the data gets here
 
 Each firm's Tally PC sends that firm's data. The **MV Company Tally** Chrome
-extension (`public/tally-extension`, **version 1.3.0** or later, the same one
+extension (`public/tally-extension`, **version 1.3.1** or later, the same one
 used to send bills into Tally) does this:
 
 - **at 11:30 am, 1:00 pm, 4:00 pm and 7:00 pm IST**. If the PC was off at
   that time, it sends once as soon as it is on;
-- **on Refresh now** for that firm. The PC checks every 30 seconds and then
-  reads Tally, usually within 1–3 minutes;
+- **on Refresh now** for that firm. The PC checks in once a minute (one
+  request for all the firms it sends for) and then reads Tally, usually
+  within 1–4 minutes;
 - a **failed** update (Tally closed, company not loaded) is **not tried again
   on its own**. The screen turns red with the reason; press Refresh now once
   Tally is ready.
@@ -151,7 +168,7 @@ data already here stays.
 ## Cost
 
 - **Neon:** one row per debtor ledger per firm (its lines as JSON), a few MB in
-  all. The 30-second checks, key checks, update times and Refresh now requests
+  all. The once-a-minute checks, key checks, update times and Refresh now requests
   are served from **Redis**, so they never wake the database. Only an update (4
   a day per firm, in office hours) and opening Debtors read or write it. An
   update writes only the ledgers that changed (by hash). Recovery figures are
@@ -163,7 +180,7 @@ data already here stays.
 
 | Part | Where |
 |---|---|
-| Tally PC → app (key `mvct_…`, one per firm) | `GET /api/tally-sync/poll`, `POST /api/tally-sync/{plan,upload,commit,error}` |
+| Tally PC → app (key `mvct_…`, one per firm) | `POST /api/tally-sync/poll-all` (once a minute, all the PC's firms; 1.2.0–1.3.0: `GET /api/tally-sync/poll`), `POST /api/tally-sync/{plan,upload,commit,error}` |
 | Pages | `/dashboard/debtors?firm=MVC\|BEDGE\|BOTH&view=recovery\|ledgers&month=YYYY-MM`, `/dashboard/debtors/[id]` (`?send=whatsapp`), client page → Ledger tab |
 | APIs | `/api/debtors` (both firms), `/status?entity=` (Redis only), `/refresh` `{entity}`, `/connect` (Admin), `/recovery?entity=&month=`, `/[id]`, `/[id]/file`, `/[id]/share`, `/api/clients/[id]/ledger`, `/api/ledger-link/[token]` (public, 7 days) |
 | Code | `src/lib/tally-debtors.ts` (server), `src/lib/tally-recovery.ts` (recovery figures), `src/lib/tally-debtors-shared.ts`, `src/lib/tally-ledger-files.ts` (PDF / Excel), `src/components/debtors/*`, `public/tally-extension/background.js` (end of file) |

@@ -44,7 +44,8 @@ import { TaskPageLayout } from "@/components/layouts/task-page-layout";
 import { getTaskListUrl } from "@/lib/task-list-state";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { CalendarIcon, Loader2 } from "lucide-react";
+import { CalendarIcon, Loader2, UserPlus } from "lucide-react";
+import { QuickClientDialog } from "@/components/clients/quick-client-dialog";
 import { SearchableMultiSelect } from "@/components/tasks/searchable-multi-select";
 import { SearchableSelect } from "@/components/tasks/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -94,6 +95,8 @@ export default function CreateTaskPage() {
   
   const [users, setUsers] = useState<User[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  // A client being added from here (what was typed in the search), or null
+  const [newClientName, setNewClientName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -457,16 +460,30 @@ const onSubmit = async (data: TaskFormValues) => {
                       <FormLabel className="text-primary-foreground/90 font-medium">Client (Optional)</FormLabel>
                       <FormControl>
                         {/* Replace with SearchableSelect */}
-                        <SearchableSelect
-                          options={clients.map(client => ({
-                            value: client.id,
-                            label: client.companyName || client.contactPerson
-                          }))}
-                          selected={field.value ?? null}
-                          onChange={field.onChange}
-                          placeholder="Select client"
-                          className="transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
-                        />
+                        <div className="flex min-w-0 gap-2">
+                          <div className="min-w-0 flex-1">
+                          <SearchableSelect
+                            options={clients.map(client => ({
+                              value: client.id,
+                              label: client.companyName || client.contactPerson
+                            }))}
+                            selected={field.value ?? null}
+                            onChange={field.onChange}
+                            placeholder="Select client"
+                            className="transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                            onCreate={(typed) => setNewClientName(typed)}
+                          />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="shrink-0"
+                            onClick={() => setNewClientName("")}
+                            aria-label="Add a new client"
+                          >
+                            <UserPlus className="mr-1 h-4 w-4" /> New client
+                          </Button>
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -619,6 +636,18 @@ const onSubmit = async (data: TaskFormValues) => {
           </Form>
         </CardContent>
       </Card>
+      {newClientName !== null && (
+        <QuickClientDialog
+          initialName={newClientName}
+          onClose={() => setNewClientName(null)}
+          onCreated={(client) => {
+            // Into the list and chosen for this task; nothing typed in the task is lost
+            setClients((list) => (list.some((c) => c.id === client.id) ? list : [{ ...client, companyName: client.companyName ?? undefined }, ...list]));
+            form.setValue("clientId", client.id, { shouldDirty: true, shouldValidate: true });
+            setNewClientName(null);
+          }}
+        />
+      )}
     </TaskPageLayout>
   );
 }

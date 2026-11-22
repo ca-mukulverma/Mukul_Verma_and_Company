@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiError } from "@/components/compliance/types";
 import { TallyPcPanel, SyncSetup } from "@/components/debtors/connect-tally-pc";
+import { TallyExtensionCard } from "@/components/billing/tally-extension-card";
 import { RecoveryCompare, RecoveryPanel } from "@/components/debtors/recovery-panel";
 import { UpdateBanner, useSyncStatus } from "@/components/debtors/sync-status";
 import { cn } from "@/lib/utils";
@@ -203,6 +204,7 @@ function DebtorsPage() {
           )}
 
           {data.isAdmin && <TallyPcPanel setups={{ MVC: data.firms.MVC.setup, BEDGE: data.firms.BEDGE.setup }} onChanged={reload} />}
+          <TallyExtensionCard />
         </>
       )}
     </div>

@@ -234,6 +234,7 @@ export function EnterAmountDialog({ bill, onClose, onDone }: DialogProps) {
           <FeeHints billId={bill.id} onPick={(fee) => setValue(String(fee))} />
           {bill.canManage && (
             <IncomeLedgerFields
+              entity={bill.company}
               ledgerId={ledgerId}
               onLedgerChange={setLedgerId}
               description={line}
@@ -293,6 +294,7 @@ export function IncomeLedgerDialog({ bill, onClose, onDone }: DialogProps) {
           }}
         >
           <IncomeLedgerFields
+              entity={bill.company}
             ledgerId={ledgerId}
             onLedgerChange={setLedgerId}
             description={line}

@@ -6,6 +6,7 @@ import {
   ledgersNeeded,
   planSchema,
   pollAnswer,
+  pollMany,
   reportSyncError,
   saveLedgers,
   saveSalesMonths,
@@ -26,7 +27,7 @@ const MAX_JSON = 60 * 1024 * 1024;
 
 const refuse = () => NextResponse.json({ error: "Key not accepted. Connect this PC again from Debtors." }, { status: 401 });
 
-// GET /api/tally-sync/poll – every 30 seconds: what to read, and whether a
+// GET /api/tally-sync/poll – (extension 1.2.0–1.3.0) every 30 seconds: what to read, and whether a
 // refresh is asked for. Redis only.
 export async function GET(request: Request, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;
@@ -46,6 +47,14 @@ async function readBody(request: Request): Promise<unknown> {
 
 export async function POST(request: Request, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;
+  // POST /api/tally-sync/poll-all { keys } – a Tally PC's check-in once a
+  // minute for every firm it sends for (extension 1.3.1 on). Redis only.
+  if (action === "poll-all") {
+    const body = (await request.json().catch(() => null)) as { keys?: unknown } | null;
+    const keys = Array.isArray(body?.keys) ? body.keys.filter((k): k is string => typeof k === "string").slice(0, 4) : [];
+    if (!keys.length) return NextResponse.json({ error: "Send the keys" }, { status: 400 });
+    return NextResponse.json({ firms: await pollMany(keys) });
+  }
   const who = await syncAgentFromRequest(request);
   if (!who) return refuse();
 

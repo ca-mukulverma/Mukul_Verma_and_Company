@@ -1,15 +1,24 @@
 import ExcelJS from "exceljs";
+import { Company, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cellText, ImportFileError } from "@/lib/client-import";
 
 // The income ledgers in Tally that bills go to, one per service (e.g. "Gst
 // Return Monthly" under Sales Accounts → Gst). Billing → Tally → Services.
 // See docs/TALLY_DIRECT_IMPORT.md.
+//
+// Each firm has its own list from its own Tally company: MVC's (Mukul Verma &
+// Co.) for MVC bills (GST and the Non-GST names), B Edge's for B Edge bills.
+// The lists come from Excel, from "Add ledger", and on their own from each
+// firm's Tally at every update of Debtors (the ledgers under Sales Accounts).
 
 export const MAX_INCOME_LEDGER_LENGTH = 100;
 
 export interface IncomeLedgerOption {
   id: string;
+  entity: Company;
+  // false: not under Sales Accounts at the firm's last update from Tally
+  inTally: boolean | null;
   name: string;
   groupName: string | null;
   active: boolean;
@@ -20,9 +29,9 @@ export interface IncomeLedgerOption {
 
 // Every income ledger with how much it is used, most recently used first,
 // then by name
-export async function listIncomeLedgers(): Promise<IncomeLedgerOption[]> {
+export async function listIncomeLedgers(entities: Company[]): Promise<IncomeLedgerOption[]> {
   const [ledgers, usage] = await Promise.all([
-    prisma.tallyIncomeLedger.findMany({ orderBy: { name: "asc" } }),
+    prisma.tallyIncomeLedger.findMany({ where: { entity: { in: entities } }, orderBy: { name: "asc" } }),
     prisma.bill.groupBy({
       by: ["incomeLedgerId"],
       where: { incomeLedgerId: { not: null } },
@@ -36,6 +45,8 @@ export async function listIncomeLedgers(): Promise<IncomeLedgerOption[]> {
       const u = used.get(l.id);
       return {
         id: l.id,
+        entity: l.entity,
+        inTally: l.inTally,
         name: l.name,
         groupName: l.groupName,
         active: l.active,
@@ -102,7 +113,7 @@ export interface LedgerImportResult {
 
 // Adds the ledgers in the file and updates their group and whether they are
 // shown. Never deletes: ledgers missing from the file stay as they are.
-export async function importIncomeLedgers(buffer: ArrayBuffer): Promise<LedgerImportResult> {
+export async function importIncomeLedgers(entity: Company, buffer: ArrayBuffer): Promise<LedgerImportResult> {
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(buffer);
@@ -127,7 +138,7 @@ export async function importIncomeLedgers(buffer: ArrayBuffer): Promise<LedgerIm
     byName.set(row.name.toLowerCase(), row);
   }
 
-  const existing = await prisma.tallyIncomeLedger.findMany();
+  const existing = await prisma.tallyIncomeLedger.findMany({ where: { entity } });
   const existingByName = new Map(existing.map((l) => [l.name.toLowerCase(), l]));
   const result: LedgerImportResult = { added: 0, updated: 0, unchanged: 0, hidden: 0, errors };
 
@@ -138,7 +149,7 @@ export async function importIncomeLedgers(buffer: ArrayBuffer): Promise<LedgerIm
       const active = row.show ?? current?.active ?? true;
       if (!active) result.hidden++;
       if (!current) {
-        await tx.tallyIncomeLedger.create({ data: { name: row.name, groupName, active } });
+        await tx.tallyIncomeLedger.create({ data: { entity, name: row.name, groupName, active } });
         result.added++;
       } else if (current.name !== row.name || current.groupName !== groupName || current.active !== active) {
         // The file's spelling wins, e.g. a change of capitals made in Tally
@@ -150,4 +161,47 @@ export async function importIncomeLedgers(buffer: ArrayBuffer): Promise<LedgerIm
     }
   });
   return result;
+}
+
+// At each update from a firm's Tally (Debtors): its ledgers under Sales
+// Accounts. New ones are added, groups and spelling follow Tally, and those
+// no longer in Tally can't be picked (bills keep them). Whether a ledger is
+// hidden stays the billing manager's choice.
+export async function syncIncomeLedgersFromTally(entity: Company, fromTally: Record<string, string>) {
+  const now = new Date();
+  const inTally = new Map(
+    Object.entries(fromTally)
+      .map(([name, group]) => [cleanLedgerName(name), cleanLedgerName(group)] as const)
+      .filter(([name]) => name && name.length <= MAX_INCOME_LEDGER_LENGTH)
+      .map(([name, group]) => [name.toLowerCase(), { name, group: group.slice(0, MAX_INCOME_LEDGER_LENGTH) || null }] as const)
+  );
+  const existing = await prisma.tallyIncomeLedger.findMany({ where: { entity } });
+  const seen = new Set<string>();
+  const seenIds: string[] = [];
+  const writes: Prisma.PrismaPromise<unknown>[] = [];
+  for (const l of existing) {
+    const key = l.name.toLowerCase();
+    const t = inTally.get(key);
+    if (t && !seen.has(key)) {
+      seen.add(key);
+      seenIds.push(l.id);
+      if (l.name !== t.name || l.groupName !== t.group || l.inTally !== true) {
+        writes.push(prisma.tallyIncomeLedger.update({ where: { id: l.id }, data: { name: t.name, groupName: t.group, inTally: true } }));
+      }
+    } else if (l.inTally !== false) {
+      writes.push(prisma.tallyIncomeLedger.update({ where: { id: l.id }, data: { inTally: false } }));
+    }
+  }
+  const added = [...inTally.entries()].filter(([key]) => !seen.has(key));
+  if (added.length) {
+    writes.push(
+      prisma.tallyIncomeLedger.createMany({
+        data: added.map(([, t]) => ({ entity, name: t.name, groupName: t.group, inTally: true, tallySeenAt: now })),
+        skipDuplicates: true,
+      })
+    );
+  }
+  if (seenIds.length) writes.push(prisma.tallyIncomeLedger.updateMany({ where: { id: { in: seenIds } }, data: { tallySeenAt: now } }));
+  for (let i = 0; i < writes.length; i += 100) await prisma.$transaction(writes.slice(i, i + 100));
+  return { added: added.length };
 }

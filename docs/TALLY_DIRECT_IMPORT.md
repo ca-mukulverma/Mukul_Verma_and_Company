@@ -69,6 +69,14 @@ Narration      client name <tab> work description
 
 ## Service → income ledger
 
+**Per firm (since 23 Nov 2026):** each firm has its own list, from its own
+Tally company: MVC's ledgers for MVC bills (GST and the Non-GST names), B Edge's
+for B Edge bills. Each list is filled on its own from that firm's Tally at every
+Debtors update (the ledgers under Sales Accounts; see docs/TALLY_DEBTORS.md),
+and can also be loaded from Excel or added by hand. A bill can only take its
+own firm's ledgers; a compliance work type's default is from its own firm.
+Party (client) ledgers stay shared by both firms.
+
 Today the app sends every fee to one ledger ("Professional Fees"). Instead:
 
 - **Billing → Tally → Services**: the list of income ledgers the billing

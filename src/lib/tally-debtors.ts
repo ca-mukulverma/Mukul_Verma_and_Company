@@ -10,6 +10,7 @@ import { cacheDel, cacheGet, cacheSet, sha256 } from "@/lib/desk";
 import { connectorLedger } from "@/lib/connectors";
 import { DEBTOR_ENTITIES, ENTITY_LABELS, istToday, keptPeriod, salesFrom, type DebtorEntity, type LedgerEntry } from "@/lib/tally-debtors-shared";
 import { addMonths, recovery, type Recovery } from "@/lib/tally-recovery";
+import { syncIncomeLedgersFromTally } from "@/lib/tally-income-ledgers";
 import { salesPeriod, salesReport, type FirmSales, type Period, type SalesLine, type SalesReport } from "@/lib/tally-sales";
 
 /**
@@ -23,7 +24,8 @@ import { salesPeriod, salesReport, type FirmSales, type Period, type SalesLine, 
  * update is not tried again on its own: someone presses Refresh now. Each
  * firm's PC has its own key, so the key tells which firm the data is for.
  * It calls /api/tally-sync/* (Authorization: Bearer mvct_…):
- *   GET  poll    every 30 seconds: is a refresh asked for? (Redis only)
+ *   POST poll-all once a minute, for every firm the PC sends for: is a refresh
+ *                 asked for? (Redis only; extension 1.2.0–1.3.0: GET poll every 30 s)
  *   POST plan    which ledgers changed since the last time (their hashes)
  *   POST upload  the changed ledgers with their entries
  *   POST commit  the groups and the full list of ledgers; sets the "as of" time
@@ -59,6 +61,51 @@ export function newSyncKey() {
 export interface SyncAgent {
   entity: DebtorEntity;
   company: string;
+}
+
+const KEY_RE = /^mvct_[A-Za-z0-9_-]{20,64}$/;
+
+// The firm a Tally PC's key is for (Redis first); null = not accepted
+async function agentFromKey(key: string): Promise<SyncAgent | null> {
+  if (!KEY_RE.test(key)) return null;
+  const hash = sha256(key);
+  let who = await cacheGet<SyncAgent>(KEY_CACHE + hash);
+  if (!who) {
+    const row = await prisma.tallyDebtorSync.findUnique({ where: { keyHash: hash }, select: { entity: true, company: true } });
+    if (!row) return null;
+    who = { entity: row.entity, company: row.company };
+    await cacheSet(KEY_CACHE + hash, who, 30 * DAY);
+  }
+  return who;
+}
+
+// The once-a-minute check-in of a Tally PC (extension 1.3.1 on), for every
+// firm it sends for in one request: notes it was seen and answers whether a
+// refresh is waiting. Redis only, in one round trip for the firms.
+export async function pollMany(keys: string[]) {
+  const agents = await Promise.all(keys.map((k) => agentFromKey(k)));
+  const known = agents.filter((a): a is SyncAgent => !!a);
+  const refresh = new Map<DebtorEntity, { at: string; by: string } | null>();
+  if (known.length) {
+    try {
+      const pipe = redis.pipeline();
+      const now = new Date().toISOString();
+      for (const a of known) pipe.set(SEEN + a.entity, now, "EX", 30 * DAY).get(REFRESH + a.entity);
+      const results = (await pipe.exec()) ?? [];
+      known.forEach((a, i) => {
+        const value = results[i * 2 + 1]?.[1];
+        refresh.set(a.entity, typeof value === "string" ? JSON.parse(value) : null);
+      });
+    } catch {
+      /* Redis down: no refresh requests seen this time */
+    }
+  }
+  const period = keptPeriod();
+  const from = salesFrom();
+  return keys.map((key, i) => {
+    const a = agents[i];
+    return a ? { key, ok: true as const, entity: a.entity, company: a.company, period, salesFrom: from, refresh: refresh.get(a.entity) ?? null } : { key, ok: false as const };
+  });
 }
 
 /** The Tally PC (and the firm it sends for) a request comes from ("Authorization: Bearer mvct_…"); null = refuse. */
@@ -98,7 +145,7 @@ export interface SyncState {
 }
 
 export interface SyncStatus extends SyncState {
-  // When the Tally PC last checked in (it does every 30 seconds while on)
+  // When the Tally PC last checked in (it does once a minute while on)
   seenAt: string | null;
   // A refresh asked for and not yet done
   refresh: { at: string; by: string } | null;
@@ -335,6 +382,14 @@ export async function commitSync({ entity, company }: SyncAgent, body: z.infer<t
     }),
     ...(body.sales ? [prisma.tallySalesMonth.deleteMany({ where: { entity, month: { notIn: body.sales.months } } })] : []),
   ]);
+  // The firm's income ledgers for billing follow its Tally (Billing → Tally → Services)
+  if (body.sales) {
+    try {
+      await syncIncomeLedgersFromTally(entity, body.sales.ledgers);
+    } catch (error) {
+      console.error("Income ledgers from Tally could not be updated:", error);
+    }
+  }
   const state: SyncState = {
     entity,
     connected: true,

@@ -18,8 +18,12 @@ export async function PUT(request: NextRequest) {
   if (!workType) return NextResponse.json({ error: "Work type not found" }, { status: 404 });
   if (!access.isAdmin && !access.manages.includes(workType.company)) return forbidden();
   if (incomeLedgerId) {
-    const ledger = await prisma.tallyIncomeLedger.findUnique({ where: { id: incomeLedgerId }, select: { active: true } });
+    const ledger = await prisma.tallyIncomeLedger.findUnique({ where: { id: incomeLedgerId }, select: { active: true, entity: true } });
     if (!ledger?.active) return NextResponse.json({ error: "That ledger is not in the list" }, { status: 400 });
+    // Bills of a B Edge work type are B Edge's, and go to a ledger in B Edge's Tally
+    if (ledger.entity !== workType.company) {
+      return NextResponse.json({ error: `Pick one of ${workType.company === "BEDGE" ? "B Edge" : "MVC"}'s income ledgers` }, { status: 400 });
+    }
   }
   await prisma.complianceWorkType.update({ where: { id: workTypeId }, data: { incomeLedgerId } });
   return NextResponse.json({ ok: true });
