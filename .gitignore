@@ -85,3 +85,8 @@ dist/
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# WhatsApp listener (runs on the office PC): login, queue and secrets stay there
+/listener/data/
+/listener/.env
+/listener/node_modules/

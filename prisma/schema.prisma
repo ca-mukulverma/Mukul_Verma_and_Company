@@ -1477,3 +1477,52 @@ model TallyLedgerEvent {
   @@index([entity, ledgerName, at(sort: Desc)])
   @@index([at])
 }
+
+// ---------------------------------------------------------------- WhatsApp intake (docs/WHATSAPP_INTAKE.md)
+// One row per client WhatsApp group the firm's dedicated number is in. The
+// listener on the office PC reports the groups; Admin links each to a client
+// (and to the client's Desk, whose files are handed over to it).
+model WaGroup {
+  id           String      @id @default(uuid()) @db.Char(36)
+  jid          String      @unique @db.VarChar(60) // WhatsApp's id of the group
+  name         String      @db.VarChar(120)
+  clientId     String?     @db.Char(36) // the client in this portal
+  deskClientId String?     @db.Char(36) // files go to this Desk (Control Centre)
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  messages     WaMessage[]
+
+  @@index([clientId])
+}
+
+// Every message of a client group: text and status only. A file waits in R2
+// until the client's Desk has collected it, then it is deleted (fileKey null).
+model WaMessage {
+  id           String    @id @default(uuid()) @db.Char(36)
+  waId         String    @unique @db.VarChar(80)
+  groupId      String    @db.Char(36)
+  group        WaGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  clientId     String?   @db.Char(36)
+  senderPhone  String    @db.VarChar(20)
+  senderName   String?   @db.VarChar(80)
+  staffUserId  String?   @db.Char(36) // sent by MVC staff (phone matches a user)
+  text         String?   @db.Text
+  fileName     String?   @db.VarChar(200)
+  fileKey      String?   @db.VarChar(300)
+  fileSize     Int?
+  kind         String    @db.VarChar(20) // REQUEST, QUERY, DOCUMENT, INFO, CHAT, STAFF
+  status       String    @db.VarChar(20) // NEW, TASK, FILED, INFO, ANSWERED, CLOSED
+  taskId       String?   @db.Char(36)
+  answeredAt   DateTime?
+  answeredById String?   @db.Char(36)
+  deskStatus   String?   @db.VarChar(20) // WAITING (for the Desk), COLLECTED
+  alertedAt    DateTime?
+  doneById     String?   @db.Char(36)
+  sentAt       DateTime
+  createdAt    DateTime  @default(now())
+
+  @@index([groupId, sentAt])
+  @@index([status, sentAt])
+  @@index([clientId])
+}

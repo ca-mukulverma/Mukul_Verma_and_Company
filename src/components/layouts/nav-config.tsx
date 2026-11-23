@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   ListChecks,
   ListTodo,
+  MessageCircle,
   Receipt,
   RadioTower,
   Settings,
@@ -62,6 +63,8 @@ export function navGroups(role: string, flags: NavFlags = {}): NavGroup[] {
         { title: "Today", href: "/dashboard/my-work", icon: ListTodo, roles: STAFF_ROLES, shortcut: "m" },
         { title: "Tasks", href: "/dashboard/tasks", icon: ClipboardList, roles: STAFF_ROLES, shortcut: "t" },
         { title: "Compliance", href: "/dashboard/compliance", icon: CalendarCheck, roles: STAFF_ROLES, shortcut: "p" },
+        // Client WhatsApp groups (docs/WHATSAPP_INTAKE.md)
+        { title: "WhatsApp", href: "/dashboard/whatsapp", icon: MessageCircle, roles: STAFF_ROLES, shortcut: "h" },
       ],
     },
     {
