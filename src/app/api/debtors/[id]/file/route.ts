@@ -7,7 +7,9 @@ import { ledgerExcel, ledgerPdf } from "@/lib/tally-ledger-files";
 export const dynamic = "force-dynamic";
 
 // GET /api/debtors/[id]/file?format=pdf|xlsx&from=&to=&narration=1 – the
-// ledger for the period as PDF or Excel, as Tally shows it
+// ledger for the period as PDF or Excel, as Tally shows it. &forSend=1: the
+// PDF made ready to attach on WhatsApp, not recorded as a download (the send
+// is recorded by /share)
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await debtorsUser();
   if (!user) return notAllowed();
@@ -25,7 +27,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const input = { company: ledger.company, ledger: ledger.name, statement: statement(ledger, from, to), narration: q.get("narration") === "1", readAt: ledger.readAt };
   const body = format === "pdf" ? ledgerPdf(input) : await ledgerExcel(input);
-  await prisma.tallyLedgerEvent.create({
+  if (q.get("forSend") !== "1") await prisma.tallyLedgerEvent.create({
     data: {
       entity: ledger.entity,
       ledgerName: ledger.name,

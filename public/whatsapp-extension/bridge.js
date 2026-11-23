@@ -2,6 +2,8 @@
 // passes its "send all" and "stop" requests on, and reports progress back.
 
 document.documentElement.setAttribute("data-mvc-whatsapp", "1");
+// This version can attach a PDF to a message
+document.documentElement.setAttribute("data-mvc-whatsapp-files", "1");
 
 window.addEventListener("message", (event) => {
   if (event.source !== window || event.data?.source !== "mvc-app") return;

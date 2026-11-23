@@ -11,12 +11,42 @@ company, and each company can be kept on its own Tally PC. Choose **MVC**,
 - **A ledger:** shown as in Tally's Ledger Vouchers (Date, Particulars, Vch
   Type, Vch No., Debit, Credit, Opening Balance, Current Total, Closing
   Balance; narration on request). It can be downloaded as **PDF** or **Excel**
-  in the same layout, with no letterhead, or sent on **WhatsApp** as a link to
-  the PDF that works for 7 days.
+  in the same layout, with no letterhead, or sent to the party (see **Sending
+  a ledger** below).
 - **Recovery:** see below.
 
+### Sending a ledger
+
+**WhatsApp** and **Email** on a ledger open one dialog with a tab for each,
+for the period and narration chosen on the page.
+
+- **WhatsApp, as the PDF file** (the default). How the PDF gets into the chat
+  depends on where WhatsApp opens:
+  - *WhatsApp Web* with the **WhatsApp sender extension** 1.1 or later
+    (`public/whatsapp-extension`, downloaded from the dialog): the extension
+    opens the chat, sends the message, then pastes the PDF into the chat and
+    sends it, by itself. Version 1.0 can't attach files: the dialog asks to
+    install the new one.
+  - *WhatsApp on this phone / the app on this computer*, where the browser can
+    share files (Android, iPhone, Chrome or Edge on Windows, Safari on Mac):
+    the share menu opens with the PDF and the message; choose WhatsApp, then
+    the party.
+  - otherwise the PDF downloads and the chat opens with the message: drag the
+    PDF into the chat.
+- **WhatsApp, as a link** (the earlier way): the PDF is kept 7 days in R2
+  behind a link that can't be guessed.
+- **Email**: from the firm's billing Gmail (MVC's ledgers from MVC's mailbox,
+  B Edge's from B Edge's, "Billing-…" as the sender), to the party's saved
+  email or up to 5 addresses typed in. The PDF is attached (the Excel too if
+  ticked), with the opening balance, the period's debits and credits and the
+  closing balance in the email, an optional note, and a request to pay the
+  balance due. It counts towards the mailbox's Gmail daily limit.
+
+Every send is recorded on the ledger (**Downloaded and sent**) with the number
+or addresses, and counts in Recovery's follow-ups.
+
 Each client's page has a **Ledger** tab. It shows the client's MVC ledger and
-B Edge ledger separately, each with its own PDF, Excel and WhatsApp. A
+B Edge ledger separately, each with its own PDF, Excel, WhatsApp and Email. A
 connector's client is pointed to the connector's ledger instead, because that
 ledger holds other clients' bills too.
 
@@ -50,7 +80,7 @@ Below the summary:
 - **whom to chase**: the dues, oldest money first. A party is shown in red when
   nothing has been received for 60 days or more. Each row shows when its
   ledger was last sent, and has a one-click WhatsApp button;
-- **WhatsApp follow-ups**: the ledgers sent in the month, and how many of
+- **Follow-ups**: the ledgers sent in the month (WhatsApp or email), and how many of
   those parties paid (received or TDS) within 15 days.
 
 **Both** shows the two firms' month summaries side by side.
@@ -114,7 +144,7 @@ type, with that firm's **Refresh now**:
 - **green**: every scheduled update so far has come;
 - **red**: an update did not come, or failed (Tally PC off, company not open…).
   Entries made in Tally since then are missing;
-- the PDF, the Excel and the WhatsApp message carry the same time.
+- the PDF, the Excel, the WhatsApp message and the email carry the same time.
 
 Before a download or a send from data that is not green, the app asks the user
 to refresh first, or to confirm.
@@ -173,7 +203,7 @@ data already here stays.
   a day per firm, in office hours) and opening Debtors read or write it. An
   update writes only the ledgers that changed (by hash). Recovery figures are
   worked out on request and kept in Redis for 10 minutes.
-- **Cloudflare R2:** a WhatsApp PDF (about 100 KB) is kept 7 days. The daily
+- **Cloudflare R2:** a PDF sent on WhatsApp as a link (about 100 KB) is kept 7 days. The daily
   job (`ledger-share-cleanup`) deletes older ones.
 
 ## For developers
@@ -182,7 +212,7 @@ data already here stays.
 |---|---|
 | Tally PC → app (key `mvct_…`, one per firm) | `POST /api/tally-sync/poll-all` (once a minute, all the PC's firms; 1.2.0–1.3.0: `GET /api/tally-sync/poll`), `POST /api/tally-sync/{plan,upload,commit,error}` |
 | Pages | `/dashboard/debtors?firm=MVC\|BEDGE\|BOTH&view=recovery\|ledgers&month=YYYY-MM`, `/dashboard/debtors/[id]` (`?send=whatsapp`), client page → Ledger tab |
-| APIs | `/api/debtors` (both firms), `/status?entity=` (Redis only), `/refresh` `{entity}`, `/connect` (Admin), `/recovery?entity=&month=`, `/[id]`, `/[id]/file`, `/[id]/share`, `/api/clients/[id]/ledger`, `/api/ledger-link/[token]` (public, 7 days) |
+| APIs | `/api/debtors` (both firms), `/status?entity=` (Redis only), `/refresh` `{entity}`, `/connect` (Admin), `/recovery?entity=&month=`, `/[id]`, `/[id]/file` (`&forSend=1`: not recorded as a download), `/[id]/share` (`as: "link"\|"file"`), `/[id]/email`, `/api/clients/[id]/ledger`, `/api/ledger-link/[token]` (public, 7 days) |
 | Code | `src/lib/tally-debtors.ts` (server), `src/lib/tally-recovery.ts` (recovery figures), `src/lib/tally-debtors-shared.ts`, `src/lib/tally-ledger-files.ts` (PDF / Excel), `src/components/debtors/*`, `public/tally-extension/background.js` (end of file) |
 | Sales | `/dashboard/sales?firm=ALL\|MVC\|BEDGE&period=day\|week\|month\|quarter\|fy\|custom&date=&to=`; `/api/sales`, `/api/sales/export` (Admin); `src/lib/tally-sales.ts` |
 | Tables | `TallyDebtorSync` (one row per firm, `Company` enum; sales groups and ledgers), `TallyDebtorLedger` (unique per firm + name), `TallySalesMonth` (a firm's sales lines per month), `TallyLedgerEvent`; `User.canViewDebtors` |

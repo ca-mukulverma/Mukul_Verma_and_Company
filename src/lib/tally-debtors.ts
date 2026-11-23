@@ -599,7 +599,7 @@ export async function recoveryFor(entity: DebtorEntity, month: string): Promise<
 
   const [ledgers, sends] = await Promise.all([
     prisma.tallyDebtorLedger.findMany({ where: { entity }, select: { id: true, name: true, groupName: true, opening: true, entries: true } }),
-    prisma.tallyLedgerEvent.findMany({ where: { entity, kind: "whatsapp", at: { gte: sync.periodFrom } }, select: { ledgerName: true, at: true } }),
+    prisma.tallyLedgerEvent.findMany({ where: { entity, kind: { in: ["whatsapp", "email"] }, at: { gte: sync.periodFrom } }, select: { ledgerName: true, at: true } }),
   ]);
   const result = recovery({
     ledgers: ledgers.map((l) => ({ id: l.id, name: l.name, group: l.groupName, opening: toNumber(l.opening), entries: l.entries as unknown as LedgerEntry[] })),

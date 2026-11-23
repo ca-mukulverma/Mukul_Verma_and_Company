@@ -29,7 +29,7 @@ export interface OutgoingEmail {
 // null when Gmail accepted it or the reason it failed.
 export async function sendComplianceEmails(
   company: Company,
-  purpose: Exclude<EmailPurpose, "Billing">,
+  purpose: EmailPurpose,
   emails: OutgoingEmail[]
 ): Promise<(string | null)[]> {
   const mailbox = BILLING_MAILBOXES[company];

@@ -1465,11 +1465,11 @@ model TallyLedgerEvent {
   id         Int       @id @default(autoincrement())
   entity     Company   @default(MVC)
   ledgerName String    @db.VarChar(150)
-  kind       String    @db.VarChar(20) // pdf / excel / whatsapp
+  kind       String    @db.VarChar(20) // pdf / excel / whatsapp / email
   periodFrom DateTime  @db.Date
   periodTo   DateTime  @db.Date
   dataAsOf   DateTime? // the Tally data's time
-  recipient  String?   @db.VarChar(30) // WhatsApp number
+  recipient  String?   @db.VarChar(400) // WhatsApp number, or the email addresses
   userId     String    @db.Char(36)
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   at         DateTime  @default(now())

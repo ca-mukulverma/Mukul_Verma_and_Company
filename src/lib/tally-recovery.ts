@@ -29,7 +29,7 @@ export interface RecoveryInput {
   periodFrom: string; // kept from (YYYY-MM-DD)
   month: string; // YYYY-MM
   today?: string; // YYYY-MM-DD (India); default today
-  // WhatsApp sends of ledgers: { ledgerName, at }
+  // WhatsApp and email sends of ledgers: { ledgerName, at }
   sends?: { ledgerName: string; at: string }[];
 }
 
@@ -261,7 +261,7 @@ export function recovery(input: RecoveryInput): Recovery {
   }
   actions.sort((x, y) => y.over90 - x.over90 || y.due - x.due);
 
-  // Ledgers sent on WhatsApp in the month, and how many paid within 15 days
+  // Ledgers sent (WhatsApp or email) in the month, and how many paid within 15 days
   const firstSend = new Map<string, string>();
   for (const s of input.sends ?? []) {
     // The day in India

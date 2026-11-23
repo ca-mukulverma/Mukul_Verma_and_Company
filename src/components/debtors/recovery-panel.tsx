@@ -18,7 +18,7 @@ import { RecoveryTrend, rupees } from "./recovery-trend";
 
 // Recovery (docs/TALLY_DEBTORS.md): for each firm separately, a month's dues,
 // billing and what was recovered (received + TDS), with the last 12 months,
-// Tally's groups, whom to chase, and what the WhatsApp follow-ups brought.
+// Tally's groups, whom to chase, and what the follow-ups (WhatsApp or email) brought.
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const monthName = (m: string) => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
@@ -209,7 +209,7 @@ export function RecoveryPanel({ entity, month, onMonth, reloadKey }: { entity: D
           <div className="space-y-3">
             <Ageing m={m} />
             <div className="rounded-lg border p-3 text-sm">
-              <p className="font-semibold">WhatsApp follow-ups in {monthName(month)}</p>
+              <p className="font-semibold">Follow-ups (WhatsApp, email) in {monthName(month)}</p>
               <p>
                 Ledgers sent: <b>{r.followUp.sent}</b> · paid within 15 days: <b>{r.followUp.paid}</b>
                 {r.followUp.paid > 0 && ` (${rupees(r.followUp.paidAmount)})`}
