@@ -35,6 +35,28 @@ export const TOUR_CLOSED_EVENT = "app:tour-closed";
 // Newest first
 export const ANNOUNCEMENTS: Announcement[] = [
   {
+    id: "ledger-pdf-whatsapp-email",
+    date: "2026-11-23",
+    audience: "admin",
+    title: { en: "Ledgers: the PDF itself on WhatsApp, and by email", hi: "लेजर: WhatsApp पर सीधे PDF, और ईमेल से भी" },
+    steps: {
+      en: [
+        "On a debtor's ledger, WhatsApp now sends the PDF file itself instead of a link. Choose \"Link to the PDF\" in the dialog if you still want a link.",
+        "In WhatsApp Web, the WhatsApp sender extension attaches the PDF by itself. Download the new version (1.1) from the dialog and load it again in Chrome. On a phone, the share menu opens with the PDF: choose WhatsApp, then the party.",
+        "New Email button: sends the ledger PDF (and the Excel if ticked) from the firm's billing Gmail, with the balance in the email.",
+      ],
+      hi: [
+        "देनदार के लेजर पर WhatsApp अब लिंक की जगह सीधे PDF फ़ाइल भेजता है। लिंक चाहिए तो डायलॉग में \"Link to the PDF\" चुनें।",
+        "WhatsApp Web में WhatsApp sender एक्सटेंशन PDF अपने-आप लगा देता है। डायलॉग से नया वर्ज़न (1.1) डाउनलोड करें और Chrome में फिर से लोड करें। फ़ोन पर शेयर मेन्यू PDF के साथ खुलता है: WhatsApp चुनें, फिर पार्टी।",
+        "नया Email बटन: लेजर का PDF (और टिक करने पर Excel) फ़र्म के बिलिंग Gmail से भेजता है, ईमेल में बकाया राशि के साथ।",
+      ],
+    },
+    push: {
+      title: "New: ledger PDF on WhatsApp and email",
+      body: "Debtors → a ledger: WhatsApp sends the PDF itself; Email sends it from the firm's Gmail.",
+    },
+  },
+  {
     id: "debtors-recovery",
     date: "2026-11-21",
     audience: "admin",

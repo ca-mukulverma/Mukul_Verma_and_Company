@@ -23,7 +23,7 @@ interface ClientLedger {
 }
 
 // The client's Sundry Debtors ledgers from Tally on the client's page: MVC's
-// and B Edge's separately, each with its own PDF / Excel / WhatsApp (Admin and
+// and B Edge's separately, each with its own PDF / Excel / WhatsApp / Email (Admin and
 // the partners allowed to see Debtors). docs/TALLY_DEBTORS.md
 export function ClientLedgerTab({ clientId }: { clientId: string }) {
   const [data, setData] = useState<ClientLedger | null>(null);

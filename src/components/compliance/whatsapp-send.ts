@@ -47,8 +47,24 @@ export interface ExtensionJob {
 }
 
 export const extensionInstalled = () => document.documentElement.hasAttribute("data-mvc-whatsapp");
+// Version 1.1 and later attach a PDF to the message
+export const extensionAttachesFiles = () => document.documentElement.hasAttribute("data-mvc-whatsapp-files");
 
-export function sendAllWithExtension(messages: { key: string; phone: string; text: string }[]) {
+// A file for the extension to attach after the message: data is base64
+export interface ExtensionFile {
+  name: string;
+  type: string;
+  data: string;
+}
+
+export async function extensionFile(file: File): Promise<ExtensionFile> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { name: file.name, type: file.type, data: btoa(binary) };
+}
+
+export function sendAllWithExtension(messages: { key: string; phone: string; text: string; file?: ExtensionFile }[]) {
   window.postMessage({ source: "mvc-app", type: "send-all", messages }, window.location.origin);
 }
 

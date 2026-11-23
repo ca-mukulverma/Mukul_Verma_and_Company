@@ -16,7 +16,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiError } from "@/components/compliance/types";
-import { ChatMode, openChat, saveChatMode, savedChatMode } from "@/components/compliance/whatsapp-send";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  ChatMode,
+  downloadExtension,
+  extensionAttachesFiles,
+  extensionFile,
+  extensionInstalled,
+  onExtensionProgress,
+  openChat,
+  saveChatMode,
+  savedChatMode,
+  sendAllWithExtension,
+} from "@/components/compliance/whatsapp-send";
 import { whatsappNumber } from "@/lib/client-contacts";
 import { cn } from "@/lib/utils";
 import {
@@ -37,7 +49,7 @@ import type { LoadedLedger, PartyDetails, SyncStatus } from "@/lib/tally-debtors
 import { UpdateBanner, useSyncStatus } from "./sync-status";
 
 // One debtor's ledger, as Tally shows it in Ledger Vouchers, with the party's
-// details from the app, PDF / Excel and a WhatsApp link. Used on Debtors and
+// details from the app, PDF / Excel, and sending the PDF on WhatsApp or by email. Used on Debtors and
 // in the client's Ledger tab. docs/TALLY_DEBTORS.md
 
 interface LedgerResponse {
@@ -46,9 +58,9 @@ interface LedgerResponse {
   events: { kind: string; at: string; by: string; recipient: string | null; from: string; to: string }[];
 }
 
-type Action = "pdf" | "xlsx" | "whatsapp";
+type Action = "pdf" | "xlsx" | "whatsapp" | "email";
 
-const EVENT_LABELS: Record<string, string> = { pdf: "PDF downloaded", excel: "Excel downloaded", whatsapp: "Sent on WhatsApp" };
+const EVENT_LABELS: Record<string, string> = { pdf: "PDF downloaded", excel: "Excel downloaded", whatsapp: "Sent on WhatsApp", email: "Emailed" };
 
 export function LedgerView({ ledgerId, showParty = true, openWhatsApp = false }: { ledgerId: string; showParty?: boolean; openWhatsApp?: boolean }) {
   const [data, setData] = useState<LedgerResponse | null>(null);
@@ -63,7 +75,7 @@ export function LedgerView({ ledgerId, showParty = true, openWhatsApp = false }:
   const [narration, setNarration] = useState(false);
   const [busy, setBusy] = useState<Action | null>(null);
   const [confirming, setConfirming] = useState<Action | null>(null);
-  const [sharing, setSharing] = useState(false);
+  const [sharing, setSharing] = useState<SendChannel | null>(null);
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
   // From Recovery's "whom to chase": open the WhatsApp step once, after the checks
@@ -91,7 +103,7 @@ export function LedgerView({ ledgerId, showParty = true, openWhatsApp = false }:
     if (!openWhatsApp || autoOpened.current || !data || !sync.status) return;
     autoOpened.current = true;
     if (freshness(sync.status.readAt, new Date()).level !== "fresh") setConfirming("whatsapp");
-    else setSharing(true);
+    else setSharing("whatsapp");
   }, [openWhatsApp, data, sync.status]);
 
   const choosePreset = (value: "this" | "last" | "custom") => {
@@ -126,7 +138,7 @@ export function LedgerView({ ledgerId, showParty = true, openWhatsApp = false }:
 
   const run = async (action: Action) => {
     setConfirming(null);
-    if (action === "whatsapp") return setSharing(true);
+    if (action === "whatsapp" || action === "email") return setSharing(action);
     setBusy(action);
     try {
       const response = await axios.get(`/api/debtors/${ledgerId}/file`, {
@@ -229,6 +241,9 @@ export function LedgerView({ ledgerId, showParty = true, openWhatsApp = false }:
               <Button onClick={() => start("whatsapp")} disabled={!!busy} className="bg-emerald-600 text-white hover:bg-emerald-700">
                 <MessageCircle className="mr-1 h-4 w-4" /> WhatsApp
               </Button>
+              <Button variant="outline" onClick={() => start("email")} disabled={!!busy}>
+                <Mail className="mr-1 h-4 w-4" /> Email
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -246,7 +261,7 @@ export function LedgerView({ ledgerId, showParty = true, openWhatsApp = false }:
             {data.events.map((e, i) => (
               <p key={i} className="text-muted-foreground">
                 {EVENT_LABELS[e.kind] ?? e.kind}
-                {e.recipient ? ` to +${e.recipient}` : ""} by {e.by}, {asOfText(e.at)} ({longDate(e.from)} to {longDate(e.to)})
+                {e.recipient ? ` to ${e.kind === "whatsapp" ? "+" : ""}${e.recipient}` : ""} by {e.by}, {asOfText(e.at)} ({longDate(e.from)} to {longDate(e.to)})
               </p>
             ))}
           </CardContent>
@@ -306,7 +321,18 @@ export function LedgerView({ ledgerId, showParty = true, openWhatsApp = false }:
       </Dialog>
 
       {sharing && (
-        <WhatsAppDialog ledgerId={ledgerId} ledger={ledger} party={party} from={from} to={to} closing={st.closing} narration={narration} onClose={() => setSharing(false)} onSent={reload} />
+        <SendDialog
+          channel={sharing}
+          ledgerId={ledgerId}
+          ledger={ledger}
+          party={party}
+          from={from}
+          to={to}
+          closing={st.closing}
+          narration={narration}
+          onClose={() => setSharing(null)}
+          onSent={reload}
+        />
       )}
     </div>
   );
@@ -449,11 +475,22 @@ function PartyCard({ party, ledgerName, group, firm }: { party: PartyDetails | n
   );
 }
 
-// ─── Sending on WhatsApp ────────────────────────────────────────────────────
+// ─── Sending on WhatsApp or by email ────────────────────────────────────────
 
 const OTHER = "other";
 
-function WhatsAppDialog({
+type SendChannel = "whatsapp" | "email";
+type WhatsAppAs = "file" | "link";
+
+// How the PDF reaches the chat, for the dialog's note and the send
+function attachRoute(mode: ChatMode, file: File | null): "extension" | "share" | "download" {
+  if (mode === "web" && extensionInstalled() && extensionAttachesFiles()) return "extension";
+  if (mode !== "web" && file && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) return "share";
+  return "download";
+}
+
+function SendDialog({
+  channel: initialChannel,
   ledgerId,
   ledger,
   party,
@@ -464,6 +501,7 @@ function WhatsAppDialog({
   onClose,
   onSent,
 }: {
+  channel: SendChannel;
   ledgerId: string;
   ledger: LoadedLedger;
   party: PartyDetails | null;
@@ -471,6 +509,65 @@ function WhatsAppDialog({
   to: string;
   closing: number;
   narration: boolean;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [channel, setChannel] = useState<SendChannel>(initialChannel);
+  const greeting = party ? (party.kind === "client" ? party.companyName || party.name : party.name) : ledger.name;
+  const period = `${longDate(from)} to ${longDate(to)}`;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Send className="h-5 w-5" /> Send the ledger
+          </DialogTitle>
+          <DialogDescription>
+            {ledger.name}, {period}. The ledger goes as a PDF.
+          </DialogDescription>
+        </DialogHeader>
+        <Tabs value={channel} onValueChange={(v) => setChannel(v as SendChannel)}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="whatsapp">
+              <MessageCircle className="mr-1 h-4 w-4" /> WhatsApp
+            </TabsTrigger>
+            <TabsTrigger value="email">
+              <Mail className="mr-1 h-4 w-4" /> Email
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="whatsapp">
+            <WhatsAppSend {...{ ledgerId, ledger, party, from, to, closing, narration, greeting, onClose, onSent }} />
+          </TabsContent>
+          <TabsContent value="email">
+            <EmailSend {...{ ledgerId, ledger, party, from, to, narration, onClose, onSent }} />
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WhatsAppSend({
+  ledgerId,
+  ledger,
+  party,
+  from,
+  to,
+  closing,
+  narration,
+  greeting,
+  onClose,
+  onSent,
+}: {
+  ledgerId: string;
+  ledger: LoadedLedger;
+  party: PartyDetails | null;
+  from: string;
+  to: string;
+  closing: number;
+  narration: boolean;
+  greeting: string;
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -482,28 +579,68 @@ function WhatsAppDialog({
   const [choice, setChoice] = useState(first?.number ?? OTHER);
   const [other, setOther] = useState("");
   const [mode, setMode] = useState<ChatMode>(() => savedChatMode());
-  const greeting = party ? (party.kind === "client" ? party.companyName || party.name : party.name) : ledger.name;
-  const [text, setText] = useState(
-    `Dear ${greeting},\n\nPlease find your ledger account with ${ledger.company} for ${longDate(from)} to ${longDate(to)}.\n` +
-      `Closing balance: Rs. ${balance(closing)}` +
-      (ledger.readAt ? ` (as per our books as on ${asOfText(ledger.readAt)})` : "") +
-      `.\n\n{link}\n\nThe link works for 7 days. Kindly arrange the payment of the balance due.`
-  );
+  const [as, setAs] = useState<WhatsAppAs>("file");
+  const message = (kind: WhatsAppAs) =>
+    `Dear ${greeting},\n\n${kind === "file" ? "Please find attached" : "Please find"} your ledger account with ${ledger.company} for ${longDate(from)} to ${longDate(to)}.\n` +
+    `Closing balance: Rs. ${balance(closing)}` +
+    (ledger.readAt ? ` (as per our books as on ${asOfText(ledger.readAt)})` : "") +
+    (kind === "file" ? "." : `.\n\n{link}\n\nThe link works for 7 days.`) +
+    `\n\nKindly arrange the payment of the balance due.`;
+  const [text, setText] = useState(() => message("file"));
+  const [edited, setEdited] = useState(false);
   const [sending, setSending] = useState(false);
+  const [hasExtension, setHasExtension] = useState(false);
+  const [extensionCanAttach, setExtensionCanAttach] = useState(false);
+  // The PDF, made as soon as the dialog opens, so a phone's share sheet can
+  // open straight from the Send click (it must follow the click at once)
+  const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const phone = choice === OTHER ? whatsappNumber(other) : choice;
 
-  const send = async () => {
-    if (!phone) return toast.error("Enter a mobile number with 10 digits (or with the country code)");
-    if (!text.includes("{link}")) return toast.error("Keep {link} in the message: the ledger's link goes there");
-    saveChatMode(mode);
+  useEffect(() => {
+    setHasExtension(extensionInstalled());
+    setExtensionCanAttach(extensionAttachesFiles());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get<Blob>(`/api/debtors/${ledgerId}/file`, {
+        params: { format: "pdf", from, to, forSend: 1, ...(narration && { narration: 1 }) },
+        responseType: "blob",
+      })
+      .then(({ data }) => !cancelled && setFile(new File([data], `${ledgerFileName(ledger.name, from, to)}.pdf`, { type: "application/pdf" })))
+      .catch(() => !cancelled && setFileError("The PDF could not be made. Try again, or send a link instead."));
+    return () => {
+      cancelled = true;
+    };
+  }, [ledgerId, ledger.name, from, to, narration]);
+
+  const chooseAs = (value: WhatsAppAs) => {
+    setAs(value);
+    if (!edited) setText(message(value));
+  };
+
+  const record = (body: object) => axios.post(`/api/debtors/${ledgerId}/share`, { from, to, narration, recipient: phone, ...body });
+
+  const getExtension = async () => {
+    try {
+      await downloadExtension();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The extension couldn't be downloaded");
+    }
+  };
+
+  const sendLink = async () => {
+    const withLink = text.includes("{link}") ? text : `${text}\n\n{link}`;
     // Open the chat window now, while the click still counts, so it isn't blocked
     const width = Math.round(window.screen.availWidth / 2);
     if (mode === "web") window.open("about:blank", "whatsapp-web", `popup,width=${width},height=${window.screen.availHeight},left=${width},top=0`);
     if (mode === "phone") window.open("about:blank", "whatsapp");
     setSending(true);
     try {
-      const { data } = await axios.post<{ url: string }>(`/api/debtors/${ledgerId}/share`, { from, to, narration, recipient: phone });
-      openChat(mode, phone, text.replace("{link}", data.url));
+      const { data } = await record({ as: "link" });
+      openChat(mode, phone!, withLink.replace("{link}", data.url));
       toast.success("The ledger link is in the WhatsApp message: press Send there");
       onSent();
       onClose();
@@ -514,63 +651,241 @@ function WhatsAppDialog({
     }
   };
 
+  const sendFile = async () => {
+    if (!file) return toast.error(fileError ?? "The PDF is still being made. Try again in a moment.");
+    const route = attachRoute(mode, file);
+    const plain = text.replace(/\{link\}/g, "").replace(/\n{3,}/g, "\n\n").trim();
+
+    if (route === "share") {
+      // The phone's (or computer's) share sheet: choose WhatsApp, then the party
+      try {
+        await navigator.share({ files: [file], text: plain, title: file.name });
+      } catch (error) {
+        if ((error as Error).name === "AbortError") return;
+        toast.error("This device couldn't share the PDF. Choose WhatsApp Web, or send a link instead.");
+        return;
+      }
+      record({ as: "file" }).then(onSent, () => undefined);
+      toast.success("Ledger PDF shared");
+      onClose();
+      return;
+    }
+
+    if (route === "extension") {
+      setSending(true);
+      try {
+        const key = `ledger-${ledgerId}-${Date.now()}`;
+        const stop = onExtensionProgress((job) => {
+          const m = job.messages.find((x) => x.key === key);
+          if (!m || m.status === "waiting" || m.status === "sending") return;
+          stop();
+          if (m.status === "sent") toast.success(`Ledger PDF sent on WhatsApp to +${phone}`);
+          else toast.error(`WhatsApp: ${m.error ?? "not sent"}`);
+        });
+        sendAllWithExtension([{ key, phone: phone!, text: plain, file: await extensionFile(file) }]);
+        await record({ as: "file" });
+        toast.info("Sending in WhatsApp Web: the message, then the PDF");
+        onSent();
+        onClose();
+      } catch (error) {
+        toast.error(apiError(error, "Could not send the ledger"));
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    // No way to attach it for you: download the PDF and open the chat with the message
+    const width = Math.round(window.screen.availWidth / 2);
+    if (mode === "web") window.open("about:blank", "whatsapp-web", `popup,width=${width},height=${window.screen.availHeight},left=${width},top=0`);
+    if (mode === "phone") window.open("about:blank", "whatsapp");
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    openChat(mode, phone!, plain);
+    toast.success("The PDF is downloaded: drag it into the WhatsApp chat (or 📎 → Document), then press Send", { duration: 10_000 });
+    record({ as: "file" }).then(onSent, () => undefined);
+    onClose();
+  };
+
+  const send = () => {
+    if (!phone) return toast.error("Enter a mobile number with 10 digits (or with the country code)");
+    saveChatMode(mode);
+    return as === "link" ? sendLink() : sendFile();
+  };
+
+  const route = as === "file" ? attachRoute(mode, file) : null;
+
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5 text-emerald-600" /> Send the ledger on WhatsApp
-          </DialogTitle>
-          <DialogDescription>
-            {ledger.name}, {longDate(from)} to {longDate(to)}. The PDF goes as a link that works for 7 days.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label>To</Label>
-            <Select value={choice} onValueChange={setChoice}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {numbers.map((n) => (
-                  <SelectItem key={n.number} value={n.number}>
-                    {n.label}
-                  </SelectItem>
-                ))}
-                <SelectItem value={OTHER}>Another number…</SelectItem>
-              </SelectContent>
-            </Select>
-            {choice === OTHER && <Input placeholder="Mobile number, e.g. 98260 12345" value={other} onChange={(e) => setOther(e.target.value)} inputMode="tel" autoFocus />}
-          </div>
-          <div className="space-y-1">
-            <Label>Message</Label>
-            <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label>Open in</Label>
-            <Select value={mode} onValueChange={(v) => setMode(v as ChatMode)}>
-              <SelectTrigger className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="web">WhatsApp Web</SelectItem>
-                <SelectItem value="desktop">WhatsApp app on this computer</SelectItem>
-                <SelectItem value="phone">WhatsApp on this phone</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+    <div className="space-y-3 pt-2">
+      <div className="space-y-1">
+        <Label>To</Label>
+        <Select value={choice} onValueChange={setChoice}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {numbers.map((n) => (
+              <SelectItem key={n.number} value={n.number}>
+                {n.label}
+              </SelectItem>
+            ))}
+            <SelectItem value={OTHER}>Another number…</SelectItem>
+          </SelectContent>
+        </Select>
+        {choice === OTHER && <Input placeholder="Mobile number, e.g. 98260 12345" value={other} onChange={(e) => setOther(e.target.value)} inputMode="tel" autoFocus />}
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <div className="space-y-1">
+          <Label>Send as</Label>
+          <Select value={as} onValueChange={(v) => chooseAs(v as WhatsAppAs)}>
+            <SelectTrigger className="w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="file">PDF file</SelectItem>
+              <SelectItem value="link">Link to the PDF (7 days)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={send} disabled={sending || !phone} className={cn("bg-emerald-600 text-white hover:bg-emerald-700")}>
-            {sending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-4 w-4" />}
-            Send on WhatsApp
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="space-y-1">
+          <Label>Open in</Label>
+          <Select value={mode} onValueChange={(v) => setMode(v as ChatMode)}>
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="web">WhatsApp Web</SelectItem>
+              <SelectItem value="desktop">WhatsApp app on this computer</SelectItem>
+              <SelectItem value="phone">WhatsApp on this phone</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label>Message</Label>
+        <Textarea
+          rows={7}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setEdited(true);
+          }}
+        />
+      </div>
+      {as === "file" && (
+        <div className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
+          {fileError ? (
+            <p className="text-destructive">{fileError}</p>
+          ) : !file ? (
+            <p className="flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> Making the PDF…
+            </p>
+          ) : route === "extension" ? (
+            <p>The extension sends the message and then attaches the PDF in WhatsApp Web by itself.</p>
+          ) : route === "share" ? (
+            <p>The share menu opens with the PDF: choose WhatsApp, then {phone ? `+${phone}` : "the party"}. The message goes with it.</p>
+          ) : (
+            <div className="space-y-1">
+              <p>The PDF downloads and the chat opens with the message: drag the PDF into the chat, then press Send.</p>
+              {mode === "web" && (
+                <p>
+                  {hasExtension && !extensionCanAttach
+                    ? "Your WhatsApp sender extension is an older version. Install the new one to attach the PDF by itself: "
+                    : "To attach the PDF by itself, install the WhatsApp sender extension: "}
+                  <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={getExtension}>
+                    download it
+                  </button>
+                  {" "}(Chrome → Extensions → Developer mode → Load unpacked).
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button onClick={send} disabled={sending || !phone || (as === "file" && !file)} className={cn("bg-emerald-600 text-white hover:bg-emerald-700")}>
+          {sending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Send className="mr-1 h-4 w-4" />}
+          Send on WhatsApp
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
+function EmailSend({
+  ledgerId,
+  ledger,
+  party,
+  from,
+  to,
+  narration,
+  onClose,
+  onSent,
+}: {
+  ledgerId: string;
+  ledger: LoadedLedger;
+  party: PartyDetails | null;
+  from: string;
+  to: string;
+  narration: boolean;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [recipients, setRecipients] = useState(party?.email ?? "");
+  const [note, setNote] = useState("");
+  const [excel, setExcel] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const send = async () => {
+    if (!recipients.trim()) return toast.error("Enter the email address");
+    setSending(true);
+    try {
+      const { data } = await axios.post<{ to: string[] }>(`/api/debtors/${ledgerId}/email`, { from, to, narration, recipients, note: note.trim() || null, excel });
+      toast.success(`Ledger emailed to ${data.to.join(", ")}`);
+      onSent();
+      onClose();
+    } catch (error) {
+      toast.error(apiError(error, "Could not send the email"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 pt-2">
+      <div className="space-y-1">
+        <Label htmlFor="ledger-email-to">To</Label>
+        <Input id="ledger-email-to" type="text" inputMode="email" placeholder="name@example.com (up to 5, separated by commas)" value={recipients} onChange={(e) => setRecipients(e.target.value)} />
+        {!party?.email && <p className="text-xs text-muted-foreground">No email is saved for this party in the app.</p>}
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="ledger-email-note">Note (optional)</Label>
+        <Textarea id="ledger-email-note" rows={3} placeholder="Added to the email after the balance summary" value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={excel} onCheckedChange={(v) => setExcel(v === true)} />
+        Also attach the Excel
+      </label>
+      <p className="text-xs text-muted-foreground">
+        Goes from {ENTITY_LABELS[ledger.entity]}&apos;s billing Gmail with the ledger PDF attached, the opening and closing balance in the email, and a request to pay
+        the balance due.
+      </p>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button onClick={send} disabled={sending || !recipients.trim()}>
+          {sending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Mail className="mr-1 h-4 w-4" />}
+          Send email
+        </Button>
+      </DialogFooter>
+    </div>
   );
 }
