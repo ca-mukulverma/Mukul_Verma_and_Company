@@ -1,6 +1,8 @@
 // Runs on WhatsApp Web. When the app's job opened this chat, waits for the
-// message to appear, presses Send, records the result, pauses 8–15 seconds
-// and opens the next chat. At most 150 messages a day are sent this way.
+// message to appear, presses Send, then attaches the message's PDF if it has
+// one (pasted into the chat, as when a file is copied and pasted by hand) and
+// sends that too, records the result, pauses 8–15 seconds and opens the next
+// chat. At most 150 messages a day are sent this way.
 
 const DAILY_LIMIT = 150;
 const startUrl = location.href;
@@ -38,6 +40,43 @@ async function sendCurrent() {
   return "The chat didn't open (is WhatsApp Web logged in?)";
 }
 
+// The attachment preview WhatsApp shows after a file is pasted, and its Send
+function previewSendButton() {
+  const icons = [...document.querySelectorAll('[data-icon="send"], [data-icon="wds-ic-send-filled"]')].filter((i) => !i.closest("footer"));
+  const icon = icons[icons.length - 1];
+  return icon?.closest('[role="button"]') ?? icon?.closest("button") ?? null;
+}
+
+function toFile(file) {
+  const bytes = Uint8Array.from(atob(file.data), (c) => c.charCodeAt(0));
+  return new File([bytes], file.name, { type: file.type || "application/pdf" });
+}
+
+// "sent" or an error message
+async function attachAndSend(file) {
+  const box = document.querySelector('footer [contenteditable="true"]');
+  if (!box) return "The chat box wasn't found to attach the PDF";
+  box.focus();
+  const data = new DataTransfer();
+  data.items.add(toFile(file));
+  box.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  const until = Date.now() + 30000;
+  while (Date.now() < until) {
+    await sleep(1000);
+    const button = previewSendButton();
+    if (button) {
+      await sleep(800);
+      button.click();
+      for (let i = 0; i < 20; i++) {
+        await sleep(1000);
+        if (!previewSendButton()) return "sent";
+      }
+      return "Send was pressed but the PDF stayed in the preview";
+    }
+  }
+  return "The message went, but WhatsApp didn't take the PDF: attach it by hand";
+}
+
 (async () => {
   const { job } = await chrome.storage.local.get("job");
   if (!job || job.done || job.stopped) return;
@@ -48,7 +87,11 @@ async function sendCurrent() {
   if (!startUrl.includes(`phone=${current.phone}`) && Date.now() - job.navigatedAt > 30000) return;
 
   if (document.readyState === "loading") await new Promise((r) => document.addEventListener("DOMContentLoaded", r, { once: true }));
-  const result = await sendCurrent();
+  let result = await sendCurrent();
+  if (result === "sent" && current.hasFile) {
+    const { files = {} } = await chrome.storage.local.get("files");
+    result = files[current.key] ? await attachAndSend(files[current.key]) : "The PDF was lost before it could be attached";
+  }
 
   const { job: latest } = await chrome.storage.local.get("job");
   if (!latest || latest.id !== job.id) return;

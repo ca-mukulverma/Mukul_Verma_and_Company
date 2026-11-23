@@ -6,8 +6,15 @@ const sendUrl = (m) => `https://web.whatsapp.com/send?phone=${m.phone}&text=${en
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   (async () => {
     if (message.type === "start") {
-      const messages = message.messages.map((m) => ({ ...m, status: "waiting" }));
+      // A PDF to attach ({ name, type, data: base64 }) is kept apart from the
+      // job, which the app is sent on every change
+      const files = {};
+      const messages = message.messages.map(({ file, ...m }) => {
+        if (file) files[m.key] = file;
+        return { ...m, hasFile: !!file, status: "waiting" };
+      });
       if (!messages.length) return;
+      await chrome.storage.local.set({ files });
       messages[0].status = "sending";
       const job = { id: Date.now(), messages, stopped: false, done: false, navigatedAt: Date.now(), note: null };
       await chrome.storage.local.set({ job });
