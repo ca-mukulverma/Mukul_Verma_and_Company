@@ -10,6 +10,7 @@ import {
   describeBill,
   getBillingAccess,
   getBillingManagerIds,
+  hasBillTo,
   notifyBillingUsers,
   otherPartySchema,
   serializeBill,
@@ -27,6 +28,9 @@ const workItemSchema = z.object({
   // A saved client, or "Other" with the name typed in
   clientId: z.string().min(1).optional().nullable(),
   other: otherPartySchema.optional().nullable(),
+  // The person logging doesn't know the client: the billing manager chooses
+  // it (and so the party ledger) before the bill can move on
+  clientUnknown: z.boolean().optional(),
   description: z.string().trim().min(3, "Describe the work done").max(2000),
   workDate: z.string().datetime(),
 });
@@ -119,8 +123,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Choose the company" }, { status: 400 });
   }
 
-  if (items.some((item) => !item.clientId && !item.other)) {
-    return NextResponse.json({ error: "Select a client or enter the name to bill" }, { status: 400 });
+  if (items.some((item) => !item.clientId && !item.other && !item.clientUnknown)) {
+    return NextResponse.json({ error: "Select a client, enter the name to bill, or choose Don't know" }, { status: 400 });
   }
   const clientIds = [...new Set(items.flatMap((item) => (item.clientId && !item.other ? [item.clientId] : [])))];
   if (clientIds.length > 0) {
@@ -138,7 +142,7 @@ export async function POST(request: NextRequest) {
           description: item.description,
           workDate: new Date(item.workDate),
           remark: data.remark || null,
-          ...billToData(item),
+          ...billToData(item.clientUnknown && !item.other ? { clientId: null } : item),
           createdById: user.id,
         },
         include: billInclude,
@@ -159,12 +163,18 @@ export async function POST(request: NextRequest) {
     for (const company of companies) {
       const logged = bills.filter((b) => b.company === company);
       const managerIds = await getBillingManagerIds(company);
+      // Work logged without a client: the billing manager has to choose it
+      const label = (b: (typeof logged)[number]) => (hasBillTo(b) ? describeBill(b) : `${describeBill(b)} (client not chosen)`);
+      const withoutClient = logged.filter((b) => !hasBillTo(b)).length;
+      const ask = withoutClient
+        ? `\nChoose the client for ${withoutClient === 1 ? "it" : `the ${withoutClient} without one`} (Choose client on the bill), so the bill goes to the right ledger.`
+        : "";
       await notifyBillingUsers([...new Set([...managerIds, ...partners.map((p) => p.id)])].filter((id) => id !== user.id), {
-        title: "Work logged for billing",
+        title: withoutClient ? "Work logged for billing: client to be chosen" : "Work logged for billing",
         content:
-          logged.length === 1
-            ? `${user.name} logged ${COMPANY_LABELS[company]} work: ${describeBill(logged[0])}`
-            : `${user.name} logged ${logged.length} items of ${COMPANY_LABELS[company]} work: ${logged.map((b) => describeBill(b)).join("; ")}`.slice(0, 1000),
+          (logged.length === 1
+            ? `${user.name} logged ${COMPANY_LABELS[company]} work: ${label(logged[0])}`
+            : `${user.name} logged ${logged.length} items of ${COMPANY_LABELS[company]} work: ${logged.map(label).join("; ")}`.slice(0, 900)) + ask,
         sentById: user.id,
       });
     }

@@ -166,7 +166,8 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
         problems: r.problems.length ? [`Row ${r.row}: ${r.problems.join("; ")}`] : undefined,
       }));
       // An empty form is replaced; otherwise the rows are added after
-      const blank = rows.length === 1 && !rows[0].description.trim() && !rows[0].billTo.client && !rows[0].billTo.other;
+      const blank =
+        rows.length === 1 && !rows[0].description.trim() && !rows[0].billTo.client && !rows[0].billTo.other && !rows[0].billTo.unknown;
       const next = [...(blank ? [] : rows), ...imported];
       if (next.length > MAX_WORK_ROWS) {
         toast.error(`Up to ${MAX_WORK_ROWS} pieces of work can be logged at once; the form has ${rows.length} already.`);
@@ -276,11 +277,12 @@ export function WorkEntryForm({ onLogged, prefill }: { onLogged?: () => void; pr
               </div>
               <div className="space-y-2">
                 <Label>Client*</Label>
-                <BillToPicker value={row.billTo} onChange={(billTo) => updateRow(row.key, { billTo })} />
+                <BillToPicker allowUnknown value={row.billTo} onChange={(billTo) => updateRow(row.key, { billTo })} />
                 {index === 0 && (
                   <p className="text-xs text-muted-foreground">
                     Not a saved client? Admins and partners can choose <strong>Add new client</strong> to add it to the
-                    client master; anyone can choose <strong>Other</strong> and type the name to bill.
+                    client master; anyone can choose <strong>Other</strong> and type the name to bill. Not sure which
+                    client it is? Choose <strong>Don&apos;t know</strong> and the billing manager will choose it.
                   </p>
                 )}
               </div>

@@ -35,6 +35,12 @@ import { finalApprove, finalReject, managerApprove } from "@/lib/bill-approvals"
 
 type Params = { params: Promise<{ id: string }> };
 
+// Who the bill was made out to, for the history
+function describeParty(bill: { client: { contactPerson: string; companyName: string | null } | null; billToName: string | null }) {
+  if (bill.client) return bill.client.companyName || bill.client.contactPerson;
+  return bill.billToName ? `${bill.billToName} (Other)` : "No client";
+}
+
 const detailsSchema = z.object({
   clientId: z.string().min(1).optional(),
   other: otherPartySchema.optional(),
@@ -65,6 +71,13 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("final_reject"), remark: z.string().trim().min(3, "Add a remark").max(1000) }),
   // Admin corrects the amount after it was entered, including on approved bills
   z.object({ action: z.literal("edit_amount"), amount: z.number().positive().max(1e10), remark: z.string().trim().max(1000).optional() }),
+  // Billing manager or Admin: the party (and so the party ledger in Tally),
+  // also at Admin's final approval: a saved client, or "Other" with the name
+  z.object({
+    action: z.literal("set_party"),
+    clientId: z.string().min(1).optional(),
+    other: otherPartySchema.optional(),
+  }),
   // Billing manager or Admin: the Tally income ledger and line description
   z.object({
     action: z.literal("set_income_ledger"),
@@ -524,6 +537,57 @@ export async function POST(request: NextRequest, { params }: Params) {
         return true;
       });
       if (!ok) return conflict();
+      break;
+    }
+
+    case "set_party": {
+      if (!isManager) return forbidden();
+      if (!input.clientId && !input.other) {
+        return NextResponse.json({ error: "Select a client or enter the name to bill" }, { status: 400 });
+      }
+      // Until Admin's final approval; after that the bill number and ledger are
+      // fixed and a change goes through an edit request
+      const statuses: BillStatus[] = [...(EDITABLE_BILL_STATUSES as BillStatus[]), "manager_approved"];
+      if (!statuses.includes(bill.status)) {
+        return NextResponse.json({ error: "The client can only be changed before final approval" }, { status: 400 });
+      }
+      const client = input.other
+        ? null
+        : await prisma.client.findUnique({ where: { id: input.clientId! }, select: { id: true, contactPerson: true, companyName: true } });
+      if (!input.other && !client) return NextResponse.json({ error: "Client not found" }, { status: 400 });
+      const unchanged = client
+        ? client.id === bill.clientId
+        : !bill.clientId && bill.billToName === input.other!.name && (bill.billToAddress ?? "") === (input.other!.address ?? "") &&
+          (bill.billToGstin ?? "") === (input.other!.gstin ?? "");
+      if (unchanged) break;
+
+      // A bill without a type yet takes the new client's usual one
+      const newClientType = !bill.type && client ? await defaultBillType(bill.company, client.id) : null;
+      const before = describeParty(bill);
+      const after_ = client ? client.companyName || client.contactPerson : `${input.other!.name} (Other)`;
+      const ok = await updateIfStatus(
+        bill.id,
+        [bill.status],
+        {
+          ...billToData(client ? { clientId: client.id } : { other: input.other }),
+          ...(newClientType && { type: newClientType }),
+          // "Show GSTIN" was chosen for the previous client's connector
+          ...(client?.id !== bill.clientId && { showGstin: false }),
+        },
+        { action: "party_changed", userId: user.id, remark: `${before} → ${after_}` }
+      );
+      if (!ok) return conflict();
+
+      // The person who logged the work, so they know (when it wasn't them)
+      if (!bill.taskId && bill.createdById !== user.id) {
+        after(() =>
+          notifyBillingUsers([bill.createdById], {
+            title: "Client chosen for your work",
+            content: `${user.name} set the client of "${bill.description.split("\n")[0].slice(0, 80)}" to ${after_}.`,
+            sentById: user.id,
+          })
+        );
+      }
       break;
     }
 

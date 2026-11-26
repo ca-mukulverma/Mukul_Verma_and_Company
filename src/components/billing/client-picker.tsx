@@ -320,9 +320,13 @@ export interface BillTo {
   client: ClientOption | null;
   // Set when billing someone who is not a saved client
   other: OtherParty | null;
+  // Log work only: the person logging doesn't know the client; the billing
+  // manager chooses it before the bill moves on
+  unknown?: boolean;
 }
 
 export function billToPayload(value: BillTo) {
+  if (value.unknown) return { clientId: null, clientUnknown: true };
   if (value.other) {
     return {
       other: {
@@ -336,20 +340,34 @@ export function billToPayload(value: BillTo) {
 }
 
 export function billToValid(value: BillTo) {
+  if (value.unknown) return true;
   return value.other ? value.other.name.trim().length >= 2 : !!value.client;
 }
 
 // A saved client, or "Other" with the name (and optionally address and GSTIN)
-// typed in for work that is not for a saved client
-export function BillToPicker({ value, onChange }: { value: BillTo; onChange: (value: BillTo) => void }) {
-  const other = value.other;
+// typed in for work that is not for a saved client. With allowUnknown (Log
+// work), "Don't know" leaves the client for the billing manager to choose.
+export function BillToPicker({
+  value,
+  onChange,
+  allowUnknown = false,
+}: {
+  value: BillTo;
+  onChange: (value: BillTo) => void;
+  allowUnknown?: boolean;
+}) {
+  const unknown = allowUnknown && !!value.unknown;
+  const other = unknown ? null : value.other;
   const useOther = () => onChange({ client: null, other: other ?? { name: "", address: "", gstin: "" } });
   return (
     <div className="space-y-3">
-      <div role="radiogroup" aria-label="Bill to" className="inline-flex rounded-md border p-1 gap-1">
+      <div role="radiogroup" aria-label="Bill to" className="inline-flex flex-wrap rounded-md border p-1 gap-1">
         {[
-          { key: "client", label: "Saved client", active: !other, onClick: () => onChange({ client: value.client, other: null }) },
+          { key: "client", label: "Saved client", active: !other && !unknown, onClick: () => onChange({ client: value.client, other: null }) },
           { key: "other", label: "Other (not a saved client)", active: !!other, onClick: useOther },
+          ...(allowUnknown
+            ? [{ key: "unknown", label: "Don't know", active: unknown, onClick: () => onChange({ client: null, other: null, unknown: true }) }]
+            : []),
         ].map((option) => (
           <button
             key={option.key}
@@ -366,7 +384,13 @@ export function BillToPicker({ value, onChange }: { value: BillTo; onChange: (va
           </button>
         ))}
       </div>
-      {!other && (
+      {unknown && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          The billing manager will choose the client (and so the party ledger in Tally) before the bill moves on. Mention in the
+          work or the remark anything that helps them find it.
+        </p>
+      )}
+      {!other && !unknown && (
         <ClientPicker
           value={value.client}
           onChange={(client) => onChange({ client, other: null })}

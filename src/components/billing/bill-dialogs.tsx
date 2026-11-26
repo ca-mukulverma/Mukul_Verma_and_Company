@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  BillStatusValue,
   EDITABLE_BILL_STATUSES,
   formatRupees,
   gstAmount,
@@ -23,7 +24,19 @@ import { BillTypeSelect } from "./bill-type-select";
 import { BillReturnNotice } from "./bill-return-notice";
 import { BillTo, BillToPicker, billToPayload, billToValid } from "./client-picker";
 import { IncomeLedgerFields } from "./income-ledger-picker";
-import { apiErrorMessage, Bill, BillAction, BillEvent, billParty, billRaisedBy, EVENT_LABELS, runBillAction } from "./bill-types";
+import { LedgerPicker } from "@/components/clients/ledger-picker";
+import { useBillingOptions } from "@/components/clients/client-extra-fields";
+import {
+  apiErrorMessage,
+  Bill,
+  BillAction,
+  BillEvent,
+  billParty,
+  billRaisedBy,
+  EVENT_LABELS,
+  PartyLedger,
+  runBillAction,
+} from "./bill-types";
 
 export type BillDialog =
   | "amount"
@@ -35,7 +48,8 @@ export type BillDialog =
   | "details"
   | "history"
   | "no_billing"
-  | "income_ledger";
+  | "income_ledger"
+  | "party";
 
 const REMARK_DIALOGS = {
   send_back: {
@@ -308,6 +322,145 @@ export function IncomeLedgerDialog({ bill, onClose, onDone }: DialogProps) {
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Where the party ledger comes from, in words
+export function partyLedgerSourceText(ledger: PartyLedger) {
+  switch (ledger.source) {
+    case "fixed":
+      return "fixed at final approval";
+    case "connector":
+      return "connector's ledger";
+    case "client":
+      return "ledger set on the client";
+    case "client_name":
+      return ledger.pending ? "client's name – ledger still to be created in Tally" : "client's name";
+    case "other":
+      return "name typed under Other – must exist in Tally";
+  }
+}
+
+// Bills whose client (and so party ledger) can still be changed: until Admin's
+// final approval
+export const PARTY_EDITABLE_STATUSES: BillStatusValue[] = [...EDITABLE_BILL_STATUSES, "manager_approved"];
+
+// Billing manager or Admin, while approving: checks the party ledger the bill
+// goes to in Tally and corrects it, by choosing the right client (or Other)
+// or by setting the client's ledger in Tally (which applies to all its bills)
+export function PartyLedgerDialog({ bill, onClose, onDone }: DialogProps) {
+  const options = useBillingOptions();
+  const [billTo, setBillTo] = useState<BillTo>({
+    client: bill.client,
+    other: !bill.client && bill.billToName
+      ? { name: bill.billToName, address: bill.billToAddress ?? "", gstin: bill.billToGstin ?? "" }
+      : null,
+  });
+  const [ledger, setLedger] = useState(bill.partyLedger?.source === "client" ? bill.partyLedger.name : "");
+  const [savingLedger, setSavingLedger] = useState(false);
+  const { saving, run } = useBillAction({ bill, onDone });
+  const canChangeParty = PARTY_EDITABLE_STATUSES.includes(bill.status);
+  const clientName = bill.client ? bill.client.companyName || bill.client.contactPerson : "";
+  // The client's own ledger can be set when its bills don't go to a connector
+  const canSetClientLedger = !!bill.client && (bill.partyLedger?.source === "client" || bill.partyLedger?.source === "client_name");
+  const partyChanged = billToValid(billTo) && (billTo.other
+    ? !!bill.client || billTo.other.name.trim() !== (bill.billToName ?? "") ||
+      billTo.other.address.trim() !== (bill.billToAddress ?? "") ||
+      billTo.other.gstin.trim().toUpperCase() !== (bill.billToGstin ?? "")
+    : billTo.client?.id !== bill.client?.id);
+  const ledgerChanged = ledger.trim() !== (bill.partyLedger?.source === "client" ? bill.partyLedger.name : "");
+
+  const saveParty = async () => {
+    const payload = billToPayload(billTo);
+    const action: BillAction =
+      "other" in payload && payload.other
+        ? { action: "set_party", other: payload.other }
+        : { action: "set_party", clientId: billTo.client!.id };
+    if (await run(action, "Client changed")) onClose();
+  };
+
+  const saveClientLedger = async () => {
+    if (!bill.client) return;
+    setSavingLedger(true);
+    try {
+      // Empty, or the client's own name: the ledger is the client's name
+      const name = ledger.trim() === clientName ? "" : ledger.trim();
+      await axios.put("/api/billing/tally/ledgers", { clientId: bill.client.id, tallyLedgerName: name });
+      const response = await axios.get<Bill>(`/api/bills/${bill.id}`);
+      toast.success(`${clientName}: Tally ledger saved`);
+      onDone(response.data);
+      onClose();
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setSavingLedger(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Party ledger</DialogTitle>
+          <DialogDescription>The ledger in Tally this bill is debited to. Correct the client, or the client&apos;s ledger, if it is wrong.</DialogDescription>
+        </DialogHeader>
+        <BillSummary bill={bill} />
+        <div className="rounded-md border p-3 text-sm">
+          {bill.partyLedger ? (
+            <>
+              <p>
+                Goes to <span className="font-semibold">{bill.partyLedger.name}</span>
+              </p>
+              <p className="text-xs text-muted-foreground">{partyLedgerSourceText(bill.partyLedger)}</p>
+            </>
+          ) : (
+            <p className="font-medium text-destructive">No client chosen: the bill has no party ledger yet.</p>
+          )}
+        </div>
+
+        {canChangeParty ? (
+          <div className="space-y-2">
+            <Label>Client</Label>
+            <BillToPicker value={billTo} onChange={setBillTo} />
+            <div className="flex justify-end">
+              <Button disabled={!partyChanged || saving} onClick={saveParty}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save client
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            The client is fixed after final approval. Ask for an edit of the bill to change it.
+          </p>
+        )}
+
+        {bill.connector && bill.partyLedger?.source === "connector" && (
+          <p className="text-xs text-muted-foreground">
+            {clientName} is a client of connector <span className="font-medium">{bill.connector.name}</span>, so the bill goes to the
+            connector&apos;s ledger. Change it in Billing → Connectors, or the client&apos;s connector on the client form.
+          </p>
+        )}
+
+        {canSetClientLedger && !partyChanged && options?.canSetLedger && (
+          <div className="space-y-2 border-t pt-4">
+            <Label>{clientName}&apos;s ledger in Tally</Label>
+            <LedgerPicker value={ledger} onChange={setLedger} ledgers={options.ledgers} clientName={clientName} />
+            <p className="text-xs text-muted-foreground">
+              Saved on the client: applies to all of {clientName}&apos;s bills not yet in Tally. Leave empty to use the client&apos;s name.
+            </p>
+            <div className="flex justify-end">
+              <Button variant="outline" disabled={!ledgerChanged || savingLedger} onClick={saveClientLedger}>
+                {savingLedger && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save ledger
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

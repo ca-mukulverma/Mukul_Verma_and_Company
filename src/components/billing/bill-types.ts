@@ -47,6 +47,8 @@ export interface Bill {
   // Tally income ledger (service) and line description; billing managers only
   incomeLedger: { id: string; name: string } | null;
   tallyLineDescription: string | null;
+  // The party ledger in Tally (billing managers and Admin); null: no client yet
+  partyLedger: PartyLedger | null;
   emailedAt: string | null;
   emailedTo: string | null;
   // Delivery of the last email: failed and delayed come with a reason
@@ -56,6 +58,15 @@ export interface Bill {
   canManage: boolean;
   // Admin: the amount can be corrected directly (also after approval)
   canEditAmount: boolean;
+}
+
+// fixed: numbered bill (fixed at final approval); connector: the connector's
+// ledger; client: the ledger set on the client; client_name: the client's name
+// (pending: still to be created in Tally); other: the name typed on the bill
+export interface PartyLedger {
+  name: string;
+  source: "fixed" | "connector" | "client" | "client_name" | "other";
+  pending: boolean;
 }
 
 export interface BillChanges {
@@ -102,7 +113,8 @@ export type BillAction =
   | { action: "final_approve" }
   | { action: "final_reject"; remark: string }
   | { action: "edit_amount"; amount: number; remark?: string }
-  | { action: "set_income_ledger"; incomeLedgerId: string; lineDescription?: string };
+  | { action: "set_income_ledger"; incomeLedgerId: string; lineDescription?: string }
+  | { action: "set_party"; clientId?: string; other?: { name: string; address: string | null; gstin: string | null } };
 
 export interface BatchResult {
   done: string[];
@@ -151,6 +163,7 @@ export const EVENT_LABELS: Record<string, string> = {
   gst_return_undone: "Taken out of GST return",
   reopened: "Reopened",
   details_updated: "Details updated",
+  party_changed: "Client / party ledger changed",
   work_corrected: "Work corrected",
   company_changed: "Company changed",
   manager_approved: "Approved by billing manager",

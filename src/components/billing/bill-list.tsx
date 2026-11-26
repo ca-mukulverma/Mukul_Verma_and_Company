@@ -46,6 +46,9 @@ import {
   EnterAmountDialog,
   HistoryDialog,
   NoBillingDialog,
+  PARTY_EDITABLE_STATUSES,
+  PartyLedgerDialog,
+  partyLedgerSourceText,
   RemarkDialog,
   RequestAmountDialog,
 } from "./bill-dialogs";
@@ -409,6 +412,7 @@ export function BillList({
       {(open?.dialog === "send_back" || open?.dialog === "not_billable" || open?.dialog === "final_reject") && (
         <RemarkDialog bill={open.bill} kind={open.dialog} onClose={() => setOpen(null)} onDone={handleDone} />
       )}
+      {open?.dialog === "party" && <PartyLedgerDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {open?.dialog === "details" && <EditDetailsDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
       {open?.dialog === "history" && <HistoryDialog bill={open.bill} onClose={() => setOpen(null)} />}
       {open?.dialog === "no_billing" && <NoBillingDialog bill={open.bill} onClose={() => setOpen(null)} onDone={handleDone} />}
@@ -453,6 +457,10 @@ function BillCard({
   const editable = (EDITABLE_BILL_STATUSES as string[]).includes(bill.status);
   const canManage = mode === "manage" && bill.canManage;
   const isAwaitingMe = mode === "amounts" && bill.status === "awaiting_amount";
+  // The billing manager and Admin see the party ledger while approving, and
+  // can correct it until final approval
+  const showsLedger = (mode === "manage" || mode === "final") && bill.canManage && !["cancelled", "not_billable"].includes(bill.status);
+  const canFixLedger = showsLedger && PARTY_EDITABLE_STATUSES.includes(bill.status);
 
   return (
     <Card>
@@ -473,7 +481,12 @@ function BillCard({
               {bill.billNumber && <Badge variant="secondary">{bill.billNumber}</Badge>}
             </div>
             <p className="font-medium break-words">
-              {clientName ?? <span className="text-destructive">No client selected</span>}
+              {clientName ??
+                (mode === "mine" ? (
+                  <span className="text-amber-700 dark:text-amber-400">Client to be chosen by the billing manager</span>
+                ) : (
+                  <span className="text-destructive">No client selected</span>
+                ))}
               {!clientName && bill.billToName && (
                 <span className="ml-2 text-xs font-normal text-muted-foreground">(Other – not a saved client)</span>
               )}
@@ -518,6 +531,31 @@ function BillCard({
           {canManage && bill.incomeLedger && <span>Tally: {bill.incomeLedger.name}</span>}
           <EmailStatus bill={bill} compact />
         </div>
+        {showsLedger && (
+          <div
+            className={cn(
+              "flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border px-2 py-1 text-xs",
+              !bill.partyLedger || bill.partyLedger.pending || bill.partyLedger.source === "other"
+                ? "border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                : "bg-muted/40"
+            )}
+          >
+            <BookOpen className="h-3.5 w-3.5 shrink-0" />
+            {bill.partyLedger ? (
+              <span>
+                Party ledger: <span className="font-semibold">{bill.partyLedger.name}</span>{" "}
+                <span className="opacity-75">({partyLedgerSourceText(bill.partyLedger)})</span>
+              </span>
+            ) : (
+              <span className="font-medium">Party ledger: not set – choose the client</span>
+            )}
+            {canFixLedger && (
+              <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => onOpen("party")}>
+                {bill.partyLedger ? "Check / change" : "Choose client"}
+              </Button>
+            )}
+          </div>
+        )}
         {bill.remark && <p className="text-xs text-muted-foreground">Remark: {bill.remark}</p>}
         {bill.status === "awaiting_amount" && bill.amountRequestNote && (
           <p className="whitespace-pre-line rounded-md bg-muted px-2 py-1 text-xs">
@@ -540,7 +578,7 @@ function BillCard({
               <Badge variant="outline">{BILL_TYPE_LABELS[bill.type]}</Badge>
             )}
             {editable && !clientName && (
-              <Button size="sm" className="bg-amber-600 text-white hover:bg-amber-700" onClick={() => onOpen("details")}>
+              <Button size="sm" className="bg-amber-600 text-white hover:bg-amber-700" onClick={() => onOpen("party")}>
                 <UserPlus className="mr-1 h-3.5 w-3.5" />Choose client
               </Button>
             )}
