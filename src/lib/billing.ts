@@ -102,7 +102,16 @@ export function isEditableStatus(status: Bill["status"]) {
 
 export const billInclude = {
   client: {
-    select: { id: true, contactPerson: true, companyName: true, gstin: true, connector: { select: { id: true, name: true } } },
+    select: {
+      id: true,
+      contactPerson: true,
+      companyName: true,
+      gstin: true,
+      // For the party ledger, shown to billing managers and Admin only
+      tallyLedgerName: true,
+      tallyLedgerPending: true,
+      connector: { select: { id: true, name: true, tallyLedgerName: true } },
+    },
   },
   connector: { select: { id: true, name: true } },
   // Who created the task: the bill goes back to them (e.g. for the amount)
@@ -129,6 +138,27 @@ export const billInclude = {
 
 type BillWithRelations = Prisma.BillGetPayload<{ include: typeof billInclude }>;
 
+// Where the party ledger in Tally comes from:
+// fixed       – a numbered bill: the ledger fixed at final approval
+// connector   – a connector's client: the connector's ledger
+// client      – the Tally ledger set on the client
+// client_name – no ledger set on the client: its name (pending: still to be created in Tally)
+// other       – "Other": the name typed on the bill
+export type PartyLedgerSource = "fixed" | "connector" | "client" | "client_name" | "other";
+
+// The party ledger the bill goes to in Tally (null: no client chosen yet).
+// Same rule as clientLedger in lib/connectors.ts, which can't be imported here.
+export function billPartyLedger(bill: Pick<BillWithRelations, "client" | "billToName" | "billNumber" | "tallyLedgerName">) {
+  if (bill.billNumber && bill.tallyLedgerName) return { name: bill.tallyLedgerName, source: "fixed" as PartyLedgerSource, pending: false };
+  const client = bill.client;
+  if (!client) return bill.billToName ? { name: bill.billToName, source: "other" as PartyLedgerSource, pending: false } : null;
+  if (client.connector) {
+    return { name: client.connector.tallyLedgerName || client.connector.name, source: "connector" as PartyLedgerSource, pending: false };
+  }
+  if (client.tallyLedgerName) return { name: client.tallyLedgerName, source: "client" as PartyLedgerSource, pending: false };
+  return { name: client.companyName || client.contactPerson, source: "client_name" as PartyLedgerSource, pending: client.tallyLedgerPending };
+}
+
 // The bill as sent to the browser. Amounts and bill numbers are removed for
 // anyone who is not allowed to see them; hiding them in the UI is not enough.
 export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
@@ -148,7 +178,13 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     // When it reached its current stage, for "waiting 4 days"
     statusChangedAt: bill.statusChangedAt,
     task: bill.task,
-    client: bill.client,
+    client: bill.client && {
+      id: bill.client.id,
+      contactPerson: bill.client.contactPerson,
+      companyName: bill.client.companyName,
+      gstin: bill.client.gstin,
+      connector: bill.client.connector && { id: bill.client.connector.id, name: bill.client.connector.name },
+    },
     billToName: bill.billToName,
     billToAddress: bill.billToAddress,
     billToGstin: bill.billToGstin,
@@ -188,6 +224,9 @@ export function serializeBill(bill: BillWithRelations, access: BillingAccess) {
     // The Tally income ledger (service) and its line description
     incomeLedger: isManager ? bill.incomeLedger : null,
     tallyLineDescription: isManager ? bill.tallyLineDescription : null,
+    // The party ledger in Tally, for the billing manager and Admin to check
+    // while approving (and correct by choosing the client or its ledger)
+    partyLedger: isManager ? billPartyLedger(bill) : null,
     canManage: isManager,
     // Admin may correct the amount at any stage after it is entered
     canEditAmount: access.isAdmin && bill.amount !== null && ADMIN_AMOUNT_EDIT_STATUSES.includes(bill.status),

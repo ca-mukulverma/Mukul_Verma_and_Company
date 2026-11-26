@@ -176,6 +176,35 @@ example on a bill from a task created without a client.
 - In Tally, the party ledger is that name, and it must exist in Tally.
 - The name is kept on the bill only; no client record is created.
 
+**Don't know the client?** In *Log work*, the client choice has a third
+option, **Don't know**. The work is logged without a client, and the billing
+managers' notification says *client to be chosen*. The bill shows **Choose
+client** (and *Party ledger: not set*) until the billing manager or Admin
+picks the client or enters an Other name; it can't be sent for the amount,
+given an amount or approved before that. Whoever logged it is notified of the
+client chosen, and *My entries* shows *Client to be chosen by the billing
+manager* meanwhile.
+
+**Party ledger while approving.** On bills in the billing manager's list and
+in Admin's final approval queue, a line shows the **party ledger** the bill
+goes to in Tally and where it comes from: the connector's ledger, the ledger
+set on the client, the client's name (marked when the ledger is still to be
+created in Tally), or the name typed under Other. Missing, pending or Other
+ledgers are shown in amber. **Check / change** (or **Choose client**) opens
+the *Party ledger* window, until final approval:
+- **Client**: choose the right saved client or Other. Saved with the action
+  `set_party` (also allowed at *With Admin*), recorded in the history as
+  *Client / party ledger changed* (old → new). A bill without a type takes
+  the new client's usual type; *Show the client's GSTIN* is cleared.
+- **The client's ledger in Tally** (clients without a connector): pick or type
+  the ledger; it is saved on the client (as in Billing → Tally) and applies to
+  all of the client's bills not yet in Tally.
+- A connector's client goes to the connector's ledger; change that in Billing
+  → Connectors or the client's connector.
+
+After final approval the ledger is fixed on the bill as before; a change then
+goes through an edit request.
+
 **Tasks that are not billed.** When a completed task's bill reaches the
 billing manager, the bill shows **No billing** (in Drafts, Awaiting
 amount, Amount entered and Not billable). The billing manager or Admin
