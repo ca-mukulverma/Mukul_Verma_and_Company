@@ -7,6 +7,7 @@ import { z } from "zod";
 import { contactsData, contactsError, contactsSchema } from "@/lib/client-contacts";
 import { canSetTallyLedger, ledgerPendingFor, notifyLedgersNeeded } from "@/lib/connectors";
 import { registrationsPayload, registrationsProblem, registrationsSchema } from "@/lib/client-documents";
+import { gstinTakenProblem, normalizeGstin } from "@/lib/client-gstin";
 
 // Client validation schema
 const clientSchema = contactsSchema.merge(registrationsSchema).extend({
@@ -164,6 +165,9 @@ export async function POST(req: NextRequest) {
     if (contactProblem) return NextResponse.json({ error: contactProblem }, { status: 400 });
     const registrationProblem = registrationsProblem(clientData);
     if (registrationProblem) return NextResponse.json({ error: registrationProblem }, { status: 400 });
+    const gstin = normalizeGstin(clientData.gstin);
+    const gstinProblem = await gstinTakenProblem(gstin);
+    if (gstinProblem) return NextResponse.json({ error: gstinProblem }, { status: 409 });
     const contacts = contactsData(clientData);
     const phone = contacts.phone !== undefined ? contacts.phone : clientData.phone;
     // Only billing managers and Admin set the Tally ledger; a client added
@@ -199,7 +203,7 @@ export async function POST(req: NextRequest) {
         phone,
         address: clientData.address,
         notes: clientData.notes,
-        gstin: clientData.gstin,
+        gstin,
         ...registrationsPayload(clientData),
         connectorId: clientData.connectorId || null,
         tallyLedgerName: mayLedger ? clientData.tallyLedgerName || null : null,

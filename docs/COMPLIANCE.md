@@ -361,12 +361,18 @@ A party registered for GST in more than one state has one GSTIN per state,
 each with its own returns. On the party's page (Compliance → Clients), Admins
 and Partners click **GSTIN of another state**, enter the GSTIN (it must have
 the party's PAN) and optionally track its GSTR-1 and GSTR-3B from a month with
-the party's frequency and fees. Each GSTIN then has:
+the party's frequency and fees (a work added to the GSTIN later without a fee
+takes the party's fee for that work). Each GSTIN then has:
 
 - its own row in the GST sheet (the GSTIN shows under the name), periods,
   locks, due dates (by its state), RCM lines, GST working and bills;
 - a button with its state at the top of the party's page to switch to it; in
   the client list it is shown under the party (`↳ Maharashtra`).
+
+One GSTIN belongs to one client record: adding a client, or editing one, with
+a GSTIN already saved for another client is refused (the message names that
+client), since a second record would split the GSTIN's periods, files and
+bills between two clients.
 
 **Upload documents** on any of the party's GSTINs takes the files of all of
 them at once: each file goes to the GSTIN in it. A file with a GSTIN of the
@@ -583,8 +589,13 @@ What works now:
   RCM/TDS payments are added on the client's compliance page as usual.
 - **Monthly ↔ quarterly GST** (client → Edit on GSTR-1 or GSTR-3B): choose the
   first period of the new frequency. GSTR-1 and GSTR-3B change together;
-  earlier periods keep the old frequency. A period already in the sheet can't
-  be changed this way.
+  earlier periods keep the old frequency. Periods from that month on that are
+  still untouched (pending or data received, no files, notes, adjustments,
+  challans or bill) are removed and the new frequency's periods take their
+  place (e.g. quarterly Oct–Dec → monthly Oct, Nov, Dec). A period already
+  filed or worked on blocks the change, and so does one that runs across the
+  month chosen (choose the quarter's first month instead). From the first
+  tracked period the work simply becomes the new frequency.
 - **Tracked from** (client → Edit on a work): move it earlier to add missed
   periods to the sheet (they appear as normal periods, with reminders and
   bills). It can be moved later only while no period before the new month is
