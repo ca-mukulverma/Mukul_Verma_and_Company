@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ensureItemsAround, frequencyAt, moveStartEarlier } from "@/lib/compliance";
 import { parseMonthKey, periodContaining, periodLabel } from "@/lib/compliance-periods";
@@ -49,6 +50,24 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.clientCompliance.findMany({
     where: { clientId: { in: data.clientIds }, workTypeId: workType.id },
   });
+  // Another state's registration without a fee entered takes the party's
+  // fee for the same work, so its bills don't come up without an amount
+  const noFee = data.feeNil == null && data.feeNonNil == null;
+  const parentFees = new Map<string, { feeNil: Prisma.Decimal | null; feeNonNil: Prisma.Decimal | null }>();
+  if (noFee) {
+    const registrations = await prisma.client.findMany({
+      where: { id: { in: data.clientIds }, parentClientId: { not: null } },
+      select: { id: true, parentClientId: true },
+    });
+    const mainSubs = await prisma.clientCompliance.findMany({
+      where: { clientId: { in: registrations.map((r) => r.parentClientId!) }, workTypeId: workType.id },
+      select: { clientId: true, feeNil: true, feeNonNil: true },
+    });
+    for (const r of registrations) {
+      const main = mainSubs.find((m) => m.clientId === r.parentClientId);
+      if (main && (main.feeNil !== null || main.feeNonNil !== null)) parentFees.set(r.id, main);
+    }
+  }
   const skipped: { clientId: string; reason: string }[] = [];
   let added = 0;
   let extended = 0;
@@ -78,8 +97,8 @@ export async function POST(request: NextRequest) {
       frequencyFrom: null,
       startPeriod,
       endPeriod: null,
-      feeNil: data.feeNil ?? null,
-      feeNonNil: data.feeNonNil ?? null,
+      feeNil: data.feeNil ?? parentFees.get(clientId)?.feeNil ?? null,
+      feeNonNil: data.feeNonNil ?? parentFees.get(clientId)?.feeNonNil ?? null,
       active: true,
     };
     if (current) await prisma.clientCompliance.update({ where: { id: current.id }, data: fields });

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { contactsData, contactsError, contactsSchema } from "@/lib/client-contacts";
 import { canSetTallyLedger, ledgerPendingFor, notifyLedgersNeeded } from "@/lib/connectors";
 import { registrationsPayload, registrationsProblem, registrationsSchema } from "@/lib/client-documents";
+import { gstinTakenProblem, normalizeGstin } from "@/lib/client-gstin";
 
 // Client update validation schema
 const clientUpdateSchema = contactsSchema.merge(registrationsSchema).extend({
@@ -139,6 +140,12 @@ export async function PATCH(
     if (contactProblem) return NextResponse.json({ error: contactProblem }, { status: 400 });
     const registrationProblem = registrationsProblem(input);
     if (registrationProblem) return NextResponse.json({ error: registrationProblem }, { status: 400 });
+    // A GSTIN already saved for another client can't be given to this one
+    const gstin = data.gstin === undefined ? undefined : normalizeGstin(data.gstin);
+    if (gstin && gstin !== normalizeGstin(existingClient.gstin)) {
+      const gstinProblem = await gstinTakenProblem(gstin, id);
+      if (gstinProblem) return NextResponse.json({ error: gstinProblem }, { status: 409 });
+    }
     const contacts = contactsData(input);
     const mayLedger = await canSetTallyLedger(session.user.id);
     if (input.tallyLedgerName !== undefined && !mayLedger && (input.tallyLedgerName || null) !== existingClient.tallyLedgerName) {
@@ -175,7 +182,7 @@ export async function PATCH(
         ...contacts,
         address: data.address,
         notes: data.notes,
-        gstin: data.gstin,
+        gstin,
         ...registrationsPayload(input),
         isGuest: data.isGuest,
         accessExpiry,

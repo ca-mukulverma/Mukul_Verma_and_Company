@@ -854,7 +854,7 @@ function EditSubscription({
                 <>
                   <Label className="text-xs">From (a quarter&apos;s first month for quarterly)</Label>
                   <Input type="month" value={from} onChange={(e) => setFrom(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">GSTR-1 and GSTR-3B change together. Earlier periods keep the old frequency.</p>
+                  <p className="text-xs text-muted-foreground">GSTR-1 and GSTR-3B change together. Earlier periods keep the old frequency. Periods from this month on that are still pending (no files, no bill) are replaced by the new frequency.</p>
                 </>
               )}
             </div>
