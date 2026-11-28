@@ -40,6 +40,9 @@ two endpoints with its key (`Authorization: Bearer mvcd_…`):
 | `GET /api/desk/version` | at every contact, and Settings → Check for update | the newest version published for that client, or `{}` |
 | `GET /api/desk/download?v=1.2.0` | when staff click "Update – Install" | the installer (only a version published for that client) |
 | `POST /api/desk/support` | Settings → Send support file to MVC | a logs zip (≤ 10 MB) + a note |
+| `POST /api/desk/suspense` | Desk 1.4.1+: each day a suspense message is made, and at the contacts if the list changed | the bank entries waiting for the client + the client's ledgers by kind; answers the phone link |
+| `GET /api/desk/suspense/answers`, `POST /api/desk/suspense/ack` | at every contact, and Suspense → Get phone answers now | what the client answered on the phone link; the Desk confirms what it saved |
+| `GET /api/desk/gst2b` (`?id=`) | GST working → Get 2B from MV Company app | the GSTR-2B JSON files kept for the linked portal client (Compliance), and one file |
 
 If the PC is off or offline at a time, it does not retry until the next time;
 missed days' reports go at the next time (up to 7 days back). Saturday/Sunday
@@ -57,6 +60,26 @@ are reported only if something was done.
 - The missing-report check is a step of the existing daily job
   (`/api/cron/daily`, 11:58 IST): no new cron, no extra wake-up.
 
+## Phone links (Desk 1.4.1)
+
+**Suspense answers – `/s/<link>`.** The Desk sends the bank entries it could not identify, with the client's own
+Tally ledgers grouped by kind (payment to supplier, expense, income, loan, salary, tax …). The client opens the link
+on the phone (no sign-in – the link is the key), taps **what it is** for each entry, chooses the **party / ledger**
+from the list and presses **Send**. Admins get a bell notification. The Desk takes the answers at its next contact
+(11:30 / 1 / 4 / 7) and staff check and clear them. The link stays the same every day; it expires 60 days after the
+last list. Only ledgers from the client's own list are accepted.
+
+**App download – `/get/<link>`.** Control Centre → **Download links** → choose the client, write the person's name
+(and WhatsApp number), choose how many days it works (1–30) → **Make link & send on WhatsApp**. WhatsApp opens with
+the message ready. The page offers the newest version published for that client (Updates tab) with install steps.
+**Stop** ends a link at once. Downloads are counted and shown in the client's events.
+
+**GSTR-2B for the Desk.** When the Desk client is linked to its portal client (Clients tab), the Desk takes the
+GSTR-2B JSON files uploaded under that client's Compliance (GSTR-3B period) by itself. Nothing to send by hand.
+
+Storage and cost: the suspense lists, answers and download links live in Redis with an expiry – the database is
+touched only for the Admin notification, the download event and the 2B file list (on a click).
+
 ## Updates: sending a new version to clients
 
 **What you do (after a new version is built on GitHub):**
@@ -66,8 +89,10 @@ are reported only if something was done.
    built; a version still being built is not offered yet).
 3. **Send to**: tick a client to try it there first, or tick none for all
    clients.
-4. Write one line in **What is new** (staff see it next to the Install
-   button). Tick **Mark as important** only if they must install it.
+4. Write **What is new**, one point per line. From Desk 1.4.1 staff see it in a
+   **pop-up** as soon as their PC learns of the version (and again after
+   installing). Tick **Mark as important** only if they must install it: the
+   pop-up then comes back every hour and the Home list shows it in red.
 5. **Publish**. The website checks the installer and fills in its check-sum
    itself; this can take up to a minute.
 

@@ -162,8 +162,13 @@ export function UpdatesTab() {
             </label>
           </div>
           <div className="space-y-1 sm:col-span-3">
-            <Label>What is new (one line, shown on the client&apos;s PC)</Label>
-            <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+            <Label>What is new (shown to staff in a pop-up on the client&apos;s PC: one point per line)</Label>
+            <Textarea
+              rows={6}
+              placeholder={"• Bank: entries already in Tally are never posted again\n• GSTR-2B comes straight from the MV Company app"}
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            />
           </div>
           <div className="sm:col-span-3">
             <Button onClick={publish} disabled={busy || !form.version}>
