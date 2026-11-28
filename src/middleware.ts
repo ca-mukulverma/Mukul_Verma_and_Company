@@ -145,6 +145,8 @@ export async function middleware(request: NextRequest) {
     pathname === "/forgot-password" ||
     pathname === "/reset-password" ||
     pathname === "/set-password" ||
+    pathname.startsWith("/s/") || // client's phone page for suspense answers (the link is the key)
+    pathname.startsWith("/get/") || // personal download link for the Desk app (the link is the key)
     pathname.includes("favicon")
   ) {
     return NextResponse.next();

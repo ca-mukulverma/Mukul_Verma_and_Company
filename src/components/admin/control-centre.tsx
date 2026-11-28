@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiErrorMessage } from "@/components/billing/bill-types";
 import { SupportTab, UpdatesTab } from "@/components/admin/control-centre-updates";
+import { DownloadLinksTab } from "@/components/admin/control-centre-links";
 
 // Admin → Control Centre (docs/CONTROL_CENTRE.md): the desktop software
 // installed at clients (Gudakesa Desk …), the rules published to them and
@@ -663,6 +664,7 @@ export function ControlCentre() {
         <TabsTrigger value="rules">Rules</TabsTrigger>
         <TabsTrigger value="clients">Clients</TabsTrigger>
         <TabsTrigger value="updates">Updates</TabsTrigger>
+        <TabsTrigger value="links">Download links</TabsTrigger>
         <TabsTrigger value="support">Support files</TabsTrigger>
       </TabsList>
       <TabsContent value="reports">
@@ -676,6 +678,9 @@ export function ControlCentre() {
       </TabsContent>
       <TabsContent value="updates">
         <UpdatesTab />
+      </TabsContent>
+      <TabsContent value="links">
+        <DownloadLinksTab />
       </TabsContent>
       <TabsContent value="support">
         <SupportTab />
